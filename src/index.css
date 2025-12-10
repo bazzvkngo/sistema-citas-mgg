@@ -1,0 +1,185 @@
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+/* Animación fade-in para la TV */
+.fade-in {
+  animation: fadeIn 0.7s ease-in-out;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+/* 1. Definimos nuestra paleta de colores del Perú */
+:root {
+  --color-rojo-consulado: #D9002C; /* Rojo oficial */
+  --color-blanco: #FFFFFF;
+  --color-texto-principal: #333333;
+  --color-texto-secundario: #555555;
+  --color-fondo: #f4f4f4; /* Un gris muy claro para el fondo */
+  --color-borde: #dddddd;
+}
+
+/* 2. Reseteo básico y estilos del body */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-fondo);
+  color: var(--color-texto-principal);
+}
+
+/* 3. Estilos para los "contenedores" de las páginas */
+.page-container {
+  max-width: 900px;
+  margin: 40px auto; /* Centrado automático */
+  padding: 20px;
+  background-color: var(--color-blanco);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* 4. Estilos para Títulos */
+h1, h2, h3 {
+  color: var(--color-rojo-consulado);
+  border-bottom: 2px solid var(--color-fondo);
+  padding-bottom: 10px;
+}
+
+/* 5. Estilos para Formularios */
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px; /* Espacio entre elementos del formulario */
+}
+
+form div {
+  display: flex;
+  flex-direction: column;
+}
+
+form label {
+  font-weight: bold;
+  margin-bottom: 5px;
+  color: var(--color-texto-secundario);
+}
+
+/* Aplicamos el estilo a todos los inputs, incluido el del calendario */
+form input[type="email"],
+form input[type="password"],
+form select,
+.react-datepicker__input-container input {
+  padding: 12px;
+  border: 1px solid var(--color-borde);
+  border-radius: 5px;
+  font-size: 16px;
+  width: 100%; /* Hacemos que ocupen todo el ancho */
+  box-sizing: border-box; /* Importante para que el padding no rompa el ancho */
+}
+
+/* 6. Estilos para Botones */
+button {
+  background-color: var(--color-rojo-consulado);
+  color: var(--color-blanco);
+  border: none;
+  padding: 15px;
+  font-size: 16px;
+  font-weight: bold;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+button:hover {
+  background-color: #a00020; /* Un rojo más oscuro al pasar el mouse */
+}
+
+button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* 7. Estilos para links */
+a {
+  color: var(--color-rojo-consulado);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* ---------------------------------------------
+  8. ¡AQUÍ ESTÁ LA CORRECCIÓN DEL CALENDARIO!
+  Estilos para sobreescribir react-datepicker
+--------------------------------------------- 
+*/
+
+/* Forzamos que el input del calendario use nuestros estilos */
+.react-datepicker-wrapper {
+  width: 100%; /* Hacemos que ocupe todo el ancho */
+}
+
+/* Fondo del header (donde dice "Noviembre 2025") */
+.react-datepicker__header {
+  background-color: var(--color-rojo-consulado);
+  border-bottom: none;
+}
+
+/* Texto del header (mes y flechas) */
+.react-datepicker__current-month,
+.react-datepicker__day-name,
+.react-datepicker__navigation--previous,
+.react-datepicker__navigation--next {
+  color: var(--color-blanco) !important;
+  font-weight: bold;
+}
+
+/* Flechas de navegación (para que se vean en el fondo rojo) */
+.react-datepicker__navigation-icon::before {
+  border-color: var(--color-blanco) !important;
+}
+
+/* Día seleccionado (el círculo) */
+.react-datepicker__day--selected {
+  background-color: var(--color-rojo-consulado);
+  color: var(--color-blanco);
+}
+
+/* Día "hover" (cuando pasas el mouse) */
+.react-datepicker__day--keyboard-selected,
+.react-datepicker__day:hover {
+  background-color: #ffb3b3; /* Un rojo más claro */
+}
+
+/* Día "deshabilitado" (sábados y domingos) */
+.react-datepicker__day--disabled {
+  color: #cccccc;
+  background-color: var(--color-fondo);
+}
+
+/* Animación suave para la pantalla de turnos */
+.fade-in {
+  animation: fadeIn 0.7s ease-in-out;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

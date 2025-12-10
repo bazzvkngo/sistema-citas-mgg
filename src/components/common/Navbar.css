@@ -1,0 +1,73 @@
+/* NAV SUPERIOR ORIGINAL */
+
+.navbar {
+  width: 100%;
+  background-color: #c8102e;
+  padding: 10px 0;
+  color: white;
+}
+
+.navbar-content {
+  max-width: 1400px;
+  width: 90%;
+  margin: auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.navbar-left {
+  display: flex;
+  align-items: center;
+  gap: 35px;
+}
+
+.navbar-logo {
+  font-size: 22px;
+  font-weight: bold;
+  text-decoration: none;
+  color: white;
+}
+
+.navbar-links {
+  list-style: none;
+  display: flex;
+  gap: 25px;
+  margin: 0;
+  padding: 0;
+}
+
+.navbar-links li a {
+  text-decoration: none;
+  color: white;
+  font-size: 16px;
+  font-weight: 500;
+}
+
+.navbar-links li a:hover {
+  text-decoration: underline;
+}
+
+.navbar-right {
+  display: flex;
+  align-items: center;
+  gap: 25px;
+}
+
+.navbar-user {
+  font-size: 14px;
+}
+
+.navbar-logout {
+  background: white;
+  color: #c8102e;
+  border: none;
+  padding: 8px 18px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.navbar-logout:hover {
+  background: #f4d3d8;
+}

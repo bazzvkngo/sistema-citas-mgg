@@ -1,0 +1,216 @@
+/* src/pages/Metrics.css */
+
+.metrics-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #c8102e;
+  margin-bottom: 24px; /* un poco más de aire con la card */
+}
+
+/* Card de filtros */
+.metrics-filters {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;      /* centrado vertical con el botón Excel */
+  gap: 16px;
+}
+
+.metrics-filters-left {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Fila de fechas */
+.metrics-date-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.metrics-date-row label {
+  font-size: 14px;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metrics-date-row input[type="date"] {
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 14px;
+}
+
+/* Rangos rápidos */
+.metrics-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.metrics-quick > span {
+  font-size: 14px;
+  color: #555;
+}
+
+.metrics-quick-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Botones base */
+.metrics-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.05s ease,
+    box-shadow 0.2s ease;
+  white-space: nowrap;
+}
+
+/* Azules: rangos rápidos */
+.metrics-btn-primary {
+  background-color: #007bff;
+  color: #ffffff;
+}
+
+.metrics-btn-primary:hover {
+  background-color: #0069d9;
+  transform: translateY(-1px);
+}
+
+/* Estado activo para el rango seleccionado */
+.metrics-btn-primary.active {
+  background-color: #0056b3;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Verde: Excel */
+.metrics-btn-success {
+  background-color: #28a745;
+  color: #ffffff;
+  margin-left: auto;
+}
+
+.metrics-btn-success:hover {
+  background-color: #218838;
+  transform: translateY(-1px);
+}
+
+/* Error */
+.metrics-error {
+  color: #c8102e;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+/* Cards de resumen */
+.metrics-summary-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.metrics-card {
+  flex: 1 1 260px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  padding: 16px 20px;
+}
+
+.metrics-card h4 {
+  margin: 0 0 10px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.metrics-card p {
+  margin: 3px 0;
+  font-size: 14px;
+  color: #555;
+}
+
+/* Tabs de vista */
+.metrics-view-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.metrics-view-toggle > span {
+  font-size: 14px;
+  color: #555;
+}
+
+.metrics-view-btn {
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 8px 16px;
+  background-color: #ffffff;
+  color: #c8102e;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease,
+    transform 0.05s ease;
+}
+
+.metrics-view-btn.active {
+  background-color: #c8102e;
+  color: #ffffff;
+  border-color: #c8102e;
+}
+
+.metrics-view-btn:hover {
+  transform: translateY(-1px);
+}
+
+/* Secciones de gráficos */
+.metrics-chart-section {
+  margin-top: 20px;
+  margin-bottom: 24px;
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+  padding: 18px 20px 22px 20px;
+}
+
+.metrics-chart-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+  .metrics-filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .metrics-btn-success {
+    margin-left: 0;
+    width: 100%;        /* que el botón verde sea ancho completo */
+    text-align: center;
+  }
+}

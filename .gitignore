@@ -1,0 +1,62 @@
+# =========================
+# LOGS
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# =========================
+# DEPENDENCIAS
+# =========================
+node_modules/
+functions/node_modules/
+
+# =========================
+# BUILD / SALIDA
+# =========================
+dist/
+dist-ssr/
+functions/lib/
+functions/.firebase/
+
+# =========================
+# FIREBASE / LOCAL
+# =========================
+.firebase/
+firebase-debug.log
+.firebaserc.local
+
+# =========================
+# VARIABLES DE ENTORNO / SECRETOS
+# =========================
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.*.local
+
+# Si llegas a usar credenciales locales de service account, NO subirlas
+serviceAccountKey.json
+
+# =========================
+# EDITOR / SO
+# =========================
+.vscode/
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# =========================
+# OTROS
+# =========================
+*.local

@@ -1,0 +1,7 @@
+/* Hacemos que el #root use todo el ancho de la pantalla */
+#root {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}

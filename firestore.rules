@@ -1,0 +1,73 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- HELPER FUNCTIONS ---
+    function getUserData(userId) {
+      return get(/databases/$(database)/documents/usuarios/$(userId)).data;
+    }
+    function getAuthData() {
+      return getUserData(request.auth.uid);
+    }
+    function isAgente() {
+      let userRole = getAuthData().rol;
+      return userRole == 'agente' || userRole == 'admin';
+    }
+    function isAdmin() {
+      return getAuthData().rol == 'admin';
+    }
+
+    // --- COLECCIONES ---
+
+    match /usuarios/{userId} {
+      allow create, get, update: if request.auth.uid == userId;
+      allow list, get, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    match /tramites/{tramiteId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ✅ NUEVA COLECCIÓN: FERIADOS / DÍAS BLOQUEADOS
+    // Usa el mismo nombre de colección que en AdminHolidays.jsx (por ejemplo "feriados")
+    match /feriados/{feriadoId} {
+      // Lectura: cualquiera logueado puede leerlos (para deshabilitar fechas en el calendario)
+      // Si prefieres que sea público incluso sin login, puedes usar `if true`.
+      allow get, list: if request.auth != null;
+
+      // Escritura solo para administradores
+      allow create, update, delete: if isAdmin();
+    }
+
+    // ✅ --- REGLAS DE 'CITAS' CORREGIDAS ---
+    match /citas/{citaId} {
+      // Ciudadano puede crear o borrar sus propias citas
+      allow create: if request.auth.uid == request.resource.data.userID;
+      allow delete: if request.auth.uid == resource.data.userID;
+      
+      // Agente/Admin puede actualizar citas
+      allow update: if isAgente();
+      
+      // Un usuario puede LEER una cita si:
+      // 1. Es Agente/Admin
+      // 2. O es el dueño (userID) de esa cita.
+      allow read: if isAgente() || request.auth.uid == resource.data.userID;
+    }
+    // --- FIN DE LA CORRECCIÓN ---
+
+    match /turnos/{turnoId} {
+      allow create: if true;
+      allow get: if true;
+      allow list: if isAgente();
+      allow update: if isAgente();
+      allow delete: if false;
+    }
+
+    match /estadoSistema/{docId} {
+      allow read: if true;
+      allow write: if isAgente();
+    }
+  }
+}
