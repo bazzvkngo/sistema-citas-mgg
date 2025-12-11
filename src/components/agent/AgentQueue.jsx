@@ -1,4 +1,4 @@
-// src/components/agente/PanelAgentePresencial.jsx
+// src/components/agente/AgentQueue.jsx (antes PanelAgentePresencial.jsx)
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
@@ -32,11 +32,11 @@ const styles = {
   },
   // 🔽 Bloque inferior: número + "en espera" + botón
   queueBottom: {
-    marginTop: 'auto',               // empuja todo este bloque hacia abajo
+    marginTop: 'auto',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '8px',                      // espacio entre elementos
+    gap: '8px',
     textAlign: 'center'
   },
   countNumber: {
@@ -55,7 +55,15 @@ const styles = {
     color: 'white',
     border: 'none',
     borderRadius: '5px',
-    cursor: 'pointer'
+    cursor: 'pointer',
+    minWidth: '180px'
+  },
+  // 🎯 Estilo cuando no hay turnos en la cola
+  callButtonDisabled: {
+    backgroundColor: '#cccccc',
+    color: '#666666',
+    cursor: 'not-allowed',
+    boxShadow: 'none'
   },
   atencionBox: {
     border: '2px solid green',
@@ -259,6 +267,7 @@ export default function PanelAgentePresencial() {
 
             {tramites.map((tramite) => {
               const conteo = (colasTurnos[tramite.id] || []).length;
+              const isDisabled = conteo === 0;
 
               return (
                 <div key={tramite.id} style={styles.queueBox}>
@@ -269,8 +278,11 @@ export default function PanelAgentePresencial() {
                     <div style={styles.queueLabel}>en espera</div>
 
                     <button
-                      style={styles.callButton}
-                      disabled={conteo === 0}
+                      style={{
+                        ...styles.callButton,
+                        ...(isDisabled ? styles.callButtonDisabled : {})
+                      }}
+                      disabled={isDisabled}
                       onClick={() => handleLlamarTurno(tramite.id)}
                     >
                       Llamar Siguiente

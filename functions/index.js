@@ -12,6 +12,27 @@ const CRON_JOB_REGION = "us-central1";
 initializeApp();
 const db = getFirestore();
 
+// =========================================
+// Helper zona horaria Chile para métricas
+// =========================================
+const TZ_OFFSET = "-03:00"; // Chile continental en diciembre (UTC-3)
+
+/**
+ * Construye el rango de fechas en horario local Chile:
+ *  - startDateISO → 00:00:00 del día inicial
+ *  - endDateISO   → 23:59:59.999 del día final
+ * y devuelve Timestamps listos para Firestore.
+ */
+function buildLocalRange(startDateISO, endDateISO) {
+  const startDate = new Date(`${startDateISO}T00:00:00.000${TZ_OFFSET}`);
+  const endDate = new Date(`${endDateISO}T23:59:59.999${TZ_OFFSET}`);
+
+  return {
+    start: Timestamp.fromDate(startDate),
+    end: Timestamp.fromDate(endDate),
+  };
+}
+
 /**
  * @name checkDniExists
  */
@@ -62,10 +83,10 @@ exports.marcarCitasAusentes = onSchedule({
 
     snapshot.forEach(doc => {
       batch.update(doc.ref, {
-        estado: 'completado',
-        clasificacion: 'NO_SE_PRESENTO',
+        estado: "completado",
+        clasificacion: "NO_SE_PRESENTO",
         comentariosAgente: `Sistema automático: Cita expiró tras ${MARGEN_TOLERANCIA_MIN} min.`,
-        fechaHoraAtencionFin: now
+        fechaHoraAtencionFin: now,
       });
     });
 
@@ -96,13 +117,13 @@ exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION }, async (request) 
     const selectedDate = new Date(fechaISO);
     const dayOfWeek = selectedDate.getDay();
 
-    //  Bloquear fines de semana
+    // Bloquear fines de semana
     if (dayOfWeek === 0 || dayOfWeek === 6) {
       return { slots: [] };
     }
 
-    //  Bloquear feriados configurados por el admin en Firestore
-    //  Colección: "feriados" con campos: fechaISO (YYYY-MM-DD), activo (bool)
+    // Bloquear feriados configurados por el admin en Firestore
+    // Colección: "feriados" con campos: fechaISO (YYYY-MM-DD), activo (bool)
     const dateKey = selectedDate.toISOString().slice(0, 10); // 'YYYY-MM-DD'
 
     const feriadosSnap = await db
@@ -176,7 +197,6 @@ exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION }, async (request) 
 
 /**
  * @name generarTurnoKiosko
- * 🚀 Funciona PERFECTO – con transacción corregida
  */
 exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION }, async (request) => {
   const { dniLimpio, tramiteId } = request.data;
@@ -240,7 +260,7 @@ exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION }, async (request)
         tramiteID: tramiteId,
         codigo: codigoGenerado,
         fechaHoraGenerado: Timestamp.now(),
-        estado: "en-espera"
+        estado: "en-espera",
       });
 
       return codigoGenerado;
@@ -249,7 +269,7 @@ exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION }, async (request)
     return {
       id: turnoRef.id,
       codigo: nuevoCodigo,
-      nombre: tramiteNombre
+      nombre: tramiteNombre,
     };
 
   } catch (error) {
@@ -335,17 +355,17 @@ exports.resetContadoresDiarios = onSchedule({
  * Lógica de clasificación + detalle para Excel
  */
 exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => {
-  const { startDateISO, endDateISO } = request.data;
+  const { startDateISO, endDateISO } = request.data || {};
 
   if (!startDateISO || !endDateISO) {
     throw new HttpsError("invalid-argument", "Fechas son requeridas.");
   }
 
   try {
-    const startDate = Timestamp.fromDate(new Date(startDateISO));
-    const endDate = Timestamp.fromDate(new Date(endDateISO));
+    // Rango en horario Chile (UTC-3), día completo
+    const { start, end } = buildLocalRange(startDateISO, endDateISO);
 
-    // 🔹 Stats separados por origen
+    // Stats separados por origen
     const stats = {
       citas: {
         atendido_total: 0,
@@ -367,9 +387,9 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
 
       const clasificacion = data.clasificacion || "SIN_CLASIFICAR";
 
-      // 🔹 Clasificación en buckets
+      // Clasificación en buckets
       switch (clasificacion) {
-        // ✅ ATENDIDAS
+        // ATENDIDAS
         case "ATENDIDO_OK":
         case "ATENDIDO":
         case "TRAMITE_OK":
@@ -379,7 +399,7 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
           targetStats.atendido_total++;
           break;
 
-        // ✅ FALLO / INCOMPLETO / DERIVADOS
+        // FALLIDAS / DERIVADAS / INCOMPLETAS
         case "FALLO_ACCION":
         case "RECHAZADO":
         case "FALTAN_DOCUMENTOS":
@@ -387,13 +407,13 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
           targetStats.fallo_accion++;
           break;
 
-        // ✅ AUSENTE
+        // NO SE PRESENTÓ
         case "NO_SE_PRESENTO":
           targetStats.no_presento++;
           break;
 
         default:
-          // SIN_CLASIFICAR → no suma a ningún bucket pero sí va al detalle
+          // SIN_CLASIFICAR: solo va al detalle
           break;
       }
 
@@ -402,7 +422,7 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
         fechaAtencion = data.fechaHoraAtencionFin.toDate().toISOString();
       }
 
-      // 🔹 Registro de detalle para Excel
+      // Registro de detalle para Excel
       detalleArr.push({
         id: docId,
         codigo: data.codigo || "",
@@ -421,8 +441,8 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
       const q = db
         .collection(collectionName)
         .where("estado", "==", "completado")
-        .where("fechaHoraAtencionFin", ">=", startDate)
-        .where("fechaHoraAtencionFin", "<=", endDate);
+        .where("fechaHoraAtencionFin", ">=", start)
+        .where("fechaHoraAtencionFin", "<=", end);
 
       const snapshot = await q.get();
 
@@ -431,7 +451,6 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
       });
     }
 
-    // Devolvemos todo junto
     return stats;
 
   } catch (error) {
@@ -439,6 +458,7 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
     throw new HttpsError("internal", "Error al procesar métricas. Revisa los índices.");
   }
 });
+
 
 /**
  * @name resetPantallaTvDiaria

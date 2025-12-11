@@ -5,12 +5,12 @@ import { getFirestore } from "firebase/firestore"; // Importamos Firestore
 
 // 2. Tu configuración de Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyCH_-U18MHryiQaJ_inZLLRiMMFk29IdHg", // (api de google cloud)
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: "sistema-de-citas-mgg.firebaseapp.com",
   projectId: "sistema-de-citas-mgg",
-  storageBucket: "sistema-de-citas-mgg.firebasestorage.app",
-  messagingSenderId: "348376322123",
-  appId: "1:348376322123:web:1ab6c6218011e0a9d63dce"
+  storageBucket: "sistema-de-citas-mgg.appspot.com",
+  messagingSenderId: "XXXXXXXXXXXX",
+  appId: "1:XXXXXXXXXXXX:web:XXXXXXXXXXXXXX",
 };
 
 // 3. Inicializar la app de Firebase

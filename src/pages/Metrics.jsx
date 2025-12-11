@@ -7,15 +7,24 @@ import { Bar } from "react-chartjs-2";
 import "chart.js/auto";
 import "./Metrics.css";
 
-// Helpers de fechas
-const todayISO = () => new Date().toISOString().slice(0, 10);
+// Helpers de fechas usando zona local (no UTC)
+const formatLocalISO = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`; // YYYY-MM-DD local
+};
+
+const todayISO = () => formatLocalISO(new Date());
 
 function getWeekRange() {
   const end = new Date();
   const start = new Date();
-  start.setDate(end.getDate() - 6);
-  const toISO = (d) => d.toISOString().slice(0, 10);
-  return { start: toISO(start), end: toISO(end) };
+  start.setDate(end.getDate() - 6); // últimos 7 días incluyendo hoy
+  return {
+    start: formatLocalISO(start),
+    end: formatLocalISO(end),
+  };
 }
 
 // Clasificar las atenciones según la clasificación almacenada
@@ -64,7 +73,6 @@ export default function Metrics() {
   const [error, setError] = useState("");
   const [viewMode, setViewMode] = useState("global"); // 'global' | 'tramite' | 'modulo'
 
-  // nuevo: para marcar el rango rápido activo
   // 'today' | 'week' | 'month' | 'custom'
   const [selectedRange, setSelectedRange] = useState("week");
 
@@ -94,9 +102,8 @@ export default function Metrics() {
       const d = new Date();
       const first = new Date(d.getFullYear(), d.getMonth(), 1);
       const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      const toISO = (x) => x.toISOString().slice(0, 10);
-      setStartDate(toISO(first));
-      setEndDate(toISO(last));
+      setStartDate(formatLocalISO(first));
+      setEndDate(formatLocalISO(last));
     }
   };
 
