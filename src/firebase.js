@@ -5,7 +5,7 @@ import { getFirestore } from "firebase/firestore"; // Importamos Firestore
 
 // 2. Tu configuración de Firebase
 const firebaseConfig = {
-  apiKey: "AIzaSyB-ydxIRBecXGV0DgpXwNfeLdhI5bZmIH4", // (Esta clave es pública, está bien)
+  apiKey: "AIzaSyCH_-U18MHryiQaJ_inZLLRiMMFk29IdHg", // (api de google cloud)
   authDomain: "sistema-de-citas-mgg.firebaseapp.com",
   projectId: "sistema-de-citas-mgg",
   storageBucket: "sistema-de-citas-mgg.firebasestorage.app",

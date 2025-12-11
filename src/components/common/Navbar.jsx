@@ -19,13 +19,22 @@ export default function Navbar() {
 
   const rol = currentUser?.rol || "ciudadano";
 
+  // Texto bonito para el rol
+  const roleLabelMap = {
+    ciudadano: "Ciudadano",
+    agente: "Agente",
+    admin: "Admin",
+    pantalla: "Pantalla TV",
+    kiosko: "Kiosko",
+  };
+  const roleLabel = roleLabelMap[rol] || rol;
+
   const handleToggleFullscreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement
         .requestFullscreen()
         .then(() => {
           setIsFullscreen(true);
-          // 👇 Si estamos en la pantalla TV, disparamos el evento para habilitar sonido
           if (location.pathname === "/pantalla-tv") {
             window.dispatchEvent(new Event("enableTvSound"));
           }
@@ -48,10 +57,13 @@ export default function Navbar() {
 
   const showFullscreenButton = isKioskView || isScreenView;
 
+  // Helper para aplicar la clase "active" según la ruta
+  const linkClass = (path) =>
+    `navbar-link ${location.pathname === path ? "active" : ""}`;
+
   return (
     <nav className="navbar">
       <div className="navbar-content">
-
         {/* IZQUIERDA */}
         <div className="navbar-left">
           {/* Logo -> siempre lleva a /inicio */}
@@ -65,10 +77,14 @@ export default function Navbar() {
               {rol === "ciudadano" && (
                 <>
                   <li>
-                    <Link to="/citas">Mis Citas</Link>
+                    <Link to="/citas" className={linkClass("/citas")}>
+                      Mis Citas
+                    </Link>
                   </li>
                   <li>
-                    <Link to="/perfil">Mi Perfil</Link>
+                    <Link to="/perfil" className={linkClass("/perfil")}>
+                      Mi Perfil
+                    </Link>
                   </li>
                 </>
               )}
@@ -77,10 +93,17 @@ export default function Navbar() {
               {rol === "agente" && (
                 <>
                   <li>
-                    <Link to="/panel-agente">Panel Agente</Link>
+                    <Link
+                      to="/panel-agente"
+                      className={linkClass("/panel-agente")}
+                    >
+                      Panel Agente
+                    </Link>
                   </li>
                   <li>
-                    <Link to="/perfil">Mi Perfil</Link>
+                    <Link to="/perfil" className={linkClass("/perfil")}>
+                      Mi Perfil
+                    </Link>
                   </li>
                 </>
               )}
@@ -89,22 +112,43 @@ export default function Navbar() {
               {rol === "admin" && (
                 <>
                   <li>
-                    <Link to="/panel-agente">Panel Agente</Link>
+                    <Link
+                      to="/panel-agente"
+                      className={linkClass("/panel-agente")}
+                    >
+                      Panel Agente
+                    </Link>
                   </li>
                   <li>
-                    <Link to="/administrador">Admin</Link>
+                    <Link
+                      to="/administrador"
+                      className={linkClass("/administrador")}
+                    >
+                      Admin
+                    </Link>
                   </li>
                   <li>
-                    <Link to="/metricas">Métricas</Link>
+                    <Link to="/metricas" className={linkClass("/metricas")}>
+                      Métricas
+                    </Link>
                   </li>
                   <li>
-                    <Link to="/pantalla-tv">Pantalla TV</Link>
+                    <Link
+                      to="/pantalla-tv"
+                      className={linkClass("/pantalla-tv")}
+                    >
+                      Pantalla TV
+                    </Link>
                   </li>
                   <li>
-                    <Link to="/kiosko">Kiosko</Link>
+                    <Link to="/kiosko" className={linkClass("/kiosko")}>
+                      Kiosko
+                    </Link>
                   </li>
                   <li>
-                    <Link to="/perfil">Mi Perfil</Link>
+                    <Link to="/perfil" className={linkClass("/perfil")}>
+                      Mi Perfil
+                    </Link>
                   </li>
                 </>
               )}
@@ -113,10 +157,17 @@ export default function Navbar() {
               {rol === "pantalla" && (
                 <>
                   <li>
-                    <Link to="/pantalla-tv">Pantalla TV</Link>
+                    <Link
+                      to="/pantalla-tv"
+                      className={linkClass("/pantalla-tv")}
+                    >
+                      Pantalla TV
+                    </Link>
                   </li>
                   <li>
-                    <Link to="/perfil">Mi Perfil</Link>
+                    <Link to="/perfil" className={linkClass("/perfil")}>
+                      Mi Perfil
+                    </Link>
                   </li>
                 </>
               )}
@@ -125,10 +176,14 @@ export default function Navbar() {
               {rol === "kiosko" && (
                 <>
                   <li>
-                    <Link to="/kiosko">Kiosko</Link>
+                    <Link to="/kiosko" className={linkClass("/kiosko")}>
+                      Kiosko
+                    </Link>
                   </li>
                   <li>
-                    <Link to="/perfil">Mi Perfil</Link>
+                    <Link to="/perfil" className={linkClass("/perfil")}>
+                      Mi Perfil
+                    </Link>
                   </li>
                 </>
               )}
@@ -139,22 +194,26 @@ export default function Navbar() {
         {/* DERECHA */}
         {currentUser && (
           <div className="navbar-right">
-            {/* Botón fullscreen solo para Kiosko / Pantalla / Admin en esas vistas */}
             {showFullscreenButton && (
               <button
-                className="navbar-logout"
+                className="navbar-button navbar-button-secondary"
                 onClick={handleToggleFullscreen}
-                style={{ marginRight: "10px" }}
               >
-                {isFullscreen ? "Salir Pantalla Completa" : "Pantalla Completa"}
+                {isFullscreen
+                  ? "Salir Pantalla Completa"
+                  : "Pantalla Completa"}
               </button>
             )}
 
-            <span className="navbar-user">
-              {currentUser.email}
-              <small> ({rol})</small>
-            </span>
-            <button className="navbar-logout" onClick={handleLogout}>
+            <div className="navbar-user">
+              <span className="navbar-user-email">{currentUser.email}</span>
+              <span className="navbar-user-role">{roleLabel}</span>
+            </div>
+
+            <button
+              className="navbar-button navbar-button-danger"
+              onClick={handleLogout}
+            >
               Cerrar Sesión
             </button>
           </div>

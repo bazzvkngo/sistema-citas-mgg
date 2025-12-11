@@ -88,7 +88,7 @@ const styles = {
     textAlign: "center",
   },
   submitButtonActive: {
-    backgroundColor: "#007bff",
+    backgroundColor: "#C8102E",
     color: "white",
     cursor: "pointer",
     boxShadow: "0 4px 10px rgba(0, 123, 255, 0.3)",
@@ -141,7 +141,7 @@ const styles = {
     color: "#555",
   },
   linkPrimary: {
-    color: "#bda700",
+    color: "#007bff",
     textDecoration: "none",
     fontWeight: "bold",
   },
@@ -149,7 +149,7 @@ const styles = {
     textAlign: "center",
     marginTop: "12px",
     fontSize: "14px",
-    color: "#bda700",
+    color: "#007bff",
     textDecoration: "none",
     fontWeight: "bold",
   },

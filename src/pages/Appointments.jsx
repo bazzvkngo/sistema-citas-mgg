@@ -11,6 +11,7 @@ import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
 import { setHours, setMinutes, format, addDays, getDay } from 'date-fns';
 import { es } from 'date-fns/locale';
+import './Appointments.css';   // 👈 NUEVO
 
 // Apuntar a Santiago
 const functions = getFunctions(app, 'southamerica-west1');
@@ -60,9 +61,7 @@ export default function Appointments() {
     }
     setLoadingMyCitas(true);
 
-    // 🔥 CAMBIO CLAVE:
-    // antes: where('estado', '==', 'activa')
-    // ahora: mostramos citas activas y llamadas, para que el ciudadano vea cuando lo están llamando.
+    // mostramos citas activas y llamadas
     const q = query(
       collection(db, 'citas'),
       where('userID', '==', currentUser.uid),
@@ -135,17 +134,17 @@ export default function Appointments() {
     try {
       const tramiteSeleccionado = tramites.find(t => t.id === selectedTramiteId);
 
-      // 1. Verificación Anti-Duplicados (Cloud Function)
+      // 1. Verificación Anti-Duplicados
       await checkDuplicados({
         dniLimpio: currentUser.dni,
         tramiteId: selectedTramiteId
       });
 
-      // 2. Generación de Código Numérico Aleatorio (Cita Web)
+      // 2. Código numérico aleatorio
       const numeroUnico = Math.floor(1000 + Math.random() * 9000);
       const nuevoCodigo = `C-${numeroUnico}`;
 
-      // 3. Crear objeto de la nueva cita
+      // 3. Crear objeto cita
       const [hours, minutes] = selectedSlot.split(':').map(Number);
       const fechaHoraFinal = setHours(setMinutes(selectedDate, minutes), hours);
       const nuevaCita = {
@@ -163,7 +162,7 @@ export default function Appointments() {
       // 4. Guardar Cita
       await addDoc(collection(db, "citas"), nuevaCita);
 
-      // 5. Construir el mensaje de éxito
+      // 5. Mensaje éxito
       let mensajeFinal = `¡Cita agendada con éxito! Su código es: ${nuevoCodigo}.\nRecuerde estar 10 minutos antes.`;
       setSuccessMessage(mensajeFinal);
 
@@ -193,7 +192,6 @@ export default function Appointments() {
     }
   };
 
-  // Función para renderizar el mensaje de éxito (que se borra al recargar)
   const renderSuccessMessage = () => {
     if (!successMessage) return null;
     return (
@@ -203,7 +201,7 @@ export default function Appointments() {
     );
   };
 
-  // ✅ FUNCIÓN: Renderiza el listado de citas con estado, documentación y link de seguimiento
+  // Render item de cita
   const renderCitaItem = (cita) => {
     const tramite = tramites.find(t => t.id === cita.tramiteID);
     const link = tramite?.enlaceInfo;
@@ -211,9 +209,8 @@ export default function Appointments() {
 
     const esLlamada = cita.estado === 'llamado';
 
-    // Texto amigable de estado
     let estadoTexto = 'Activa (aún en espera)';
-    if (cita.estado === 'llamado') {
+    if (esLlamada) {
       estadoTexto = 'Llamada (el consulado está listo para atenderle)';
     }
 
@@ -231,12 +228,10 @@ export default function Appointments() {
           : 'Fecha no disponible'}
         <br />
 
-        {/* Estado de la cita */}
         <p style={{ marginTop: 8, marginBottom: 4 }}>
           <strong>Estado:</strong> {estadoTexto}
         </p>
 
-        {/* Link a requisitos/documentación si existe */}
         {link && (
           <p style={{ marginTop: '5px', fontSize: '13px', color: '#666' }}>
             📌 Importante: Verifique la documentación requerida.
@@ -252,7 +247,6 @@ export default function Appointments() {
           </p>
         )}
 
-        {/* Link de seguimiento por QR / Pantalla estado */}
         <p style={{ marginTop: '8px', fontSize: '13px' }}>
           🔍 Puede seguir el estado de su cita aquí:{' '}
           <a
@@ -265,7 +259,6 @@ export default function Appointments() {
           </a>
         </p>
 
-        {/* Solo permitir cancelar mientras está ACTIVA */}
         {cita.estado === 'activa' && (
           <button
             onClick={() => handleCancelCita(cita.id)}
@@ -278,134 +271,138 @@ export default function Appointments() {
     );
   };
 
-  // --- RENDERIZADO DEL COMPONENTE (JSX) ---
+  // JSX
   return (
-    <div className="page-container">
-      <h2>Página - Mis Citas</h2>
-      <hr style={{ margin: '20px 0' }} />
+    <div className="appointments-page">
+      <h2 className="appointments-title">Mis Citas en el Consulado</h2>
 
-      {/* SECCIÓN: MIS CITAS AGENDADAS */}
-      <h3>Mis Citas Agendadas</h3>
-      {loadingMyCitas ? (
-        <p>Cargando mis citas...</p>
-      ) : myCitas.length === 0 ? (
-        <p>No tienes citas agendadas.</p>
-      ) : (
-        <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
-          {myCitas.map(renderCitaItem)}
-        </ul>
-      )}
+      <div className="appointments-grid">
+        {/* Columna izquierda: Mis Citas */}
+        <section className="appointments-card">
+          <h3>Mis Citas Agendadas</h3>
 
-      <hr style={{ margin: '20px 0' }} />
+          {loadingMyCitas ? (
+            <p>Cargando mis citas...</p>
+          ) : myCitas.length === 0 ? (
+            <p>No tienes citas agendadas.</p>
+          ) : (
+            <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
+              {myCitas.map(renderCitaItem)}
+            </ul>
+          )}
+        </section>
 
-      {/* SECCIÓN: AGENDAR NUEVA CITA */}
-      <h3>Agendar Nueva Cita</h3>
+        {/* Columna derecha: Agendar nueva cita */}
+        <section className="appointments-card">
+          <h3>Agendar Nueva Cita</h3>
 
-      {renderSuccessMessage()}
+          {renderSuccessMessage()}
 
-      <form onSubmit={handleAgendarCita}>
-        {loadingTramites ? (
-          <p>Cargando trámites...</p>
-        ) : (
-          <div>
-            <label>1. Seleccione un trámite:</label>
-            <br />
-            <select
-              value={selectedTramiteId}
-              onChange={(e) => {
-                setSelectedTramiteId(e.target.value);
-                setAgendarError(null);
-                setSuccessMessage(null);
-              }}
-              required
-              style={styles.select}
-            >
-              <option value="">-- Por favor seleccione --</option>
-              {tramites.map(tramite => (
-                <option key={tramite.id} value={tramite.id}>
-                  {tramite.nombre}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {selectedTramiteId && (
-          <>
-            <div style={{ marginTop: '15px' }}>
-              <label>2. Seleccione una fecha:</label>
-              <br />
-              <div style={styles.calendarContainer}>
-                <DayPicker
-                  mode="single"
-                  selected={selectedDate}
-                  onSelect={setSelectedDate}
-                  locale={es}
-                  disabled={[
-                    finesDeSemana,
-                    { before: tomorrow }
-                  ]}
-                  hidden={day => {
-                    const esFinDeSemana = getDay(day) === 0 || getDay(day) === 6;
-                    return esFinDeSemana;
-                  }}
-                  initialFocus
-                  footer={selectedDate ?
-                    <p style={styles.calendarFooter}>Has seleccionado: {format(selectedDate, 'dd/MM/yyyy')}</p> :
-                    <p style={styles.calendarFooter}>Por favor seleccione un día.</p>
-                  }
-                />
-              </div>
-            </div>
-
-            {loadingSlots && <p>Buscando horarios disponibles...</p>}
-
-            {availableSlots.length > 0 && selectedDate && (
-              <div style={{ marginTop: '15px' }}>
-                <label>3. Seleccione un horario:</label>
+          <form onSubmit={handleAgendarCita}>
+            {loadingTramites ? (
+              <p>Cargando trámites...</p>
+            ) : (
+              <div>
+                <label>1. Seleccione un trámite:</label>
                 <br />
                 <select
-                  value={selectedSlot}
-                  onChange={(e) => setSelectedSlot(e.target.value)}
+                  value={selectedTramiteId}
+                  onChange={(e) => {
+                    setSelectedTramiteId(e.target.value);
+                    setAgendarError(null);
+                    setSuccessMessage(null);
+                  }}
                   required
                   style={styles.select}
                 >
-                  <option value="">-- Seleccione un horario --</option>
-                  {availableSlots.map((slotString, index) => (
-                    <option key={index} value={slotString}>
-                      {slotString}
+                  <option value="">-- Por favor seleccione --</option>
+                  {tramites.map(tramite => (
+                    <option key={tramite.id} value={tramite.id}>
+                      {tramite.nombre}
                     </option>
                   ))}
                 </select>
               </div>
             )}
 
-            {availableSlots.length === 0 && !loadingSlots && selectedTramiteId && selectedDate && (
-              <p style={styles.errorText}>No hay horarios disponibles para esta fecha.</p>
-            )}
+            {selectedTramiteId && (
+              <>
+                <div style={{ marginTop: '15px' }}>
+                  <label>2. Seleccione una fecha:</label>
+                  <br />
+                  <div style={styles.calendarContainer}>
+                    <DayPicker
+                      mode="single"
+                      selected={selectedDate}
+                      onSelect={setSelectedDate}
+                      locale={es}
+                      disabled={[
+                        finesDeSemana,
+                        { before: tomorrow }
+                      ]}
+                      hidden={day => {
+                        const esFinDeSemana = getDay(day) === 0 || getDay(day) === 6;
+                        return esFinDeSemana;
+                      }}
+                      initialFocus
+                      footer={selectedDate ?
+                        <p style={styles.calendarFooter}>Has seleccionado: {format(selectedDate, 'dd/MM/yyyy')}</p> :
+                        <p style={styles.calendarFooter}>Por favor seleccione un día.</p>
+                      }
+                    />
+                  </div>
+                </div>
 
-            {agendarError && <p style={styles.errorText}>{agendarError}</p>}
-            <button
-              type="submit"
-              style={styles.submitButton}
-              disabled={
-                !selectedSlot ||
-                loadingSlots ||
-                loadingMyCitas ||
-                !currentUser ||
-                loading
-              }
-            >
-              {loading || loadingSlots ? 'Cargando...' : 'Agendar Cita'}
-            </button>
-          </>
-        )}
-      </form>
+                {loadingSlots && <p>Buscando horarios disponibles...</p>}
+
+                {availableSlots.length > 0 && selectedDate && (
+                  <div style={{ marginTop: '15px' }}>
+                    <label>3. Seleccione un horario:</label>
+                    <br />
+                    <select
+                      value={selectedSlot}
+                      onChange={(e) => setSelectedSlot(e.target.value)}
+                      required
+                      style={styles.select}
+                    >
+                      <option value="">-- Seleccione un horario --</option>
+                      {availableSlots.map((slotString, index) => (
+                        <option key={index} value={slotString}>
+                          {slotString}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {availableSlots.length === 0 && !loadingSlots && selectedTramiteId && selectedDate && (
+                  <p style={styles.errorText}>No hay horarios disponibles para esta fecha.</p>
+                )}
+
+                {agendarError && <p style={styles.errorText}>{agendarError}</p>}
+                <button
+                  type="submit"
+                  style={styles.submitButton}
+                  disabled={
+                    !selectedSlot ||
+                    loadingSlots ||
+                    loadingMyCitas ||
+                    !currentUser ||
+                    loading
+                  }
+                >
+                  {loading || loadingSlots ? 'Cargando...' : 'Agendar Cita'}
+                </button>
+              </>
+            )}
+          </form>
+        </section>
+      </div>
     </div>
   );
 }
 
-// --- Estilos ---
+// --- Estilos inline ---
 const styles = {
   citaListItem: {
     border: '1px solid #ccc',
@@ -422,7 +419,12 @@ const styles = {
     borderRadius: '3px',
     cursor: 'pointer'
   },
-  select: { padding: '8px', width: '300px' },
+  select: {
+    padding: '8px',
+    width: '100%',      // 👈 más cómodo dentro de la card
+    maxWidth: '320px',  // límite razonable en desktop
+    boxSizing: 'border-box'
+  },
   calendarContainer: {
     border: '1px solid #ccc',
     borderRadius: '5px',
@@ -432,7 +434,18 @@ const styles = {
   },
   calendarFooter: { fontSize: '14px', textAlign: 'center' },
   errorText: { color: 'red', fontWeight: 'bold', marginTop: '10px' },
-  submitButton: { marginTop: '20px', padding: '10px 15px', fontSize: '16px' },
+  submitButton: {
+    marginTop: '20px',
+    padding: '10px 20px',
+    fontSize: '16px',
+    backgroundColor: '#007bff',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontWeight: '600',
+    boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
+  },
   link: { color: '#007bff', fontWeight: 'bold', textDecoration: 'none' },
   successCard: {
     padding: '15px',

@@ -11,14 +11,14 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { auth, db, app } from "../firebase";
 import { useNavigate, Link } from "react-router-dom";
 
-// --- ESTILOS (coherentes con Login) ---
+// --- ESTILOS (coherentes con Login versión Consulado) ---
 const styles = {
   container: {
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
     minHeight: "100vh",
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#F4F5F7", // mismo fondo que Login
     padding: "20px",
   },
   formCard: {
@@ -30,7 +30,7 @@ const styles = {
     backgroundColor: "#ffffff",
     borderRadius: "16px",
     padding: "26px 24px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+    boxShadow: "0 4px 12px rgba(15,23,42,0.12)",
   },
   inputGroup: {
     position: "relative",
@@ -38,18 +38,18 @@ const styles = {
   },
   label: {
     fontSize: "14px",
-    color: "#555",
+    color: "#243447",
     marginBottom: "5px",
     display: "block",
-    fontWeight: 500,
+    fontWeight: 600,
   },
   inputContainer: {
     display: "flex",
     alignItems: "center",
-    border: "1px solid #ccc",
+    border: "1px solid #D1D5DB",
     borderRadius: "12px",
     padding: "0 15px",
-    backgroundColor: "#fff",
+    backgroundColor: "#F9FAFB",
     height: "48px",
     boxSizing: "border-box",
     position: "relative",
@@ -61,7 +61,7 @@ const styles = {
     flex: 1,
     width: "100%",
     fontSize: "16px",
-    color: "#333",
+    color: "#111827",
     backgroundColor: "transparent",
     height: "100%",
   },
@@ -69,7 +69,7 @@ const styles = {
     background: "none",
     border: "none",
     cursor: "pointer",
-    color: "#007bff",
+    color: "#9CA3AF", // gris suave, igual que Login
     padding: 0,
     display: "flex",
     alignItems: "center",
@@ -82,8 +82,8 @@ const styles = {
   submitButton: {
     width: "100%",
     padding: "15px",
-    backgroundColor: "#e4e6eb",
-    color: "#888",
+    backgroundColor: "#E5E7EB", // gris cuando está desactivado
+    color: "#9CA3AF",
     border: "none",
     borderRadius: "25px",
     fontSize: "18px",
@@ -91,16 +91,16 @@ const styles = {
     cursor: "not-allowed",
     marginTop: "10px",
     transition: "all 0.3s",
-    textAlign: "center", // asegura texto bien centrado
+    textAlign: "center",
   },
   submitButtonActive: {
-    backgroundColor: "#007bff",
+    backgroundColor: "#C8102E", // rojo Consulado
     color: "#ffffff",
     cursor: "pointer",
-    boxShadow: "0 4px 10px rgba(0, 123, 255, 0.3)",
+    boxShadow: "0 4px 14px rgba(200,16,46,0.35)",
   },
   errorText: {
-    color: "red",
+    color: "#DC2626",
     fontSize: "12px",
     marginTop: "4px",
     marginLeft: "5px",
@@ -109,18 +109,18 @@ const styles = {
     textAlign: "center",
     marginTop: "18px",
     fontSize: "14px",
-    color: "#555",
+    color: "#4B5563",
   },
-  // mismo color que el link "Regístrate" en Login
+  // mismo color que los links de Login
   link: {
-    color: "#bda700",
+    color: "#007BFF",
     textDecoration: "none",
     fontWeight: "bold",
   },
   successTitle: {
     fontSize: "22px",
     fontWeight: 700,
-    color: "green",
+    color: "#16A34A",
     marginBottom: "8px",
   },
 };
@@ -132,7 +132,7 @@ const EyeIcon = () => (
     height="22"
     viewBox="0 0 24 24"
     fill="none"
-    stroke="#007bff"
+    stroke="#9CA3AF" // gris, igual al botón
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
@@ -148,7 +148,7 @@ const EyeOffIcon = () => (
     height="22"
     viewBox="0 0 24 24"
     fill="none"
-    stroke="#007bff"
+    stroke="#9CA3AF"
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
@@ -287,7 +287,7 @@ export default function Register() {
           <h2 style={styles.successTitle}>¡Registro exitoso!</h2>
           <p>{successMessage}</p>
           <Link to="/ingreso" style={styles.link}>
-            Ir a Iniciar Sesión
+            Ir a Iniciar sesión
           </Link>
         </div>
       </div>
@@ -300,11 +300,11 @@ export default function Register() {
         <h2
           style={{
             textAlign: "center",
-            color: "#333",
+            color: "#243447",
             marginBottom: "4px",
           }}
         >
-          Crear Cuenta
+          Crear cuenta
         </h2>
 
         {/* Nombre completo */}
@@ -402,7 +402,8 @@ export default function Register() {
               style={styles.iconButton}
               onClick={() => setShowPassword(!showPassword)}
             >
-              {showPassword ? <EyeOffIcon /> : <EyeIcon />}
+              {/* ⬇️ mismo arreglo que en Login: icono coherente con estado */}
+              {showPassword ? <EyeIcon /> : <EyeOffIcon />}
             </button>
           </div>
           {errors.password && (

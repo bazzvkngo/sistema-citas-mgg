@@ -1,185 +1,152 @@
-html, body, #root {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-}
-
-/* Animación fade-in para la TV */
-.fade-in {
-  animation: fadeIn 0.7s ease-in-out;
-}
-
-@keyframes fadeIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.97);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-/* 1. Definimos nuestra paleta de colores del Perú */
 :root {
-  --color-rojo-consulado: #D9002C; /* Rojo oficial */
-  --color-blanco: #FFFFFF;
-  --color-texto-principal: #333333;
-  --color-texto-secundario: #555555;
-  --color-fondo: #f4f4f4; /* Un gris muy claro para el fondo */
-  --color-borde: #dddddd;
+  --cp-red: #c8102e;
+  --cp-red-dark: #a30d24;
+  --cp-bg: #f4f5f7;
+  --cp-text: #243447;
 }
 
-/* 2. Reseteo básico y estilos del body */
+/* Fondo general */
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
-    Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-  margin: 0;
-  padding: 0;
-  background-color: var(--color-fondo);
-  color: var(--color-texto-principal);
+  background-color: var(--cp-bg);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-/* 3. Estilos para los "contenedores" de las páginas */
-.page-container {
-  max-width: 900px;
-  margin: 40px auto; /* Centrado automático */
-  padding: 20px;
-  background-color: var(--color-blanco);
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+/* ====== BARRA SUPERIOR ====== */
+
+.cp-header {
+  background-color: var(--cp-red);
+  color: #fff;
+  padding: 12px 40px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
-/* 4. Estilos para Títulos */
-h1, h2, h3 {
-  color: var(--color-rojo-consulado);
-  border-bottom: 2px solid var(--color-fondo);
-  padding-bottom: 10px;
-}
-
-/* 5. Estilos para Formularios */
-form {
+.cp-header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
   display: flex;
-  flex-direction: column;
-  gap: 15px; /* Espacio entre elementos del formulario */
+  align-items: center;
+  gap: 16px;
 }
 
-form div {
+.cp-header-logo {
+  height: 52px;
+  width: auto;
+}
+
+.cp-header-title {
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.cp-header-subtitle {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+/* ====== CONTENIDO CENTRAL ====== */
+
+.login-main {
+  min-height: calc(100vh - 72px);
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 16px;
 }
 
-form label {
-  font-weight: bold;
-  margin-bottom: 5px;
-  color: var(--color-texto-secundario);
+.login-card {
+  background-color: #fff;
+  max-width: 420px;
+  width: 100%;
+  padding: 32px 36px 28px;
+  border-radius: 20px;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
 }
 
-/* Aplicamos el estilo a todos los inputs, incluido el del calendario */
-form input[type="email"],
-form input[type="password"],
-form select,
-.react-datepicker__input-container input {
-  padding: 12px;
-  border: 1px solid var(--color-borde);
-  border-radius: 5px;
-  font-size: 16px;
-  width: 100%; /* Hacemos que ocupen todo el ancho */
-  box-sizing: border-box; /* Importante para que el padding no rompa el ancho */
+.login-title {
+  text-align: center;
+  margin-bottom: 8px;
+  font-size: 24px;
+  color: var(--cp-text);
 }
 
-/* 6. Estilos para Botones */
-button {
-  background-color: var(--color-rojo-consulado);
-  color: var(--color-blanco);
+.login-divider {
+  border: 0;
+  border-top: 1px solid #e5e7eb;
+  margin-bottom: 24px;
+}
+
+/* ====== FORMULARIO ====== */
+
+.login-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--cp-text);
+  display: block;
+  margin-bottom: 4px;
+}
+
+.login-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #d1d5db;
+  background-color: #f9fafb;
+  margin-bottom: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+}
+
+.login-input:focus {
+  outline: none;
+  border-color: var(--cp-red);
+  box-shadow: 0 0 0 2px rgba(200, 16, 46, 0.2);
+  background-color: #ffffff;
+}
+
+/* Botón principal */
+
+.login-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 11px 16px;
+  border-radius: 999px;
   border: none;
-  padding: 15px;
-  font-size: 16px;
-  font-weight: bold;
-  border-radius: 5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background-color: var(--cp-red);
+  color: #fff;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
 }
 
-button:hover {
-  background-color: #a00020; /* Un rojo más oscuro al pasar el mouse */
+.login-button:hover:not(:disabled) {
+  background-color: var(--cp-red-dark);
+  box-shadow: 0 10px 20px rgba(200, 16, 46, 0.25);
+  transform: translateY(-1px);
 }
 
-button:disabled {
-  background-color: #cccccc;
-  cursor: not-allowed;
+.login-button:disabled {
+  background-color: #e5e7eb;
+  color: #9ca3af;
+  cursor: default;
+  box-shadow: none;
 }
 
-/* 7. Estilos para links */
-a {
-  color: var(--color-rojo-consulado);
+/* Textos de abajo */
+
+.login-links {
+  margin-top: 18px;
+  font-size: 13px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.login-links a {
+  color: var(--cp-red);
+  font-weight: 600;
   text-decoration: none;
 }
 
-a:hover {
+.login-links a:hover {
   text-decoration: underline;
-}
-
-/* ---------------------------------------------
-  8. ¡AQUÍ ESTÁ LA CORRECCIÓN DEL CALENDARIO!
-  Estilos para sobreescribir react-datepicker
---------------------------------------------- 
-*/
-
-/* Forzamos que el input del calendario use nuestros estilos */
-.react-datepicker-wrapper {
-  width: 100%; /* Hacemos que ocupe todo el ancho */
-}
-
-/* Fondo del header (donde dice "Noviembre 2025") */
-.react-datepicker__header {
-  background-color: var(--color-rojo-consulado);
-  border-bottom: none;
-}
-
-/* Texto del header (mes y flechas) */
-.react-datepicker__current-month,
-.react-datepicker__day-name,
-.react-datepicker__navigation--previous,
-.react-datepicker__navigation--next {
-  color: var(--color-blanco) !important;
-  font-weight: bold;
-}
-
-/* Flechas de navegación (para que se vean en el fondo rojo) */
-.react-datepicker__navigation-icon::before {
-  border-color: var(--color-blanco) !important;
-}
-
-/* Día seleccionado (el círculo) */
-.react-datepicker__day--selected {
-  background-color: var(--color-rojo-consulado);
-  color: var(--color-blanco);
-}
-
-/* Día "hover" (cuando pasas el mouse) */
-.react-datepicker__day--keyboard-selected,
-.react-datepicker__day:hover {
-  background-color: #ffb3b3; /* Un rojo más claro */
-}
-
-/* Día "deshabilitado" (sábados y domingos) */
-.react-datepicker__day--disabled {
-  color: #cccccc;
-  background-color: var(--color-fondo);
-}
-
-/* Animación suave para la pantalla de turnos */
-.fade-in {
-  animation: fadeIn 0.7s ease-in-out;
-}
-
-@keyframes fadeIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.97);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
 }

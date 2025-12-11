@@ -1,73 +1,169 @@
-/* NAV SUPERIOR ORIGINAL */
-
+/* Barra general */
 .navbar {
-  width: 100%;
-  background-color: #c8102e;
-  padding: 10px 0;
-  color: white;
+  background-color: #c8102e; /* rojo bandera Perú */
+  color: #ffffff;
+  padding: 0 32px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
 .navbar-content {
+  width: 100%;
   max-width: 1400px;
-  width: 90%;
-  margin: auto;
+  margin: 0 auto;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
 }
 
+/* Lado izquierdo */
 .navbar-left {
   display: flex;
   align-items: center;
-  gap: 35px;
+  gap: 32px;
 }
 
 .navbar-logo {
   font-size: 22px;
-  font-weight: bold;
+  font-weight: 700;
+  color: #ffffff;
   text-decoration: none;
-  color: white;
+  white-space: nowrap;
 }
 
 .navbar-links {
-  list-style: none;
   display: flex;
-  gap: 25px;
-  margin: 0;
+  list-style: none;
+  gap: 24px;
   padding: 0;
+  margin: 0;
 }
 
-.navbar-links li a {
+/* Links */
+.navbar-link {
+  color: #ffffff;
   text-decoration: none;
-  color: white;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
+  padding-bottom: 4px;
+  transition: opacity 0.2s ease, border-color 0.2s ease;
+  border-bottom: 3px solid transparent;
 }
 
-.navbar-links li a:hover {
-  text-decoration: underline;
+.navbar-link:hover {
+  opacity: 0.9;
 }
 
+.navbar-link.active {
+  border-bottom-color: #ffffff; /* subrayado blanco como pestaña activa */
+}
+
+/* Lado derecho */
 .navbar-right {
   display: flex;
   align-items: center;
-  gap: 25px;
+  gap: 12px;
 }
 
+/* Usuario */
 .navbar-user {
-  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
 }
 
-.navbar-logout {
-  background: white;
+.navbar-user-email {
+  font-weight: 500;
+}
+
+.navbar-user-role {
+  background-color: #ffffff;
   color: #c8102e;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Botones */
+.navbar-button {
+  border-radius: 999px;
   border: none;
   padding: 8px 18px;
-  border-radius: 5px;
+  font-size: 14px;
+  font-weight: 600;
   cursor: pointer;
-  font-weight: bold;
+  transition: background-color 0.2s ease, transform 0.1s ease;
 }
 
-.navbar-logout:hover {
-  background: #f4d3d8;
+.navbar-button:hover {
+  transform: translateY(-1px);
+}
+
+/* Botón secundario (Pantalla Completa) */
+.navbar-button-secondary {
+  background-color: #ffffff;
+  color: #c8102e;
+}
+
+/* Botón cerrar sesión */
+.navbar-button-danger {
+  background-color: #ffffff;
+  color: #c8102e;
+}
+
+/* Si quieres un rojo más fuerte para cerrar sesión:
+.navbar-button-danger {
+  background-color: #f8d7da;
+  color: #8a1020;
+}
+*/
+/* 📱 Ajustes responsive para pantallas pequeñas */
+@media (max-width: 768px) {
+  .navbar {
+    padding: 0 12px;
+    height: auto;                 /* que pueda crecer en altura */
+  }
+
+  .navbar-content {
+    flex-direction: column;       /* logo + links + usuario en columnas */
+    align-items: flex-start;
+    gap: 6px;
+  }
+
+  .navbar-left {
+    width: 100%;
+    justify-content: flex-start;
+    gap: 16px;
+  }
+
+  .navbar-links {
+    flex-wrap: wrap;              /* que los links hagan salto de línea */
+    gap: 12px;
+    font-size: 13px;
+  }
+
+  .navbar-right {
+    width: 100%;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;              /* permite que user+botones bajen de fila si hace falta */
+  }
+
+  .navbar-user {
+    font-size: 11px;
+    padding: 4px 10px;
+  }
+
+  .navbar-button {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
 }

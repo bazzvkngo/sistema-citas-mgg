@@ -1,0 +1,52 @@
+/* Contenedor principal de la página de citas */
+.appointments-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+}
+
+.appointments-title {
+  margin-bottom: 18px;
+}
+
+/* Layout de dos columnas en escritorio */
+.appointments-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr; /* izquierda: lista, derecha: formulario */
+  gap: 24px;
+  align-items: flex-start;
+}
+
+/* Tarjetas */
+.appointments-card {
+  background-color: #ffffff;
+  border-radius: 16px;
+  padding: 20px 18px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.appointments-card h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+/* 📱 Responsive: móvil / tablet */
+@media (max-width: 900px) {
+  .appointments-page {
+    padding: 16px 12px 32px;
+  }
+
+  .appointments-grid {
+    grid-template-columns: 1fr;  /* una sola columna */
+    gap: 16px;
+  }
+
+  .appointments-card {
+    padding: 16px 14px;
+  }
+
+  .appointments-card button {
+    width: 100%;
+  }
+}
+
