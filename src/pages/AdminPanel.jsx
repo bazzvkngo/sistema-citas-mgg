@@ -1,5 +1,5 @@
 // src/pages/AdminPanel.jsx
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 import AdminServices from '../components/admin/AdminServices';
@@ -43,7 +43,8 @@ const styles = {
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('services');
   const { currentUser, loading } = useAuth();
-  const userRole = currentUser?.rol;
+
+  const userRole = useMemo(() => currentUser?.rol, [currentUser]);
   const isAdmin = userRole === 'admin';
 
   if (loading) {
@@ -55,7 +56,6 @@ export default function AdminPanel() {
       <h1>Panel de Administración</h1>
 
       <nav style={styles.nav}>
-        {/* Trámites – visible para admin (y si quieres, también para otros roles) */}
         <button
           style={{
             ...styles.tab,
@@ -66,7 +66,6 @@ export default function AdminPanel() {
           Gestionar Trámites
         </button>
 
-        {/* Agentes – solo admin */}
         <button
           style={{
             ...styles.tab,
@@ -79,7 +78,6 @@ export default function AdminPanel() {
           Gestionar Agentes
         </button>
 
-        {/* Feriados – solo admin */}
         <button
           style={{
             ...styles.tab,

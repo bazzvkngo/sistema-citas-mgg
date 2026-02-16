@@ -1,10 +1,9 @@
 // src/pages/TicketTracking.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { doc, onSnapshot, getDoc } from 'firebase/firestore'; // Importar getDoc
+import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 
-// --- ESTILOS (Finalizados) ---
 const styles = {
   container: {
     display: 'flex',
@@ -12,12 +11,12 @@ const styles = {
     alignItems: 'center',
     padding: '20px',
     fontFamily: 'Arial, sans-serif',
-    backgroundColor: '#f3f4f6', 
+    backgroundColor: '#f3f4f6',
     minHeight: '100vh'
   },
   card: {
-    border: '2px solid #C8102E', 
-    borderRadius: '16px', // Más redondeado
+    border: '2px solid #C8102E',
+    borderRadius: '16px',
     padding: '30px 40px',
     width: '90%',
     maxWidth: '600px',
@@ -26,7 +25,7 @@ const styles = {
     backgroundColor: 'white'
   },
   header: {
-    color: '#C8102E', 
+    color: '#C8102E',
     fontSize: '30px',
     fontWeight: 'bold',
     marginBottom: '20px'
@@ -40,7 +39,7 @@ const styles = {
     fontSize: '72px',
     fontWeight: 'bold',
     margin: '10px 0',
-    color: '#C8102E' 
+    color: '#C8102E'
   },
   currentTurnLabel: {
     fontSize: '18px',
@@ -52,25 +51,24 @@ const styles = {
     fontSize: '48px',
     fontWeight: 'bold',
     margin: '0 0 20px 0',
-    color: '#333333' 
+    color: '#333333'
   },
-  // --- Estilos de Estado ---
   statusEnEspera: {
-    backgroundColor: '#ffc107', 
+    backgroundColor: '#ffc107',
     padding: '15px',
     borderRadius: '8px',
     fontSize: '24px',
     fontWeight: 'bold',
-    color: '#333' 
+    color: '#333'
   },
   statusLlamado: {
-    backgroundColor: '#28a745', 
+    backgroundColor: '#28a745',
     color: 'white',
     padding: '15px',
     borderRadius: '8px',
     fontSize: '24px',
     fontWeight: 'bold',
-    animation: 'blink 1s linear infinite' 
+    animation: 'blink 1s linear infinite'
   },
   statusCompletado: {
     fontSize: '24px',
@@ -79,12 +77,10 @@ const styles = {
   },
   statusPasado: {
     fontSize: '24px',
-    color: '#555' 
+    color: '#555'
   }
 };
-// --- FIN DE ESTILOS ---
 
-// Componente para la animación (sin cambios)
 const BlinkKeyframeStyle = () => (
   <style>
     {`
@@ -97,144 +93,210 @@ const BlinkKeyframeStyle = () => (
   </style>
 );
 
+function parseCodigoNum(codigo) {
+  if (!codigo || typeof codigo !== 'string') return null;
+  const parts = codigo.split('-');
+  if (parts.length < 2) return null;
+  const n = parseInt(parts[1], 10);
+  return Number.isFinite(n) ? n : null;
+}
+
 export default function TicketTracking() {
   const [searchParams] = useSearchParams();
-  const documentoId = searchParams.get('turnoId');
+
+  // ✅ Aceptar turnoId (kiosko) o citaId (citas)
+  const turnoId = searchParams.get('turnoId');
+  const citaId = searchParams.get('citaId');
+
+  // ✅ Usar el primero que venga
+  const documentoId = turnoId || citaId;
 
   const [miTurno, setMiTurno] = useState(null);
-  const [nombreTramite, setNombreTramite] = useState('...'); // Para el nombre limpio
-  const [turnoActualTramite, setTurnoActualTramite] = useState(null); 
-  
+  const [nombreTramite, setNombreTramite] = useState('...');
+  const [turnoActualTramite, setTurnoActualTramite] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  // 1. Oyente para MI TURNO/CITA (Combinado y con carga de Nombre)
+  // ✅ Saber si lo encontrado es una CITA (para ocultar "Faltan")
+  const [sourceCollection, setSourceCollection] = useState(null); // 'turnos' | 'citas'
+
+  const estadoDocUnsubRef = useRef(null);
+
   useEffect(() => {
     if (!documentoId) {
       setLoading(false);
       setNotFound(true);
       return;
     }
+
     setLoading(true);
     setNotFound(false);
+    setMiTurno(null);
+    setTurnoActualTramite(null);
+    setNombreTramite('...');
+    setSourceCollection(null); // ✅ reset
+
+    if (estadoDocUnsubRef.current) {
+      estadoDocUnsubRef.current();
+      estadoDocUnsubRef.current = null;
+    }
 
     let isMounted = true;
-    let unsubscribes = [];
     let found = false;
+    let foundCollection = null;
+    const unsubscribes = [];
 
-    // Función para obtener el nombre del trámite y el estado actual de la cola
-    const setupListeners = async (docSnap) => {
-      const turnoData = docSnap.data();
-      setMiTurno(turnoData);
-      
-      const tramiteID = turnoData.tramiteID;
-      
-      // ✅ 1. Obtener Nombre del Trámite (asíncrono)
+    const setupTramiteListener = (tramiteID) => {
+      if (!tramiteID) return;
+
+      if (estadoDocUnsubRef.current) {
+        estadoDocUnsubRef.current();
+        estadoDocUnsubRef.current = null;
+      }
+
+      const tramiteDocRef = doc(db, 'estadoSistema', `tramite_${tramiteID}`);
+      estadoDocUnsubRef.current = onSnapshot(
+        tramiteDocRef,
+        (tramiteSnap) => {
+          if (!isMounted) return;
+          setTurnoActualTramite(tramiteSnap.exists() ? tramiteSnap.data() : null);
+        },
+        () => {
+          if (!isMounted) return;
+          setTurnoActualTramite(null);
+        }
+      );
+    };
+
+    const setupListeners = async (docSnap, collectionName) => {
+      const data = docSnap.data();
+      if (!isMounted) return;
+
+      setMiTurno({ id: docSnap.id, ...data });
+      setSourceCollection(collectionName); // ✅ guardar origen
+
+      const tramiteID = data.tramiteID;
+
       try {
         const tramiteDoc = await getDoc(doc(db, 'tramites', tramiteID));
-        if (isMounted && tramiteDoc.exists()) {
-          setNombreTramite(tramiteDoc.data().nombre);
-        } else if (isMounted) {
-          setNombreTramite(tramiteID); // Mostrar ID si no se encuentra el nombre
-        }
+        if (!isMounted) return;
+        setNombreTramite(tramiteDoc.exists() ? tramiteDoc.data().nombre : tramiteID);
       } catch (e) {
-        console.error("Error al obtener nombre del trámite:", e);
+        if (!isMounted) return;
         setNombreTramite(tramiteID);
       }
-      
-      // ✅ 2. Escuchar el Turno Actual de la cola
-      if (tramiteID) {
-        const tramiteDocRef = doc(db, 'estadoSistema', `tramite_${tramiteID}`);
-        const unsubscribeTramite = onSnapshot(tramiteDocRef, (tramiteSnap) => {
-          if (isMounted) {
-            setTurnoActualTramite(tramiteSnap.data());
-          }
-        });
-        unsubscribes.push(unsubscribeTramite); // Añadir al cleanup
-      }
-      
+
+      setupTramiteListener(tramiteID);
       setLoading(false);
     };
 
-    // Escucha en ambas colecciones
-    const collectionsToCheck = ['turnos', 'citas']; 
-    collectionsToCheck.forEach(collectionName => {
-      if (found) return; 
-      
-      const docRef = doc(db, collectionName, documentoId);
-      const unsubscribeDoc = onSnapshot(docRef, (docSnap) => {
-        if (!isMounted) return;
+    const listenDoc = (collectionName) => {
+      const ref = doc(db, collectionName, documentoId);
+      const unsub = onSnapshot(
+        ref,
+        (snap) => {
+          if (!isMounted) return;
 
-        if (docSnap.exists()) {
-          found = true; 
-          setupListeners(docSnap);
+          if (!snap.exists()) {
+            if (found && collectionName === foundCollection) {
+              setMiTurno(null);
+              setLoading(false);
+              setNotFound(true);
+            }
+            return;
+          }
+
+          if (!found) {
+            found = true;
+            foundCollection = collectionName;
+
+            // ✅ importante: pasar collectionName
+            setupListeners(snap, collectionName);
+            return;
+          }
+
+          if (collectionName === foundCollection) {
+            setupListeners(snap, collectionName);
+          }
+        },
+        () => {
+          if (!isMounted) return;
         }
-      }, (error) => {
-        console.error(`Error al escuchar ${collectionName}:`, error);
+      );
+      unsubscribes.push(unsub);
+    };
+
+    listenDoc('turnos');
+    listenDoc('citas');
+
+    const timer = setTimeout(() => {
+      if (!isMounted) return;
+      if (!found) {
         setLoading(false);
-      });
-      unsubscribes.push(unsubscribeDoc);
-    });
-
-    setTimeout(() => {
-        if (isMounted && !found) {
-            setLoading(false);
-            setNotFound(true);
-        }
+        setNotFound(true);
+      }
     }, 3000);
 
     return () => {
       isMounted = false;
-      unsubscribes.forEach(unsub => unsub());
+      clearTimeout(timer);
+      unsubscribes.forEach((u) => u());
+      if (estadoDocUnsubRef.current) {
+        estadoDocUnsubRef.current();
+        estadoDocUnsubRef.current = null;
+      }
     };
-
   }, [documentoId]);
 
-
-  // Función para renderizar el estado
   const renderEstado = () => {
     if (!miTurno) return null;
-    
-    // El turno actual de la cola (puede ser '---' si no hay nadie)
-    const currentCode = turnoActualTramite?.codigoLlamado;
 
-    // Estado 1: ¡ES SU TURNO! (Llamado)
-    if (miTurno.estado === 'llamado' && currentCode === miTurno.codigo) {
+    const currentCode = turnoActualTramite?.codigoLlamado || null;
+
+    if (miTurno.estado === 'llamado' && currentCode && currentCode === miTurno.codigo) {
       return (
         <div style={styles.statusLlamado}>
-          ¡ES SU TURNO!
+          ES SU TURNO
           <br />
           Diríjase al Módulo {miTurno.modulo}
         </div>
       );
     }
-    
-    // Estado 2: FINALIZADO
+
     if (miTurno.estado === 'completado') {
-      return <p style={styles.statusCompletado}>Su atención ha finalizado. ¡Gracias!</p>;
+      return <p style={styles.statusCompletado}>Su atención ha finalizado. Gracias.</p>;
     }
-    
-    // Estado 3: EN ESPERA
+
     if (miTurno.estado === 'en-espera' || miTurno.estado === 'activa') {
-      // ✅ Calculamos cuántos faltan
-      let turnosFaltantes = '—';
-      if (currentCode && miTurno.codigo && miTurno.codigo.includes('-')) {
-          const turnoActualNum = parseInt(currentCode.split('-')[1]);
-          const miTurnoNum = parseInt(miTurno.codigo.split('-')[1]);
-          turnosFaltantes = Math.max(0, miTurnoNum - turnoActualNum - 1);
+      // ✅ Si es CITA (no kiosko), ocultar el contador "Faltan"
+      const esCitaAgendada = sourceCollection === 'citas';
+
+      if (esCitaAgendada) {
+        return (
+          <div style={styles.statusEnEspera}>
+            <p style={{ margin: 0, fontSize: '18px' }}>ESTADO: EN ESPERA</p>
+          </div>
+        );
       }
-      
+
+      // ✅ Kiosko (turnos): mantener el cálculo tal cual
+      const actualNum = parseCodigoNum(currentCode);
+      const mioNum = parseCodigoNum(miTurno.codigo);
+
+      const faltan =
+        actualNum != null && mioNum != null ? Math.max(0, mioNum - actualNum - 1) : null;
+
       return (
         <div style={styles.statusEnEspera}>
-          <p style={{margin: 0, fontSize: '18px'}}>ESTADO: EN ESPERA</p>
-          <p style={{margin: '10px 0 0 0', fontWeight: 'normal', fontSize: '16px'}}>
-            Faltan: <strong>{turnosFaltantes === '—' ? '?' : turnosFaltantes}</strong> turnos de {nombreTramite}
+          <p style={{ margin: 0, fontSize: '18px' }}>ESTADO: EN ESPERA</p>
+          <p style={{ margin: '10px 0 0 0', fontWeight: 'normal', fontSize: '16px' }}>
+            Faltan: <strong>{faltan == null ? '?' : faltan}</strong> turnos de {nombreTramite}
           </p>
         </div>
       );
     }
 
-    // Estado 4: PASADO
     if (miTurno.estado === 'llamado') {
       return <p style={styles.statusPasado}>Su turno ya fue llamado (ausente).</p>;
     }
@@ -242,26 +304,6 @@ export default function TicketTracking() {
     return null;
   };
 
-  // ... (useEffect de @keyframes - sin cambios) ...
-  useEffect(() => {
-    const styleSheet = document.styleSheets[0];
-    if (!styleSheet) return;
-    try {
-      styleSheet.insertRule(`
-        @keyframes blink {
-          0% { opacity: 1; }
-          50% { opacity: 0.2; }
-          100% { opacity: 1; }
-        }
-      `, styleSheet.cssRules.length);
-    } catch (e) {
-      if (e.name !== 'SyntaxError' && e.name !== 'InvalidModificationError') {
-         console.warn("No se pudo insertar la regla @keyframes.");
-      }
-    }
-  }, []);
-
-  // --- RENDERIZADO ---
   if (miTurno?.estado === 'completado') {
     return (
       <div style={styles.container}>
@@ -269,18 +311,26 @@ export default function TicketTracking() {
           <h1 style={styles.header}>Seguimiento de Turno</h1>
           <p style={styles.myTurnNumber}>{miTurno.codigo}</p>
           <hr style={{ margin: '30px 0' }} />
-          <p style={styles.statusCompletado}>Su atención ha finalizado. ¡Gracias por su visita!</p>
+          <p style={styles.statusCompletado}>Su atención ha finalizado. Gracias por su visita.</p>
         </div>
       </div>
     );
   }
 
   if (loading) {
-    return <p style={{ textAlign: 'center', fontSize: '24px', marginTop: '40px' }}>Cargando estado del turno...</p>;
+    return (
+      <p style={{ textAlign: 'center', fontSize: '24px', marginTop: '40px' }}>
+        Cargando estado del turno...
+      </p>
+    );
   }
 
   if (notFound || !miTurno) {
-    return <p style={{ textAlign: 'center', fontSize: '24px', marginTop: '40px', color: 'red' }}>El ID del turno no es válido o ha expirado.</p>;
+    return (
+      <p style={{ textAlign: 'center', fontSize: '24px', marginTop: '40px', color: 'red' }}>
+        El ID del turno no es válido o ha expirado.
+      </p>
+    );
   }
 
   return (
@@ -288,20 +338,16 @@ export default function TicketTracking() {
       <BlinkKeyframeStyle />
       <div style={styles.card}>
         <h1 style={styles.header}>Seguimiento de Turno</h1>
-        
+
         <p style={styles.myTurnLabel}>Su Turno:</p>
         <p style={styles.myTurnNumber}>{miTurno.codigo}</p>
-        
-        <hr style={{ margin: '30px 0' }} />
-        
-        <p style={styles.currentTurnLabel}>Turno Actual (en {nombreTramite}):</p>
-        <p style={styles.currentTurnNumber}>
-          {turnoActualTramite ? turnoActualTramite.codigoLlamado : '---'}
-        </p>
 
-        <div style={{ marginTop: '30px', minHeight: '80px' }}>
-          {renderEstado()}
-        </div>
+        <hr style={{ margin: '30px 0' }} />
+
+        <p style={styles.currentTurnLabel}>Turno Actual (en {nombreTramite}):</p>
+        <p style={styles.currentTurnNumber}>{turnoActualTramite?.codigoLlamado || '---'}</p>
+
+        <div style={{ marginTop: '30px', minHeight: '80px' }}>{renderEstado()}</div>
       </div>
     </div>
   );

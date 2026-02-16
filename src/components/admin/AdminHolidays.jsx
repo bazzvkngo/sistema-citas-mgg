@@ -1,16 +1,40 @@
 // src/components/admin/AdminHolidays.jsx
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   collection,
   query,
   orderBy,
   onSnapshot,
-  addDoc,
   updateDoc,
   deleteDoc,
   doc,
+  setDoc,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
+
+// --- Helpers rango ---
+function parseISODateToUTCDate(iso) {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0));
+}
+function toISODateUTC(date) {
+  return date.toISOString().slice(0, 10);
+}
+function eachDayISOInclusive(startISO, endISO) {
+  const start = parseISODateToUTCDate(startISO);
+  const end = parseISODateToUTCDate(endISO);
+  const out = [];
+  let cur = new Date(start);
+  while (cur <= end) {
+    out.push(toISODateUTC(cur));
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return out;
+}
+function buildFeriadoDocId(fechaISO, pais) {
+  return `${fechaISO}__${pais || "AMBOS"}`;
+}
 
 // Estilos similares a los otros paneles de admin
 const styles = {
@@ -27,11 +51,18 @@ const styles = {
     color: "#333",
     marginBottom: "20px",
   },
+  sectionTitle: {
+    fontSize: "14px",
+    fontWeight: "bold",
+    color: "#555",
+    marginTop: "18px",
+    marginBottom: "10px",
+  },
   formRow: {
     display: "flex",
     flexWrap: "wrap",
     gap: "10px",
-    marginBottom: "20px",
+    marginBottom: "12px",
     alignItems: "center",
   },
   inputDate: {
@@ -63,6 +94,34 @@ const styles = {
     cursor: "pointer",
     backgroundColor: "#C8102E",
     color: "white",
+  },
+  buttonSecondary: {
+    padding: "10px 16px",
+    borderRadius: "10px",
+    border: "1px solid #ccc",
+    fontSize: "14px",
+    fontWeight: "bold",
+    cursor: "pointer",
+    backgroundColor: "#fff",
+    color: "#333",
+  },
+  buttonDanger: {
+    padding: "10px 16px",
+    borderRadius: "10px",
+    border: "none",
+    fontSize: "14px",
+    fontWeight: "bold",
+    cursor: "pointer",
+    backgroundColor: "#dc3545",
+    color: "white",
+  },
+  checkboxRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    fontSize: "14px",
+    color: "#444",
+    marginTop: "6px",
   },
   table: {
     width: "100%",
@@ -116,24 +175,37 @@ const styles = {
     backgroundColor: "#dc3545",
     color: "white",
   },
+  hint: {
+    fontSize: "12px",
+    color: "#666",
+    marginTop: "-4px",
+    marginBottom: "8px",
+  },
 };
 
 export default function AdminHolidays() {
   const [feriados, setFeriados] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const [form, setForm] = useState({
+  const [formDia, setFormDia] = useState({
     fechaISO: "",
     descripcion: "",
     pais: "AMBOS",
   });
 
+  const [formRango, setFormRango] = useState({
+    startISO: "",
+    endISO: "",
+    descripcion: "Cierre temporal",
+    pais: "AMBOS",
+    desbloqueoModo: "desactivar", // "desactivar" | "eliminar"
+  });
+
+  const [busyRange, setBusyRange] = useState(false);
+
   // Escuchar cambios en la colección "feriados"
   useEffect(() => {
-    const q = query(
-      collection(db, "feriados"),
-      orderBy("fechaISO", "asc")
-    );
+    const q = query(collection(db, "feriados"), orderBy("fechaISO", "asc"));
 
     const unsubscribe = onSnapshot(
       q,
@@ -154,28 +226,52 @@ export default function AdminHolidays() {
     return () => unsubscribe();
   }, []);
 
-  const handleChange = (e) => {
+  const feriadosByKey = useMemo(() => {
+    const map = new Map();
+    for (const f of feriados) {
+      const key = buildFeriadoDocId(f.fechaISO, f.pais || "AMBOS");
+      map.set(key, f);
+    }
+    return map;
+  }, [feriados]);
+
+  const handleChangeDia = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    setFormDia((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleChangeRango = (e) => {
+    const { name, value } = e.target;
+    setFormRango((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  // --- Un día ---
   const handleAddHoliday = async (e) => {
     e.preventDefault();
 
-    if (!form.fechaISO) {
+    if (!formDia.fechaISO) {
       alert("Seleccione una fecha para el feriado.");
       return;
     }
 
     try {
-      await addDoc(collection(db, "feriados"), {
-        fechaISO: form.fechaISO, // input type="date" ya viene en formato YYYY-MM-DD
-        descripcion: form.descripcion || "Feriado",
-        pais: form.pais || "AMBOS",
-        activo: true,
-      });
+      const id = buildFeriadoDocId(formDia.fechaISO, formDia.pais);
+      await setDoc(
+        doc(db, "feriados", id),
+        {
+          fechaISO: formDia.fechaISO,
+          descripcion: formDia.descripcion || "Feriado",
+          pais: formDia.pais || "AMBOS",
+          activo: true,
+          tipo: "bloqueo",
+        },
+        { merge: true }
+      );
 
-      setForm({
+      setFormDia({
         fechaISO: "",
         descripcion: "",
         pais: "AMBOS",
@@ -211,17 +307,118 @@ export default function AdminHolidays() {
     }
   };
 
+  // --- Bloquear rango: crea/actualiza docs por día ---
+  const handleBlockRange = async () => {
+    const { startISO, endISO, descripcion, pais } = formRango;
+
+    if (!startISO || !endISO) {
+      alert("Selecciona fecha inicio y fecha fin.");
+      return;
+    }
+    if (startISO > endISO) {
+      alert("La fecha inicio no puede ser mayor que la fecha fin.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Esto bloqueará el agendamiento desde ${startISO} hasta ${endISO} (${pais}).\n¿Continuar?`
+    );
+    if (!ok) return;
+
+    setBusyRange(true);
+    try {
+      const days = eachDayISOInclusive(startISO, endISO);
+
+      const batch = writeBatch(db);
+      for (const fechaISO of days) {
+        const id = buildFeriadoDocId(fechaISO, pais);
+        const ref = doc(db, "feriados", id);
+
+        batch.set(
+          ref,
+          {
+            fechaISO,
+            descripcion: descripcion || "Cierre temporal",
+            pais: pais || "AMBOS",
+            activo: true,
+            tipo: "bloqueo_rango",
+            rango: { startISO, endISO },
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      }
+      await batch.commit();
+
+      alert("Rango bloqueado correctamente.");
+    } catch (err) {
+      console.error("Error al bloquear rango:", err);
+      alert("Error al bloquear rango.");
+    } finally {
+      setBusyRange(false);
+    }
+  };
+
+  // --- Desbloquear rango: desactivar o eliminar docs existentes del rango ---
+  const handleUnblockRange = async () => {
+    const { startISO, endISO, pais, desbloqueoModo } = formRango;
+
+    if (!startISO || !endISO) {
+      alert("Selecciona fecha inicio y fecha fin.");
+      return;
+    }
+    if (startISO > endISO) {
+      alert("La fecha inicio no puede ser mayor que la fecha fin.");
+      return;
+    }
+
+    const ok = window.confirm(
+      `Esto desbloqueará el agendamiento desde ${startISO} hasta ${endISO} (${pais}).\nModo: ${desbloqueoModo}.\n¿Continuar?`
+    );
+    if (!ok) return;
+
+    setBusyRange(true);
+    try {
+      const days = eachDayISOInclusive(startISO, endISO);
+
+      const batch = writeBatch(db);
+
+      for (const fechaISO of days) {
+        const key = buildFeriadoDocId(fechaISO, pais);
+        const f = feriadosByKey.get(key);
+        if (!f) continue;
+
+        const ref = doc(db, "feriados", f.id);
+
+        if (desbloqueoModo === "eliminar") {
+          batch.delete(ref);
+        } else {
+          batch.update(ref, { activo: false });
+        }
+      }
+
+      await batch.commit();
+      alert("Rango desbloqueado correctamente.");
+    } catch (err) {
+      console.error("Error al desbloquear rango:", err);
+      alert("Error al desbloquear rango.");
+    } finally {
+      setBusyRange(false);
+    }
+  };
+
   return (
     <div style={styles.card}>
       <h3 style={styles.title}>Gestión de Feriados / Días Bloqueados</h3>
 
-      {/* Formulario para crear feriado */}
+      <div style={styles.sectionTitle}>Bloquear un día</div>
+
       <form onSubmit={handleAddHoliday} style={styles.formRow}>
         <input
           type="date"
           name="fechaISO"
-          value={form.fechaISO}
-          onChange={handleChange}
+          value={formDia.fechaISO}
+          onChange={handleChangeDia}
           style={styles.inputDate}
         />
 
@@ -229,15 +426,15 @@ export default function AdminHolidays() {
           type="text"
           name="descripcion"
           placeholder="Descripción (opcional)"
-          value={form.descripcion}
-          onChange={handleChange}
+          value={formDia.descripcion}
+          onChange={handleChangeDia}
           style={styles.inputText}
         />
 
         <select
           name="pais"
-          value={form.pais}
-          onChange={handleChange}
+          value={formDia.pais}
+          onChange={handleChangeDia}
           style={styles.select}
         >
           <option value="AMBOS">Ambos</option>
@@ -246,11 +443,85 @@ export default function AdminHolidays() {
         </select>
 
         <button type="submit" style={styles.buttonAdd}>
-          Agregar feriado
+          Agregar día bloqueado
         </button>
       </form>
 
-      {/* Tabla de feriados existentes */}
+      <div style={styles.sectionTitle}>Bloquear / Desbloquear rango</div>
+      <div style={styles.hint}>
+        Esto bloquea el agendamiento (porque tu Cloud Function revisa la colección{" "}
+        <b>feriados</b> por <b>fechaISO</b> y <b>activo</b>).
+      </div>
+
+      <div style={styles.formRow}>
+        <input
+          type="date"
+          name="startISO"
+          value={formRango.startISO}
+          onChange={handleChangeRango}
+          style={styles.inputDate}
+        />
+        <input
+          type="date"
+          name="endISO"
+          value={formRango.endISO}
+          onChange={handleChangeRango}
+          style={styles.inputDate}
+        />
+
+        <select
+          name="pais"
+          value={formRango.pais}
+          onChange={handleChangeRango}
+          style={styles.select}
+        >
+          <option value="AMBOS">Ambos</option>
+          <option value="CL">Chile</option>
+          <option value="PE">Perú</option>
+        </select>
+
+        <input
+          type="text"
+          name="descripcion"
+          placeholder="Motivo (ej: Cierre temporal)"
+          value={formRango.descripcion}
+          onChange={handleChangeRango}
+          style={styles.inputText}
+        />
+      </div>
+
+      <div style={styles.formRow}>
+        <button
+          type="button"
+          style={styles.buttonAdd}
+          disabled={busyRange}
+          onClick={handleBlockRange}
+        >
+          {busyRange ? "Procesando..." : "Bloquear rango"}
+        </button>
+
+        <select
+          name="desbloqueoModo"
+          value={formRango.desbloqueoModo}
+          onChange={handleChangeRango}
+          style={styles.select}
+          disabled={busyRange}
+          title="Desactivar = deja registro en BD pero inactivo. Eliminar = borra docs."
+        >
+          <option value="desactivar">Desbloquear (desactivar)</option>
+          <option value="eliminar">Desbloquear (eliminar)</option>
+        </select>
+
+        <button
+          type="button"
+          style={styles.buttonSecondary}
+          disabled={busyRange}
+          onClick={handleUnblockRange}
+        >
+          {busyRange ? "Procesando..." : "Aplicar desbloqueo"}
+        </button>
+      </div>
+
       {loading ? (
         <p>Cargando feriados...</p>
       ) : feriados.length === 0 ? (
@@ -282,20 +553,14 @@ export default function AdminHolidays() {
                 <td style={styles.td}>
                   <button
                     type="button"
-                    style={{
-                      ...styles.buttonSmall,
-                      ...styles.buttonToggle,
-                    }}
+                    style={{ ...styles.buttonSmall, ...styles.buttonToggle }}
                     onClick={() => handleToggleActivo(f)}
                   >
                     {f.activo ? "Desactivar" : "Activar"}
                   </button>
                   <button
                     type="button"
-                    style={{
-                      ...styles.buttonSmall,
-                      ...styles.buttonDelete,
-                    }}
+                    style={{ ...styles.buttonSmall, ...styles.buttonDelete }}
                     onClick={() => handleDelete(f)}
                   >
                     Eliminar

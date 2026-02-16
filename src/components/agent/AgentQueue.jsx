@@ -1,303 +1,374 @@
-// src/components/agente/AgentQueue.jsx (antes PanelAgentePresencial.jsx)
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
+// src/components/agent/AgentQueue.jsx
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-  collection, getDocs, query, where, onSnapshot,
-  orderBy, limit, doc, updateDoc, setDoc, Timestamp, getDoc, documentId
+  collection,
+  doc,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+  where,
+  setDoc,
+  Timestamp
 } from 'firebase/firestore';
 import { db } from '../../firebase';
-import FinalizarAtencionModal from './FinishServiceModal';
+import { getAuth } from 'firebase/auth';
 
-// --- Estilos ---
 const styles = {
-  queueContainer: {
+  container: { width: '100%' },
+  title: { fontSize: 22, color: '#C8102E', marginBottom: 16, fontWeight: 800 },
+
+  grid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(3, minmax(260px, 1fr))',
+    gap: 18
+  },
+
+  card: {
+    border: '2px solid #0d6efd',
+    borderRadius: 16,
+    padding: 18,
+    background: '#fff',
+    boxShadow: '0 6px 16px rgba(0,0,0,0.07)',
+    minHeight: 240,
     display: 'flex',
-    flexWrap: 'wrap',
-    gap: '20px',
-    marginTop: '20px'
+    flexDirection: 'column',
+    justifyContent: 'space-between'
   },
-  queueBox: {
-    border: '2px solid #007bff',
-    borderRadius: '8px',
-    padding: '20px',
-    width: '300px',
-    backgroundColor: '#f8f9fa',
+
+  header: {
     display: 'flex',
-    flexDirection: 'column'
+    flexDirection: 'column',
+    gap: 10
   },
-  queueName: {
-    fontSize: '22px',
-    fontWeight: 'bold',
-    textAlign: 'center'
+
+  tramiteTitle: {
+    fontSize: 20,
+    fontWeight: 900,
+    margin: 0,
+    lineHeight: 1.2
   },
-  // 🔽 Bloque inferior: número + "en espera" + botón
-  queueBottom: {
-    marginTop: 'auto',
+
+  centerArea: {
+    flex: 1,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: '8px',
-    textAlign: 'center'
+    justifyContent: 'center',
+    padding: '10px 0'
   },
-  countNumber: {
-    fontSize: '48px',
-    fontWeight: 'bold',
-    color: '#007bff'
-  },
-  queueLabel: {
-    fontSize: '16px',
-    color: '#555'
-  },
-  callButton: {
-    fontSize: '18px',
-    padding: '10px 20px',
-    backgroundColor: 'green',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    cursor: 'pointer',
-    minWidth: '180px'
-  },
-  // 🎯 Estilo cuando no hay turnos en la cola
-  callButtonDisabled: {
-    backgroundColor: '#cccccc',
-    color: '#666666',
-    cursor: 'not-allowed',
-    boxShadow: 'none'
-  },
-  atencionBox: {
-    border: '2px solid green',
-    borderRadius: '8px',
-    padding: '40px',
-    textAlign: 'center',
-    backgroundColor: '#e6ffed'
-  },
-  atencionTurno: {
-    fontSize: '64px',
-    fontWeight: 'bold',
-    color: 'green',
-    margin: '10px 0'
-  },
-  atencionTipo: {
-    fontSize: '24px',
-    color: 'green'
-  },
-  finishButton: {
-    fontSize: '22px',
-    padding: '15px 30px',
-    backgroundColor: 'red',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    cursor: 'pointer',
-    marginTop: '20px'
-  }
-};
-// --- Fin de estilos ---
 
-export default function PanelAgentePresencial() {
-  const { currentUser } = useAuth();
+  count: {
+    fontSize: 78,
+    fontWeight: 900,
+    color: '#0d6efd',
+    margin: 0,
+    lineHeight: 1
+  },
+
+  sub: {
+    margin: '6px 0 0',
+    color: '#666',
+    fontWeight: 700,
+    fontSize: 14
+  },
+
+  footer: {
+    marginTop: 12
+  },
+
+  btn: {
+    width: '100%',
+    padding: '12px 14px',
+    borderRadius: 12,
+    border: 'none',
+    cursor: 'pointer',
+    fontWeight: 900,
+    fontSize: 16,
+    transition: 'transform 0.04s ease'
+  },
+
+  btnEnabled: {
+    background: '#0d6efd',
+    color: '#fff'
+  },
+
+  btnDisabled: {
+    background: '#d9d9d9',
+    color: '#666',
+    cursor: 'not-allowed'
+  },
+
+  empty: {
+    padding: 14,
+    border: '1px solid #ddd',
+    borderRadius: 10,
+    background: '#fff',
+    color: '#444',
+    fontWeight: 600
+  },
+
+  bigListBox: {
+    marginTop: 16,
+    padding: 14,
+    borderRadius: 12,
+    border: '1px solid #e5e7eb',
+    background: '#fff'
+  },
+  bigListTitle: { margin: 0, fontWeight: 900, color: '#111', fontSize: 14 },
+  bigListSub: { margin: '6px 0 0', color: '#666', fontWeight: 700, fontSize: 12 },
+  bigTable: { width: '100%', borderCollapse: 'collapse', marginTop: 10 },
+  th: { textAlign: 'left', padding: 10, background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', fontSize: 12 },
+  td: { padding: 10, borderBottom: '1px solid #f1f5f9', fontSize: 12, verticalAlign: 'top' }
+};
+
+export default function AgentQueue({ atencionActual, moduloEfectivo }) {
   const [tramites, setTramites] = useState([]);
-  const [colasTurnos, setColasTurnos] = useState({});
+  const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(true);
 
-  const [turnoEnAtencion, setTurnoEnAtencion] = useState(null);
-  const [showModal, setShowModal] = useState(false);
+  const [waitingList, setWaitingList] = useState([]); // lista informativa grande
 
   useEffect(() => {
-    if (!currentUser || !currentUser.habilidades || currentUser.habilidades.length === 0) {
-      setLoading(false);
-      return;
-    }
-
-    const habilidadesTramites = currentUser.habilidades.slice(0, 30);
-
     const fetchTramites = async () => {
       try {
-        const q = query(
-          collection(db, 'tramites'),
-          where(documentId(), 'in', habilidadesTramites)
-        );
-        const tramitesSnapshot = await getDocs(q);
-        const tramitesList = tramitesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
-        setTramites(tramitesList);
-      } catch (error) {
-        console.error('Error al cargar trámites: ', error);
+        const snap = await getDocs(collection(db, 'tramites'));
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+        setTramites(list);
+      } catch (e) {
+        console.error('Error cargando tramites:', e);
       }
     };
-
     fetchTramites();
+  }, []);
 
-    const habilidadesTurnos = currentUser.habilidades.slice(0, 10);
-    const qTurnos = query(
+  useEffect(() => {
+    if (!tramites.length) return;
+
+    setLoading(true);
+
+    const unsubs = tramites.map((t) => {
+      const q = query(
+        collection(db, 'turnos'),
+        where('tramiteID', '==', t.id),
+        where('estado', '==', 'en-espera')
+      );
+
+      return onSnapshot(q, (snap) => {
+        setCounts(prev => ({ ...prev, [t.id]: snap.size }));
+        setLoading(false);
+      });
+    });
+
+    return () => unsubs.forEach(u => u());
+  }, [tramites]);
+
+  // Lista grande informativa: últimos turnos en espera (ordenados)
+  useEffect(() => {
+    const qWait = query(
       collection(db, 'turnos'),
       where('estado', '==', 'en-espera'),
-      where('tramiteID', 'in', habilidadesTurnos)
+      orderBy('fechaHoraGenerado', 'asc'),
+      limit(200)
     );
 
-    const unsubscribe = onSnapshot(
-      qTurnos,
-      (querySnapshot) => {
-        const turnosAgrupados = querySnapshot.docs.reduce((acc, turnoDoc) => {
-          const tramiteId = turnoDoc.data().tramiteID;
-          if (!acc[tramiteId]) acc[tramiteId] = [];
-          acc[tramiteId].push(true);
-          return acc;
-        }, {});
-        setColasTurnos(turnosAgrupados);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error al escuchar turnos: ', error);
-        setLoading(false);
-      }
-    );
+    const unsub = onSnapshot(qWait, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setWaitingList(list);
+    });
 
-    return () => unsubscribe();
-  }, [currentUser]);
+    return () => unsub();
+  }, []);
 
-  const actualizarSistemas = async (codigo, modulo, tramiteId) => {
-    const timestamp = Timestamp.now();
-
-    const tvDocRef = doc(db, 'estadoSistema', 'llamadaActual');
-    await setDoc(tvDocRef, { codigoLlamado: codigo, modulo, timestamp });
-
-    const tramiteDocRef = doc(db, 'estadoSistema', `tramite_${tramiteId}`);
-    await setDoc(tramiteDocRef, { codigoLlamado: codigo, modulo, timestamp });
-
-    const historyDocRef = doc(db, 'estadoSistema', 'historialLlamadas');
-    const historySnap = await getDoc(historyDocRef);
-    const oldHistory = historySnap.exists() ? historySnap.data().ultimos : [];
-    const newHistory = [{ codigo, modulo }, ...oldHistory.slice(0, 3)];
-    await setDoc(historyDocRef, { ultimos: newHistory });
-  };
-
-  const handleLlamarTurno = async (tramiteId) => {
-    if (turnoEnAtencion) {
-      alert('Ya tienes un turno en atención. Debes finalizarlo primero.');
-      return;
-    }
-
-    const modulo = currentUser.moduloAsignado || 0;
-
+  const llamarSiguiente = async (tramiteId, tramiteNombre) => {
     try {
+      const modulo = moduloEfectivo;
+      if (!modulo) return alert('No tienes módulo asignado.');
+
+      if (atencionActual) {
+        return alert(`Ya estás atendiendo un ${atencionActual.tipo} (${atencionActual.codigo}). Finaliza antes de llamar otro.`);
+      }
+
       const qTurno = query(
         collection(db, 'turnos'),
-        where('estado', '==', 'en-espera'),
         where('tramiteID', '==', tramiteId),
+        where('estado', '==', 'en-espera'),
         orderBy('fechaHoraGenerado', 'asc'),
         limit(1)
       );
 
-      const turnoSnapshot = await getDocs(qTurno);
+      const snap = await getDocs(qTurno);
+      if (snap.empty) return alert('No hay turnos en espera.');
 
-      if (turnoSnapshot.empty) {
-        alert('No hay más turnos en esta cola.');
-        return;
-      }
+      const turnoDoc = snap.docs[0];
+      const turnoData = turnoDoc.data();
+      const turnoRef = doc(db, 'turnos', turnoDoc.id);
 
-      const turnoDoc = turnoSnapshot.docs[0];
-      const turnoLlamado = { id: turnoDoc.id, ...turnoDoc.data() };
-      const turnoId = turnoLlamado.id;
-      const turnoCodigo = turnoLlamado.codigo;
+      const codigoTurno =
+        turnoData.codigo ||
+        turnoData.codigoTurno ||
+        turnoData.turnoCodigo ||
+        turnoData.numero ||
+        turnoData.nro ||
+        turnoDoc.id;
 
-      const turnoDocRef = doc(db, 'turnos', turnoId);
-      await updateDoc(turnoDocRef, {
+      const uid = getAuth().currentUser?.uid || '';
+
+      await updateDoc(turnoRef, {
         estado: 'llamado',
-        agenteID: currentUser.uid,
-        modulo
+        modulo: modulo,
+        tramiteNombre: tramiteNombre || '',
+        agenteID: uid,
+        llamadoAt: Timestamp.now()
       });
 
-      await actualizarSistemas(turnoCodigo, modulo, tramiteId);
-
-      setTurnoEnAtencion({
-        id: turnoId,
-        codigo: turnoCodigo,
+      const payload = {
+        codigoLlamado: codigoTurno,
+        modulo: modulo,
+        timestamp: Timestamp.now(),
+        agenteID: uid,
         tipo: 'Turno',
-        nombreCliente: 'Visitante Kiosko'
-      });
-    } catch (error) {
-      console.error('Error al llamar turno: ', error);
-      alert('Error al llamar turno. Revisa la consola (F12).');
+        tramiteID: tramiteId,
+        tramiteNombre: tramiteNombre || ''
+      };
+
+      await setDoc(doc(db, 'estadoSistema', 'llamadaActual'), payload, { merge: true });
+      await setDoc(doc(db, 'estadoSistema', `tramite_${tramiteId}`), payload, { merge: true });
+    } catch (e) {
+      console.error('Error llamando siguiente turno:', e);
+      alert('Error al llamar el siguiente turno. Revisa consola.');
     }
   };
 
-  const handleFinalizarExito = (tipo, codigo) => {
-    setTurnoEnAtencion(null);
-    setShowModal(false);
-    alert(`Atención del ${tipo} ${codigo} finalizada y clasificada.`);
-  };
+  // Cards: SOLO las que tienen gente en espera
+  const cards = useMemo(() => {
+    const list = tramites.map(t => ({
+      ...t,
+      count: counts[t.id] ?? 0
+    }));
+    return list.filter(t => t.count > 0);
+  }, [tramites, counts]);
+
+  // Lista informativa agrupada por trámite (para que se vea “grande” y útil)
+  const waitingRows = useMemo(() => {
+    if (!waitingList.length) return [];
+    const byTramite = {};
+    waitingList.forEach(t => {
+      const key = t.tramiteID || 'sin_tramite';
+      if (!byTramite[key]) byTramite[key] = [];
+      byTramite[key].push(t);
+    });
+
+    const out = [];
+    Object.keys(byTramite).forEach(tramiteID => {
+      const nombre = tramites.find(x => x.id === tramiteID)?.nombre || tramiteID;
+      byTramite[tramiteID].forEach(t => {
+        const codigo =
+          t.codigo || t.codigoTurno || t.turnoCodigo || t.numero || t.nro || t.id;
+        const dni = t.dni || t.rut || t.documento || '';
+        out.push({
+          id: t.id,
+          tramiteID,
+          tramiteNombre: nombre,
+          codigo,
+          dni,
+          fecha: t.fechaHoraGenerado?.toDate ? t.fechaHoraGenerado.toDate() : null
+        });
+      });
+    });
+
+    // orden global por fecha
+    out.sort((a, b) => {
+      const ta = a.fecha ? a.fecha.getTime() : 0;
+      const tb = b.fecha ? b.fecha.getTime() : 0;
+      return ta - tb;
+    });
+
+    return out;
+  }, [waitingList, tramites]);
 
   return (
-    <div>
-      {showModal && (
-        <FinalizarAtencionModal
-          turnoEnAtencion={turnoEnAtencion}
-          onClose={() => setShowModal(false)}
-          onFinalizarExito={handleFinalizarExito}
-        />
-      )}
+    <div style={styles.container}>
+      <h2 style={styles.title}>Colas Presenciales en Espera (Turnos Kiosko)</h2>
 
-      {turnoEnAtencion ? (
-        <div style={styles.atencionBox}>
-          <p style={styles.atencionTipo}>Atendiendo {turnoEnAtencion.tipo}:</p>
-          <p style={{ fontSize: '32px', margin: '0 0 10px 0' }}>
-            {turnoEnAtencion.nombreCliente} ({turnoEnAtencion.codigo})
-          </p>
-          <p style={styles.atencionTurno}>
-            MÓDULO {currentUser.moduloAsignado || 'N/A'}
-          </p>
-          <button
-            style={styles.finishButton}
-            onClick={() => setShowModal(true)}
-          >
-            Finalizar Atención
-          </button>
+      {cards.length === 0 ? (
+        <div style={styles.empty}>
+          No hay turnos presenciales en espera en este momento.
         </div>
       ) : (
-        <>
-          <h3 style={{ marginTop: '20px' }}>
-            Colas Presenciales en Espera (Turnos Kiosko)
-          </h3>
-          <div style={styles.queueContainer}>
-            {loading && <p>Cargando colas...</p>}
+        <div style={styles.grid}>
+          {cards.map((t) => {
+            const disabled = loading || !!atencionActual;
 
-            {tramites.map((tramite) => {
-              const conteo = (colasTurnos[tramite.id] || []).length;
-              const isDisabled = conteo === 0;
-
-              return (
-                <div key={tramite.id} style={styles.queueBox}>
-                  <div style={styles.queueName}>{tramite.nombre}</div>
-
-                  <div style={styles.queueBottom}>
-                    <div style={styles.countNumber}>{conteo}</div>
-                    <div style={styles.queueLabel}>en espera</div>
-
-                    <button
-                      style={{
-                        ...styles.callButton,
-                        ...(isDisabled ? styles.callButtonDisabled : {})
-                      }}
-                      disabled={isDisabled}
-                      onClick={() => handleLlamarTurno(tramite.id)}
-                    >
-                      Llamar Siguiente
-                    </button>
-                  </div>
+            return (
+              <div key={t.id} style={styles.card}>
+                <div style={styles.header}>
+                  <h3 style={styles.tramiteTitle}>{t.nombre}</h3>
                 </div>
-              );
-            })}
 
-            {!loading && tramites.length === 0 && (
-              <p>No tienes trámites asignados. Contacta a un administrador.</p>
-            )}
-          </div>
-        </>
+                <div style={styles.centerArea}>
+                  <p style={styles.count}>{t.count}</p>
+                  <p style={styles.sub}>en espera</p>
+                </div>
+
+                <div style={styles.footer}>
+                  <button
+                    style={{
+                      ...styles.btn,
+                      ...(disabled ? styles.btnDisabled : styles.btnEnabled)
+                    }}
+                    disabled={disabled}
+                    onClick={() => llamarSiguiente(t.id, t.nombre)}
+                    onMouseDown={(e) => {
+                      if (disabled) return;
+                      e.currentTarget.style.transform = 'scale(0.99)';
+                    }}
+                    onMouseUp={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    Llamar Siguiente
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
       )}
+
+      <div style={styles.bigListBox}>
+        <p style={styles.bigListTitle}>Detalle turnos en espera (lista informativa)</p>
+        <p style={styles.bigListSub}>
+          Se muestra una lista ordenada por antigüedad (máximo 200).
+        </p>
+
+        {waitingRows.length === 0 ? (
+          <div style={{ marginTop: 10, color: '#444', fontWeight: 700, fontSize: 12 }}>
+            No hay registros en espera.
+          </div>
+        ) : (
+          <table style={styles.bigTable}>
+            <thead>
+              <tr>
+                <th style={styles.th}>Trámite</th>
+                <th style={styles.th}>Código</th>
+                <th style={styles.th}>DNI/RUT</th>
+              </tr>
+            </thead>
+            <tbody>
+              {waitingRows.map((r) => (
+                <tr key={r.id}>
+                  <td style={styles.td}>{r.tramiteNombre}</td>
+                  <td style={styles.td}><strong>{r.codigo}</strong></td>
+                  <td style={styles.td}>{r.dni || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }

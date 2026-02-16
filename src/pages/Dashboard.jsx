@@ -1,6 +1,5 @@
 // src/pages/Dashboard.jsx
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import './Dashboard.css';
 
@@ -15,19 +14,18 @@ export default function Dashboard() {
       </header>
 
       <div className="actions-grid">
-        {/* Tarjeta principal para ciudadanos */}
         {currentUser?.rol === 'ciudadano' && (
           <div className="action-card">
             <h3>Citas Web</h3>
-            <p>Agende una nueva cita o revise sus citas activas.</p>
-            <Link to="/citas" className="action-button">
-              Ir a Mis Citas
-            </Link>
+            <p>
+              Agende una nueva cita o revise sus citas activas desde el menú superior.
+            </p>
+
+            <div className="action-hint">
+              Acceso: <strong>Mis Citas</strong> (menú superior)
+            </div>
           </div>
         )}
-
-        {/* (Para agentes/admin ya no se muestra tarjeta aquí; 
-            ingresan al panel desde el menú superior) */}
       </div>
     </div>
   );

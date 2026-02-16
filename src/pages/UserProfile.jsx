@@ -6,7 +6,6 @@ import { updatePassword, signOut, updateProfile } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
-// --- Estilos (Manteniendo la corrección de alineación) ---
 const styles = {
   container: {
     backgroundColor: '#f3f4f6',
@@ -66,7 +65,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',
-    alignItems: 'flex-start', 
+    alignItems: 'flex-start',
     minHeight: '75px',
     width: '100%',
     boxSizing: 'border-box'
@@ -217,18 +216,45 @@ const styles = {
   }
 };
 
-// --- Iconos SVG ---
-const ChevronLeft = () => (<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>);
-const LockIcon = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>);
-const ChevronRight = () => (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>);
-const EyeIcon = () => (<svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>);
-const EyeOffIcon = () => (<svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>);
-const SmallLock = () => (<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>);
+const ChevronLeft = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m15 18-6-6 6-6"/>
+  </svg>
+);
+const LockIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+  </svg>
+);
+const ChevronRight = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="m9 18 6-6-6-6"/>
+  </svg>
+);
+const EyeIcon = () => (
+  <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+    <circle cx="12" cy="12" r="3"/>
+  </svg>
+);
+const EyeOffIcon = () => (
+  <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+    <line x1="1" y1="1" x2="23" y2="23"/>
+  </svg>
+);
+const SmallLock = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+  </svg>
+);
 
 export default function UserProfile() {
   const { currentUser } = useAuth();
   const navigate = useNavigate();
-  
+
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -259,7 +285,7 @@ export default function UserProfile() {
 
   const handleSaveProfile = async () => {
     if (!editName.trim() || !editPhone.trim()) {
-      alert("El nombre y teléfono son obligatorios.");
+      alert('El nombre y teléfono son obligatorios.');
       return;
     }
     setLoadingProfile(true);
@@ -274,38 +300,38 @@ export default function UserProfile() {
       }
       setIsEditing(false);
     } catch (error) {
-      console.error("Error al actualizar perfil:", error);
-      alert("Error al guardar los cambios.");
+      console.error('Error al actualizar perfil:', error);
+      alert('Error al guardar los cambios.');
     }
     setLoadingProfile(false);
   };
 
   const handleUpdatePassword = async () => {
     if (!newPassword || !confirmPassword) {
-      alert("Por favor, completa ambos campos.");
+      alert('Por favor, completa ambos campos.');
       return;
     }
     if (newPassword.length < 6) {
-      alert("La contraseña debe tener al menos 6 caracteres.");
+      alert('La contraseña debe tener al menos 6 caracteres.');
       return;
     }
     if (newPassword !== confirmPassword) {
-      alert("Las contraseñas no coinciden.");
+      alert('Las contraseñas no coinciden.');
       return;
     }
     setLoadingPass(true);
     try {
       await updatePassword(auth.currentUser, newPassword);
-      alert("Contraseña actualizada con éxito.");
+      alert('Contraseña actualizada con éxito.');
       closeModal();
     } catch (error) {
-      console.error("Error al cambiar contraseña:", error);
+      console.error('Error al cambiar contraseña:', error);
       if (error.code === 'auth/requires-recent-login') {
-        alert("Por seguridad, debes cerrar sesión e ingresar nuevamente para cambiar tu contraseña.");
+        alert('Por seguridad, debes cerrar sesión e ingresar nuevamente para cambiar tu contraseña.');
         await signOut(auth);
         navigate('/ingreso');
       } else {
-        alert("Error al actualizar la contraseña: " + error.message);
+        alert('Error al actualizar la contraseña: ' + error.message);
       }
     }
     setLoadingPass(false);
@@ -318,7 +344,7 @@ export default function UserProfile() {
           <ChevronLeft />
         </button>
         <span style={styles.title}>Datos personales</span>
-        
+
         {!isEditing ? (
           <button style={styles.actionButton} onClick={() => setIsEditing(true)}>
             Editar
@@ -331,14 +357,12 @@ export default function UserProfile() {
       </div>
 
       <div style={styles.card}>
-        
-        {/* 1. Nombre Completo (Editable) */}
         <div style={styles.row}>
           <span style={styles.rowLabel}>Nombre Completo</span>
           {isEditing ? (
-            <input 
-              type="text" 
-              style={styles.editInput} 
+            <input
+              type="text"
+              style={styles.editInput}
               value={editName}
               onChange={(e) => setEditName(e.target.value)}
             />
@@ -347,17 +371,16 @@ export default function UserProfile() {
           )}
         </div>
 
-        {/* 2. Teléfono (Editable) - MOVIDO ARRIBA */}
         <div style={styles.row}>
           <span style={styles.rowLabel}>Teléfono</span>
           {isEditing ? (
-            <div style={{display:'flex', alignItems:'center', gap:'5px', width: '100%'}}>
-              <span style={{fontWeight:'bold', color:'#333', fontSize: '16px'}}>+56</span>
-              <input 
-                type="tel" 
-                style={styles.editInput} 
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', width: '100%' }}>
+              <span style={{ fontWeight: 'bold', color: '#333', fontSize: '16px' }}>+56</span>
+              <input
+                type="tel"
+                style={styles.editInput}
                 value={editPhone}
-                onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, '').slice(0,9))}
+                onChange={(e) => setEditPhone(e.target.value.replace(/\D/g, '').slice(0, 9))}
                 placeholder="9 1234 5678"
               />
             </div>
@@ -366,7 +389,6 @@ export default function UserProfile() {
           )}
         </div>
 
-        {/* 3. RUT / DNI (Bloqueado) - MOVIDO ABAJO */}
         <div style={styles.row}>
           <span style={styles.rowLabel}>RUT / DNI</span>
           <span style={styles.readOnlyValue}>
@@ -374,14 +396,12 @@ export default function UserProfile() {
           </span>
         </div>
 
-        {/* 4. Email (Bloqueado) - MOVIDO AL FINAL */}
-        <div style={{...styles.row, borderBottom: 'none'}}>
+        <div style={{ ...styles.row, borderBottom: 'none' }}>
           <span style={styles.rowLabel}>Correo electrónico</span>
           <span style={styles.readOnlyValue}>
             {currentUser.email} <SmallLock />
           </span>
         </div>
-
       </div>
 
       {!isEditing && (
@@ -397,11 +417,11 @@ export default function UserProfile() {
       )}
 
       {isEditing && (
-        <div 
-          style={{...styles.bottomCard, marginTop:'15px', justifyContent:'center'}} 
+        <div
+          style={{ ...styles.bottomCard, marginTop: '15px', justifyContent: 'center' }}
           onClick={() => setIsEditing(false)}
         >
-          <span style={{color: '#D32F2F', fontWeight: 'bold'}}>Cancelar Edición</span>
+          <span style={{ color: '#D32F2F', fontWeight: 'bold' }}>Cancelar Edición</span>
         </div>
       )}
 
@@ -409,31 +429,32 @@ export default function UserProfile() {
         <div style={styles.modalOverlay}>
           <div style={styles.modalContent}>
             <h3 style={styles.modalTitle}>Nueva Contraseña</h3>
-            
+
             <div style={styles.inputGroup}>
               <div style={styles.inputContainer}>
-                <input 
-                  type={showPasswordText ? "text" : "password"} 
+                <input
+                  type={showPasswordText ? 'text' : 'password'}
                   placeholder="Nueva contraseña"
                   style={styles.input}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   autoFocus
                 />
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   style={styles.iconButton}
-                  onClick={() => setShowPasswordText(!showPasswordText)}
+                  onClick={() => setShowPasswordText((v) => !v)}
                 >
-                  {showPasswordText ? <EyeOffIcon /> : <EyeIcon />}
+                  {/* ✅ cambio: invertimos los íconos porque en tu UI estaban “cruzados” */}
+                  {showPasswordText ? <EyeIcon /> : <EyeOffIcon />}
                 </button>
               </div>
             </div>
 
             <div style={styles.inputGroup}>
               <div style={styles.inputContainer}>
-                <input 
-                  type={showPasswordText ? "text" : "password"} 
+                <input
+                  type={showPasswordText ? 'text' : 'password'}
                   placeholder="Repetir contraseña"
                   style={styles.input}
                   value={confirmPassword}
@@ -443,25 +464,16 @@ export default function UserProfile() {
             </div>
 
             <div style={styles.modalActions}>
-              <button 
-                style={styles.btnCancel} 
-                onClick={closeModal}
-                disabled={loadingPass}
-              >
+              <button style={styles.btnCancel} onClick={closeModal} disabled={loadingPass}>
                 Cancelar
               </button>
-              <button 
-                style={styles.btnSave} 
-                onClick={handleUpdatePassword}
-                disabled={loadingPass}
-              >
+              <button style={styles.btnSave} onClick={handleUpdatePassword} disabled={loadingPass}>
                 {loadingPass ? 'Guardando...' : 'Guardar'}
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 }

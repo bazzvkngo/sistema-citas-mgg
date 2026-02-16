@@ -4,10 +4,10 @@ import { collection, onSnapshot, doc, updateDoc, query } from 'firebase/firestor
 import { db } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
 
-// 🔐 Dominios permitidos para correos institucionales
+// Dominios permitidos para correos institucionales
 const ALLOWED_STAFF_DOMAINS = [
   '@consulado.pe',
-  // Si el consulado usa otros dominios, los agregas aquí:
+  // Agrega otros dominios si aplica:
   // '@rree.gob.pe',
 ];
 
@@ -102,15 +102,16 @@ const styles = {
     borderTopLeftRadius: '8px',
     borderBottomLeftRadius: '8px',
     borderLeft: '1px solid #e9ecef',
-    minWidth: '200px', // Para el email
+    minWidth: '220px',
   },
   tdLast: {
     borderTopRightRadius: '8px',
     borderBottomRightRadius: '8px',
     borderRight: '1px solid #e9ecef',
-    minWidth: '250px', // Para las habilidades
+    minWidth: '260px',
   },
-  // Estilos para los inputs de la tabla
+
+  // Inputs
   select: {
     border: '1px solid #ccc',
     borderRadius: '10px',
@@ -122,6 +123,28 @@ const styles = {
     backgroundColor: '#fff',
     width: '100%',
     minWidth: '120px'
+  },
+  inputText: {
+    border: '1px solid #ccc',
+    borderRadius: '10px',
+    padding: '0 12px',
+    height: '45px',
+    fontSize: '14px',
+    color: '#333',
+    outline: 'none',
+    width: '220px',
+    boxSizing: 'border-box'
+  },
+  inputPhone: {
+    border: '1px solid #ccc',
+    borderRadius: '10px',
+    padding: '0 12px',
+    height: '45px',
+    fontSize: '14px',
+    color: '#333',
+    outline: 'none',
+    width: '170px',
+    boxSizing: 'border-box'
   },
   inputModulo: {
     border: '1px solid #ccc',
@@ -135,6 +158,46 @@ const styles = {
     textAlign: 'center',
     boxSizing: 'border-box'
   },
+
+  // Activo
+  activoBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '8px',
+    alignItems: 'flex-start'
+  },
+  toggleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px'
+  },
+  toggle: {
+    width: '16px',
+    height: '16px',
+    accentColor: '#0d6efd'
+  },
+  badgeActive: {
+    display: 'inline-block',
+    padding: '4px 10px',
+    borderRadius: '999px',
+    fontSize: '12px',
+    fontWeight: 700,
+    background: '#e8fff0',
+    color: '#0a7a2f',
+    border: '1px solid #b7f0c6'
+  },
+  badgeInactive: {
+    display: 'inline-block',
+    padding: '4px 10px',
+    borderRadius: '999px',
+    fontSize: '12px',
+    fontWeight: 700,
+    background: '#ffecec',
+    color: '#b30000',
+    border: '1px solid #ffd0d0'
+  },
+
+  // Habilidades
   habilidadesBox: {
     display: 'flex',
     flexDirection: 'column',
@@ -150,7 +213,7 @@ const styles = {
   checkbox: {
     width: '16px',
     height: '16px',
-    accentColor: '#007bff' // Azul
+    accentColor: '#007bff'
   }
 };
 // --- FIN DE ESTILOS ---
@@ -162,10 +225,6 @@ export default function AdminAgents() {
   const { currentUser } = useAuth();
 
   // Filtros
-  // filtroRol:
-  //  - "staff" → solo roles distintos de ciudadano (lo que más le importa al admin)
-  //  - "todos" → muestra absolutamente todos
-  //  - "ciudadano" / "agente" / "admin" / "pantalla" / "kiosko"
   const [filtroRol, setFiltroRol] = useState('staff');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -202,11 +261,12 @@ export default function AdminAgents() {
     return () => unsubscribe();
   }, []);
 
+  const safeRole = (r) => (r ? String(r).toLowerCase() : 'ciudadano');
+
   const handleRolChange = (userId, nuevoRol) => {
-    // Buscamos el usuario para validar su correo
     const usuario = usuarios.find((u) => u.id === userId);
     const email = usuario?.email || '';
-    const rolActual = usuario?.rol || 'ciudadano';
+    const rolActual = safeRole(usuario?.rol);
 
     // Si se intenta asignar un rol de staff a un correo NO institucional → bloqueamos
     if (STAFF_ROLES.includes(nuevoRol) && !isInstitutionalEmail(email)) {
@@ -218,13 +278,10 @@ export default function AdminAgents() {
       return;
     }
 
-    // Bajar de staff a ciudadano siempre se permite
     if (rolActual === nuevoRol) return;
 
     const userDocRef = doc(db, 'usuarios', userId);
-    updateDoc(userDocRef, {
-      rol: nuevoRol
-    }).catch(error => {
+    updateDoc(userDocRef, { rol: nuevoRol }).catch(error => {
       console.error("Error al cambiar rol: ", error);
       alert("Error al actualizar el rol.");
     });
@@ -233,9 +290,7 @@ export default function AdminAgents() {
   const handleModuloChange = (userId, nuevoModulo) => {
     const moduloNum = Number(nuevoModulo) || 0;
     const userDocRef = doc(db, 'usuarios', userId);
-    updateDoc(userDocRef, {
-      moduloAsignado: moduloNum
-    }).catch(error => {
+    updateDoc(userDocRef, { moduloAsignado: moduloNum }).catch(error => {
       console.error("Error al cambiar módulo: ", error);
       alert("Error al actualizar el módulo.");
     });
@@ -245,42 +300,63 @@ export default function AdminAgents() {
     const usuario = usuarios.find(u => u.id === userId);
     if (!usuario) return;
 
-    let habilidadesActuales = usuario.habilidades || [];
-    let nuevasHabilidades;
-
-    if (isChecked) {
-      nuevasHabilidades = [...new Set([...habilidadesActuales, tramiteId])];
-    } else {
-      nuevasHabilidades = habilidadesActuales.filter(h => h !== tramiteId);
-    }
+    const habilidadesActuales = usuario.habilidades || [];
+    const nuevasHabilidades = isChecked
+      ? [...new Set([...habilidadesActuales, tramiteId])]
+      : habilidadesActuales.filter(h => h !== tramiteId);
 
     const userDocRef = doc(db, 'usuarios', userId);
-    updateDoc(userDocRef, {
-      habilidades: nuevasHabilidades
-    }).catch(error => {
+    updateDoc(userDocRef, { habilidades: nuevasHabilidades }).catch(error => {
       console.error("Error al cambiar habilidades: ", error);
       alert("Error al actualizar habilidades.");
     });
   };
 
-  // 🔍 Lógica de filtrado en memoria (para ~cientos de usuarios va sobrado)
+  // NUEVO: nombreCompleto / telefono / activo
+  const handleNombreChange = (userId, value) => {
+    const nombre = (value || '').toString().trim();
+    const userDocRef = doc(db, 'usuarios', userId);
+    updateDoc(userDocRef, { nombreCompleto: nombre }).catch(error => {
+      console.error("Error al actualizar nombreCompleto: ", error);
+      alert("Error al actualizar el nombre.");
+    });
+  };
+
+  const handleTelefonoChange = (userId, value) => {
+    const tel = (value || '').toString().trim();
+    const userDocRef = doc(db, 'usuarios', userId);
+    updateDoc(userDocRef, { telefono: tel }).catch(error => {
+      console.error("Error al actualizar telefono: ", error);
+      alert("Error al actualizar el teléfono.");
+    });
+  };
+
+  const handleActivoChange = (userId, checked) => {
+    const userDocRef = doc(db, 'usuarios', userId);
+    updateDoc(userDocRef, { activo: !!checked }).catch(error => {
+      console.error("Error al actualizar activo: ", error);
+      alert("Error al actualizar estado activo.");
+    });
+  };
+
+  // Filtrado
   const usuariosFiltrados = usuarios.filter((user) => {
-    const rol = user.rol || 'ciudadano';
+    const rol = safeRole(user.rol);
 
     // 1) Filtro por rol
     if (filtroRol === 'staff') {
-      // Solo personal: todo lo que NO sea ciudadano
       if (rol === 'ciudadano') return false;
     } else if (filtroRol !== 'todos') {
       if (rol !== filtroRol) return false;
     }
 
-    // 2) Filtro por texto (email o DNI)
+    // 2) Texto (email o DNI)
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       const emailMatch = (user.email || '').toLowerCase().includes(term);
-      const dniMatch = user.dni ? String(user.dni).includes(term) : false;
-      if (!emailMatch && !dniMatch) return false;
+      const dniMatch = user.dni ? String(user.dni).toLowerCase().includes(term) : false;
+      const nombreMatch = (user.nombreCompleto || '').toLowerCase().includes(term);
+      if (!emailMatch && !dniMatch && !nombreMatch) return false;
     }
 
     return true;
@@ -294,7 +370,7 @@ export default function AdminAgents() {
     <div style={styles.card}>
       <h3 style={styles.formTitle}>Gestión de Agentes y Habilidades</h3>
 
-      {/* 🔍 Barra de filtros */}
+      {/* Barra de filtros */}
       <div style={styles.filterBar}>
         <span style={styles.filterLabel}>Mostrar:</span>
         <select
@@ -315,7 +391,7 @@ export default function AdminAgents() {
         <input
           type="text"
           style={styles.filterInput}
-          placeholder="Email o DNI..."
+          placeholder="Email, DNI o Nombre..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -326,85 +402,157 @@ export default function AdminAgents() {
           <thead>
             <tr>
               <th style={styles.th}>Email</th>
+              <th style={styles.th}>Nombre</th>
+              <th style={styles.th}>Teléfono</th>
+              <th style={styles.th}>Activo</th>
               <th style={styles.th}>Rol</th>
               <th style={styles.th}>Módulo</th>
               <th style={styles.th}>Habilidades (Trámites que atiende)</th>
             </tr>
           </thead>
+
           <tbody>
-            {usuariosFiltrados.map(user => (
-              <tr key={user.id} style={styles.tr}>
+            {usuariosFiltrados.map(user => {
+              const rol = safeRole(user.rol);
+              const isSelf = user.id === currentUser?.uid;
 
-                {/* Email */}
-                <td style={{ ...styles.td, ...styles.tdFirst }}>{user.email}</td>
+              const isStaff = rol !== 'ciudadano';
+              const activo = user.activo === false ? false : true; // default true
 
-                {/* Rol */}
-                <td style={styles.td}>
-                  <select
-                    style={styles.select}
-                    value={user.rol}
-                    onChange={(e) => handleRolChange(user.id, e.target.value)}
-                    disabled={user.id === currentUser?.uid}
-                  >
-                    <option value="ciudadano">Ciudadano</option>
-                    <option value="agente">Agente</option>
-                    <option value="admin">Admin</option>
-                    <option value="pantalla">Pantalla TV</option>
-                    <option value="kiosko">Kiosko</option>
-                  </select>
-                </td>
+              return (
+                <tr key={user.id} style={styles.tr}>
+                  {/* Email */}
+                  <td style={{ ...styles.td, ...styles.tdFirst }}>
+                    {user.email || '(sin email)'}
+                  </td>
 
-                {/* Módulo */}
-                <td style={styles.td}>
-                  {user.rol !== 'ciudadano' && user.rol !== 'pantalla' && user.rol !== 'kiosko' ? (
-                    <input
-                      type="number"
-                      style={styles.inputModulo}
-                      key={user.id + (user.moduloAsignado ?? '')}
-                      defaultValue={user.moduloAsignado || ''}
-                      placeholder="N/A"
-                      onBlur={(e) => handleModuloChange(user.id, e.target.value)}
-                    />
-                  ) : (
-                    <span>—</span>
-                  )}
-                </td>
+                  {/* Nombre */}
+                  <td style={styles.td}>
+                    {isStaff ? (
+                      <input
+                        type="text"
+                        style={styles.inputText}
+                        key={user.id + (user.nombreCompleto ?? '')}
+                        defaultValue={user.nombreCompleto || ''}
+                        placeholder="Nombre completo"
+                        onBlur={(e) => handleNombreChange(user.id, e.target.value)}
+                      />
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </td>
 
-                {/* Habilidades */}
-                <td style={{ ...styles.td, ...styles.tdLast }}>
-                  {user.rol === 'agente' || user.rol === 'admin' ? (
-                    <div style={styles.habilidadesBox}>
-                      {tramites.map(tramite => {
-                        const tieneHabilidad = user.habilidades?.includes(tramite.id) || false;
-                        return (
-                          <label key={tramite.id} style={styles.habilidadLabel}>
-                            <input
-                              type="checkbox"
-                              style={styles.checkbox}
-                              checked={tieneHabilidad}
-                              onChange={(e) =>
-                                handleHabilidadChange(
-                                  user.id,
-                                  tramite.id,
-                                  e.target.checked
-                                )
-                              }
-                            />
-                            {tramite.nombre}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <span>—</span>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  {/* Teléfono */}
+                  <td style={styles.td}>
+                    {isStaff ? (
+                      <input
+                        type="text"
+                        style={styles.inputPhone}
+                        key={user.id + (user.telefono ?? '')}
+                        defaultValue={user.telefono || ''}
+                        placeholder="+56 9 ..."
+                        onBlur={(e) => handleTelefonoChange(user.id, e.target.value)}
+                      />
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </td>
+
+                  {/* Activo */}
+                  <td style={styles.td}>
+                    {isStaff ? (
+                      <div style={styles.activoBox}>
+                        <div style={styles.toggleRow}>
+                          <input
+                            type="checkbox"
+                            style={styles.toggle}
+                            checked={activo}
+                            disabled={isSelf}
+                            onChange={(e) => handleActivoChange(user.id, e.target.checked)}
+                          />
+                          <span style={activo ? styles.badgeActive : styles.badgeInactive}>
+                            {activo ? 'Activo' : 'Inactivo'}
+                          </span>
+                        </div>
+                        {isSelf && (
+                          <span style={{ fontSize: 12, color: '#777' }}>
+                            No puedes desactivarte a ti mismo.
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </td>
+
+                  {/* Rol */}
+                  <td style={styles.td}>
+                    <select
+                      style={styles.select}
+                      value={rol}
+                      onChange={(e) => handleRolChange(user.id, e.target.value)}
+                      disabled={isSelf}
+                    >
+                      <option value="ciudadano">Ciudadano</option>
+                      <option value="agente">Agente</option>
+                      <option value="admin">Admin</option>
+                      <option value="pantalla">Pantalla TV</option>
+                      <option value="kiosko">Kiosko</option>
+                    </select>
+                  </td>
+
+                  {/* Módulo */}
+                  <td style={styles.td}>
+                    {rol !== 'ciudadano' && rol !== 'pantalla' && rol !== 'kiosko' ? (
+                      <input
+                        type="number"
+                        style={styles.inputModulo}
+                        key={user.id + (user.moduloAsignado ?? '')}
+                        defaultValue={user.moduloAsignado || ''}
+                        placeholder="N/A"
+                        onBlur={(e) => handleModuloChange(user.id, e.target.value)}
+                      />
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </td>
+
+                  {/* Habilidades */}
+                  <td style={{ ...styles.td, ...styles.tdLast }}>
+                    {rol === 'agente' || rol === 'admin' ? (
+                      <div style={styles.habilidadesBox}>
+                        {tramites.map(tramite => {
+                          const tieneHabilidad = user.habilidades?.includes(tramite.id) || false;
+                          return (
+                            <label key={tramite.id} style={styles.habilidadLabel}>
+                              <input
+                                type="checkbox"
+                                style={styles.checkbox}
+                                checked={tieneHabilidad}
+                                onChange={(e) =>
+                                  handleHabilidadChange(
+                                    user.id,
+                                    tramite.id,
+                                    e.target.checked
+                                  )
+                                }
+                              />
+                              {tramite.nombre}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
 
             {usuariosFiltrados.length === 0 && (
               <tr>
-                <td colSpan={4} style={{ ...styles.td, textAlign: 'center', fontStyle: 'italic' }}>
+                <td colSpan={7} style={{ ...styles.td, textAlign: 'center', fontStyle: 'italic' }}>
                   No hay usuarios que coincidan con el filtro actual.
                 </td>
               </tr>

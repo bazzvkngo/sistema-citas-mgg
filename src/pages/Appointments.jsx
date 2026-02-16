@@ -1,25 +1,52 @@
-// src/pages/Appointments.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
-  collection, getDocs, addDoc, query, where,
-  Timestamp, deleteDoc, doc, onSnapshot
+  collection,
+  getDocs,
+  query,
+  where,
+  deleteDoc,
+  doc,
+  onSnapshot
 } from 'firebase/firestore';
 import { db, app } from '../firebase';
 import { getFunctions, httpsCallable } from 'firebase/functions';
+import { getAuth } from 'firebase/auth';
 import { DayPicker } from 'react-day-picker';
 import 'react-day-picker/dist/style.css';
-import { setHours, setMinutes, format, addDays, getDay } from 'date-fns';
+import { format, addDays, getDay } from 'date-fns';
 import { es } from 'date-fns/locale';
-import './Appointments.css';   // 👈 NUEVO
+import './Appointments.css';
 
-// Apuntar a Santiago
 const functions = getFunctions(app, 'southamerica-west1');
 const getAvailableSlots = httpsCallable(functions, 'getAvailableSlots');
 const checkDuplicados = httpsCallable(functions, 'checkDuplicados');
+const agendarCitaWebLock = httpsCallable(functions, 'agendarCitaWebLock');
 
-// DEFINIR FINES DE SEMANA
-const finesDeSemana = { daysOfWeek: [0, 6] }; // 0 = Domingo, 6 = Sábado
+const finesDeSemana = { daysOfWeek: [0, 6] };
+const CHILE_TZ = 'America/Santiago';
+
+function getChileDateISO(dateObj) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: CHILE_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(dateObj);
+}
+
+function getChileHHmm(dateObj) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: CHILE_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(dateObj);
+
+  const hh = parts.find(p => p.type === 'hour')?.value ?? '00';
+  const mm = parts.find(p => p.type === 'minute')?.value ?? '00';
+  return `${hh}:${mm}`;
+}
 
 export default function Appointments() {
   const { currentUser } = useAuth();
@@ -37,13 +64,12 @@ export default function Appointments() {
   const [successMessage, setSuccessMessage] = useState(null);
   const tomorrow = addDays(new Date(), 1);
 
-  // useEffect Cargar Trámites
   useEffect(() => {
     const fetchTramites = async () => {
       setLoadingTramites(true);
       try {
         const tramitesSnapshot = await getDocs(collection(db, 'tramites'));
-        const tramitesList = tramitesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const tramitesList = tramitesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         setTramites(tramitesList);
       } catch (error) {
         console.error("Error al cargar trámites: ", error);
@@ -53,57 +79,85 @@ export default function Appointments() {
     fetchTramites();
   }, []);
 
-  // useEffect Cargar Mis Citas
   useEffect(() => {
-    if (!currentUser) {
+    const auth = getAuth(app);
+    const uid = auth.currentUser?.uid || currentUser?.uid;
+
+    if (!uid) {
       setLoadingMyCitas(false);
+      setMyCitas([]);
       return;
     }
+
     setLoadingMyCitas(true);
 
-    // mostramos citas activas y llamadas
     const q = query(
       collection(db, 'citas'),
-      where('userID', '==', currentUser.uid),
+      where('userID', '==', uid),
       where('estado', 'in', ['activa', 'llamado'])
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const citasList = snapshot.docs.map(doc => ({
-        id: doc.id, ...doc.data()
-      }));
-      setMyCitas(citasList);
-      setLoadingMyCitas(false);
-    }, (error) => {
-      console.error("Error al escuchar mis citas: ", error);
-      setLoadingMyCitas(false);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const citasList = snapshot.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }));
+        setMyCitas(citasList);
+        setLoadingMyCitas(false);
+      },
+      (error) => {
+        console.error("Error al escuchar mis citas: ", error);
+        setLoadingMyCitas(false);
+      }
+    );
 
     return () => unsubscribe();
   }, [currentUser]);
 
-  // useEffect Buscar Horarios
+  // Slots ocupados por el propio usuario en la fecha seleccionada (para ocultarlos en el select)
+  const userTakenSlotsOnSelectedDate = useMemo(() => {
+    if (!selectedDate || !myCitas?.length) return new Set();
+    const selectedKey = getChileDateISO(selectedDate);
+
+    const taken = new Set();
+    for (const c of myCitas) {
+      if (!c?.fechaHora?.toDate) continue;
+      const d = c.fechaHora.toDate();
+      const key = getChileDateISO(d);
+      if (key !== selectedKey) continue;
+      taken.add(getChileHHmm(d));
+    }
+    return taken;
+  }, [selectedDate, myCitas]);
+
   useEffect(() => {
-    if (!selectedTramiteId || !selectedDate || !currentUser) {
+    if (!selectedTramiteId || !selectedDate) {
       setAvailableSlots([]);
       return;
     }
+
     const day = getDay(selectedDate);
     if (day === 0 || day === 6) {
       setAvailableSlots([]);
       return;
     }
+
     const fetchAvailableSlots = async () => {
       setLoadingSlots(true);
       setAvailableSlots([]);
       setSelectedSlot("");
       setAgendarError(null);
+
       try {
         const result = await getAvailableSlots({
           tramiteId: selectedTramiteId,
           fechaISO: selectedDate.toISOString()
         });
-        setAvailableSlots(result.data.slots);
+
+        const slots = Array.isArray(result?.data?.slots) ? result.data.slots : [];
+        setAvailableSlots(slots);
       } catch (error) {
         console.error("Error al buscar horarios (Cloud Function):", error);
         setAgendarError("Error al buscar horarios. Intente de nuevo.");
@@ -111,10 +165,15 @@ export default function Appointments() {
         setLoadingSlots(false);
       }
     };
-    fetchAvailableSlots();
-  }, [selectedDate, selectedTramiteId, currentUser]);
 
-  // handleAgendarCita
+    fetchAvailableSlots();
+  }, [selectedDate, selectedTramiteId]);
+
+  const filteredSlots = useMemo(() => {
+    if (!availableSlots?.length) return [];
+    return availableSlots.filter(s => !userTakenSlotsOnSelectedDate.has(s));
+  }, [availableSlots, userTakenSlotsOnSelectedDate]);
+
   const handleAgendarCita = async (e) => {
     e.preventDefault();
     setAgendarError(null);
@@ -124,61 +183,59 @@ export default function Appointments() {
       setAgendarError("Por favor, seleccione un horario.");
       return;
     }
+
     if (!currentUser || !currentUser.dni) {
       setAgendarError("Error: No se pudieron cargar sus datos de usuario (DNI).");
+      return;
+    }
+
+    const auth = getAuth(app);
+    const uid = auth.currentUser?.uid || currentUser?.uid;
+
+    if (!uid) {
+      setAgendarError("Sesión no válida.");
       return;
     }
 
     setLoading(true);
 
     try {
-      const tramiteSeleccionado = tramites.find(t => t.id === selectedTramiteId);
-
-      // 1. Verificación Anti-Duplicados
       await checkDuplicados({
         dniLimpio: currentUser.dni,
         tramiteId: selectedTramiteId
       });
 
-      // 2. Código numérico aleatorio
-      const numeroUnico = Math.floor(1000 + Math.random() * 9000);
-      const nuevoCodigo = `C-${numeroUnico}`;
-
-      // 3. Crear objeto cita
-      const [hours, minutes] = selectedSlot.split(':').map(Number);
-      const fechaHoraFinal = setHours(setMinutes(selectedDate, minutes), hours);
-      const nuevaCita = {
-        userID: currentUser.uid,
+      const resp = await agendarCitaWebLock({
+        tramiteId: selectedTramiteId,
+        fechaISO: selectedDate.toISOString(),
+        slot: selectedSlot,
         dni: currentUser.dni,
-        userNombre: currentUser.nombre || currentUser.displayName,
-        userEmail: currentUser.email,
-        tramiteID: selectedTramiteId,
-        fechaHora: Timestamp.fromDate(fechaHoraFinal),
-        fechaHoraGenerado: Timestamp.now(),
-        codigo: nuevoCodigo,
-        estado: "activa"
-      };
+        userNombre: currentUser.nombre || currentUser.displayName || '',
+        userEmail: currentUser.email || ''
+      });
 
-      // 4. Guardar Cita
-      await addDoc(collection(db, "citas"), nuevaCita);
-
-      // 5. Mensaje éxito
-      let mensajeFinal = `¡Cita agendada con éxito! Su código es: ${nuevoCodigo}.\nRecuerde estar 10 minutos antes.`;
+      const codigo = resp?.data?.codigo || '';
+      const mensajeFinal = `Cita agendada con éxito. Su código es: ${codigo}.\nRecuerde estar 10 minutos antes.`;
       setSuccessMessage(mensajeFinal);
 
       setSelectedTramiteId("");
       setSelectedDate(undefined);
       setAvailableSlots([]);
       setSelectedSlot("");
-
     } catch (error) {
       console.error("Error al agendar la cita: ", error);
-      setAgendarError(error.message);
+
+      const msg =
+        error?.message ||
+        error?.details ||
+        "No se pudo agendar. Intente nuevamente.";
+
+      setAgendarError(msg);
     }
+
     setLoading(false);
   };
 
-  // handleCancelCita
   const handleCancelCita = async (citaId) => {
     if (!window.confirm("¿Está seguro de que desea cancelar esta cita?")) {
       return;
@@ -201,7 +258,6 @@ export default function Appointments() {
     );
   };
 
-  // Render item de cita
   const renderCitaItem = (cita) => {
     const tramite = tramites.find(t => t.id === cita.tramiteID);
     const link = tramite?.enlaceInfo;
@@ -234,7 +290,7 @@ export default function Appointments() {
 
         {link && (
           <p style={{ marginTop: '5px', fontSize: '13px', color: '#666' }}>
-            📌 Importante: Verifique la documentación requerida.
+            Importante: Verifique la documentación requerida.
             <a
               href={link}
               target="_blank"
@@ -248,7 +304,7 @@ export default function Appointments() {
         )}
 
         <p style={{ marginTop: '8px', fontSize: '13px' }}>
-          🔍 Puede seguir el estado de su cita aquí:{' '}
+          Puede seguir el estado de su cita aquí:{' '}
           <a
             href={qrUrl}
             target="_blank"
@@ -271,13 +327,11 @@ export default function Appointments() {
     );
   };
 
-  // JSX
   return (
     <div className="appointments-page">
       <h2 className="appointments-title">Mis Citas en el Consulado</h2>
 
       <div className="appointments-grid">
-        {/* Columna izquierda: Mis Citas */}
         <section className="appointments-card">
           <h3>Mis Citas Agendadas</h3>
 
@@ -292,7 +346,6 @@ export default function Appointments() {
           )}
         </section>
 
-        {/* Columna derecha: Agendar nueva cita */}
         <section className="appointments-card">
           <h3>Agendar Nueva Cita</h3>
 
@@ -355,7 +408,7 @@ export default function Appointments() {
 
                 {loadingSlots && <p>Buscando horarios disponibles...</p>}
 
-                {availableSlots.length > 0 && selectedDate && (
+                {filteredSlots.length > 0 && selectedDate && (
                   <div style={{ marginTop: '15px' }}>
                     <label>3. Seleccione un horario:</label>
                     <br />
@@ -366,7 +419,7 @@ export default function Appointments() {
                       style={styles.select}
                     >
                       <option value="">-- Seleccione un horario --</option>
-                      {availableSlots.map((slotString, index) => (
+                      {filteredSlots.map((slotString, index) => (
                         <option key={index} value={slotString}>
                           {slotString}
                         </option>
@@ -375,11 +428,12 @@ export default function Appointments() {
                   </div>
                 )}
 
-                {availableSlots.length === 0 && !loadingSlots && selectedTramiteId && selectedDate && (
+                {filteredSlots.length === 0 && !loadingSlots && selectedTramiteId && selectedDate && (
                   <p style={styles.errorText}>No hay horarios disponibles para esta fecha.</p>
                 )}
 
                 {agendarError && <p style={styles.errorText}>{agendarError}</p>}
+
                 <button
                   type="submit"
                   style={styles.submitButton}
@@ -402,7 +456,6 @@ export default function Appointments() {
   );
 }
 
-// --- Estilos inline ---
 const styles = {
   citaListItem: {
     border: '1px solid #ccc',
@@ -421,8 +474,8 @@ const styles = {
   },
   select: {
     padding: '8px',
-    width: '100%',      // 👈 más cómodo dentro de la card
-    maxWidth: '320px',  // límite razonable en desktop
+    width: '100%',
+    maxWidth: '320px',
     boxSizing: 'border-box'
   },
   calendarContainer: {

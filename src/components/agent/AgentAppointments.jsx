@@ -1,437 +1,165 @@
-// src/components/agente/PanelAgenteCitas.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   collection,
-  query,
-  where,
-  onSnapshot,
   doc,
+  onSnapshot,
+  orderBy,
+  query,
   updateDoc,
+  where,
   Timestamp,
-  setDoc,
-  writeBatch
+  setDoc
 } from 'firebase/firestore';
 import { db } from '../../firebase';
-import { useAuth } from '../../context/AuthContext';
-import FinalizarAtencionModal from './FinishServiceModal';
-import { format, addMinutes, subMinutes, endOfDay } from 'date-fns';
+import { format } from 'date-fns';
 
-// --- Estilos ---
 const styles = {
-  container: { marginTop: '20px' },
-  citaBox: {
-    border: '2px solid #C8102E', // Rojo
-    borderRadius: '8px',
-    padding: '30px',
-    marginBottom: '20px',
-    backgroundColor: '#ffeded', // Fondo rojo muy claro
-    textAlign: 'center'
-  },
-  citaHeader: { fontSize: '28px', color: '#C8102E', fontWeight: 'bold' },
-  citaCode: { fontSize: '48px', fontWeight: 'bold', margin: '10px 0' },
-  atenderButton: {
-    padding: '15px 30px',
-    fontSize: '22px',
-    backgroundColor: 'green',
-    color: 'white',
+  title: { fontSize: 22, color: '#C8102E', marginBottom: 16, fontWeight: 800 },
+  empty: { padding: 14, border: '1px solid #ddd', borderRadius: 10, background: '#fff' },
+  table: { width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 10, overflow: 'hidden' },
+  th: { textAlign: 'left', padding: 12, background: '#f3f3f3', borderBottom: '1px solid #ddd' },
+  td: { padding: 12, borderBottom: '1px solid #eee', verticalAlign: 'top' },
+  btn: {
+    backgroundColor: '#0d6efd',
+    color: '#fff',
     border: 'none',
-    borderRadius: '5px',
+    borderRadius: 8,
+    padding: '10px 12px',
     cursor: 'pointer',
-    marginTop: '20px'
+    fontWeight: 800
   },
-  atenderButtonDisabled: {
-    padding: '15px 30px',
-    fontSize: '22px',
-    backgroundColor: '#999',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    cursor: 'not-allowed',
-    marginTop: '20px'
-  },
-  helperText: {
-    marginTop: '10px',
-    fontSize: '14px',
-    color: '#555'
-  },
-  atencionBox: {
-    border: '2px solid #004C91',
-    borderRadius: '8px',
-    padding: '30px',
-    marginBottom: '20px',
-    backgroundColor: '#e6f0f8',
-    textAlign: 'center'
-  },
-  atencionTipo: { fontSize: '18px', color: '#004C91', fontWeight: 'bold' },
-  atencionTurno: { fontSize: '20px', fontWeight: 'bold' },
-  finishButton: {
-    padding: '15px 30px',
-    fontSize: '22px',
-    backgroundColor: '#C8102E',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    cursor: 'pointer',
-    marginTop: '20px'
-  },
-
-  // Lista de próximas citas
-  listaContainer: {
-    marginTop: '30px',
-    padding: '20px',
-    borderRadius: '8px',
-    border: '1px solid #ddd',
-    backgroundColor: '#fafafa'
-  },
-  listaTitulo: {
-    fontSize: '18px',
-    fontWeight: 'bold',
-    marginBottom: '10px',
-    color: '#333'
-  },
-  listaTable: {
-    width: '100%',
-    borderCollapse: 'collapse',
-    fontSize: '14px'
-  },
-  listaTh: {
-    textAlign: 'left',
-    padding: '8px',
-    borderBottom: '1px solid #ddd',
-    color: '#555'
-  },
-  listaTd: {
-    padding: '6px 8px',
-    borderBottom: '1px solid #eee'
-  },
-  listaRowDestacada: {
-    backgroundColor: '#ffecec'
+  btnDisabled: {
+    backgroundColor: '#0d6efd',
+    opacity: 0.55,
+    cursor: 'not-allowed'
   }
 };
-// --- Fin de Estilos ---
 
-// Tolerancia total antes de marcar NO_SE_PRESENTO (backend)
-const MARGEN_TOLERANCIA_MIN = 15;
+export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
+  const [citas, setCitas] = useState([]);
+  const [tramitesMap, setTramitesMap] = useState({});
 
-// Cuánto antes de la hora de la cita el agente puede verla como "en camino"
-const ANTICIPO_VISUAL_MIN = 10;
-
-// Ventanita en la que mostramos el mensaje fuerte de "¡AHORA!"
-const VENTANA_AHORA_MIN = 5;
-
-export default function PanelAgenteCitas() {
-  const { currentUser } = useAuth();
-  const [citaActiva, setCitaActiva] = useState(null);       // Cita prioritaria
-  const [citasProximas, setCitasProximas] = useState([]);   // Todas las siguientes del día
-  const [citaLlamada, setCitaLlamada] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-
-  // Marcar citas como NO_SE_PRESENTO cuando se pasan de la tolerancia
-  const marcarCitasComoAusentes = async (ids) => {
-    if (ids.length === 0) return;
-    console.log(`Sistema: Marcando ${ids.length} citas como NO_SE_PRESENTO...`);
-    const batch = writeBatch(db);
-
-    ids.forEach(id => {
-      const citaDocRef = doc(db, 'citas', id);
-      batch.update(citaDocRef, {
-        estado: 'completado',
-        clasificacion: 'NO_SE_PRESENTO',
-        comentariosAgente: `Sistema automático: Cita expiró tras ${MARGEN_TOLERANCIA_MIN} minutos de tolerancia.`
-      });
-    });
-
-    try {
-      await batch.commit();
-    } catch (err) {
-      console.error("Error en batch al marcar ausentes:", err);
-    }
-  };
-
-  // Oyente de citas activas para el agente
   useEffect(() => {
-    if (
-      !currentUser ||
-      !currentUser.habilidades ||
-      currentUser.habilidades.length === 0 ||
-      !currentUser.moduloAsignado
-    ) {
-      setLoading(false);
-      return;
-    }
+    const qT = query(collection(db, 'tramites'));
+    const unsub = onSnapshot(qT, (snap) => {
+      const map = {};
+      snap.docs.forEach(d => {
+        const data = d.data();
+        map[d.id] = data.nombre || d.id;
+      });
+      setTramitesMap(map);
+    });
+    return () => unsub();
+  }, []);
 
-    const habilidadesLimitadas = currentUser.habilidades.slice(0, 10);
+  useEffect(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
 
-    const qCitas = query(
+    const end = new Date(start);
+    end.setDate(end.getDate() + 1);
+
+    const qC = query(
       collection(db, 'citas'),
       where('estado', '==', 'activa'),
-      where('tramiteID', 'in', habilidadesLimitadas)
+      where('fechaHora', '>=', Timestamp.fromDate(start)),
+      where('fechaHora', '<', Timestamp.fromDate(end)),
+      orderBy('fechaHora', 'asc')
     );
 
-    const unsubscribe = onSnapshot(
-      qCitas,
-      (snapshot) => {
-        const now = Timestamp.now().toDate();
-        let proximaCita = null;
-        const citasAusentesIds = [];
-        const proximasDelDia = [];
+    const unsub = onSnapshot(qC, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setCitas(list);
+    });
 
-        snapshot.docs.forEach(docSnap => {
-          const base = { id: docSnap.id, ...docSnap.data() };
-          const citaTime = base.fechaHora.toDate();
+    return () => unsub();
+  }, []);
 
-          // Solo nos interesan las de hoy hacia adelante (no de días pasados)
-          const finDelDia = endOfDay(now);
-          if (citaTime > finDelDia) {
-            // Citas de días futuros no se muestran en la lista de hoy
-            return;
-          }
-
-          const limiteSuperior = addMinutes(citaTime, MARGEN_TOLERANCIA_MIN);
-          const limiteInferiorVisual = subMinutes(citaTime, ANTICIPO_VISUAL_MIN);
-
-          // Si ya pasó la tolerancia total -> marcar como NO_SE_PRESENTO
-          if (now > limiteSuperior) {
-            citasAusentesIds.push(base.id);
-            return;
-          }
-
-          const esMomentoDeLlamar = now >= citaTime;
-          const esAhora =
-            now >= citaTime && now <= addMinutes(citaTime, VENTANA_AHORA_MIN);
-          const estaRetrasada =
-            now > addMinutes(citaTime, VENTANA_AHORA_MIN) && now <= limiteSuperior;
-          const dentroVentanaVisual =
-            now >= limiteInferiorVisual && now <= limiteSuperior;
-
-          const citaEnriquecida = {
-            ...base,
-            limite: limiteSuperior,
-            esMomentoDeLlamar,
-            esAhora,
-            estaRetrasada,
-            dentroVentanaVisual
-          };
-
-          // 👉 Lista informativa de PRÓXIMAS citas (hoy, de ahora en adelante)
-          if (citaTime >= now) {
-            proximasDelDia.push(citaEnriquecida);
-          }
-
-          // 👉 Cita prioritaria: la más cercana dentro de la ventana visual
-          if (dentroVentanaVisual) {
-            if (
-              !proximaCita ||
-              citaTime < proximaCita.fechaHora.toDate()
-            ) {
-              proximaCita = citaEnriquecida;
-            }
-          }
-        });
-
-        // Ordenar lista de próximas por hora
-        proximasDelDia.sort(
-          (a, b) => a.fechaHora.toDate() - b.fechaHora.toDate()
-        );
-
-        setCitaActiva(proximaCita);
-        setCitasProximas(proximasDelDia);
-        setLoading(false);
-        marcarCitasComoAusentes(citasAusentesIds);
-      },
-      (error) => {
-        console.error("Error en el oyente de citas (onSnapshot):", error);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [currentUser]);
-
-  // Lógica para ATENDER la cita
-  const handleAtenderCita = async (cita) => {
-    const modulo = currentUser.moduloAsignado || 0;
-
+  const llamarCita = async (cita) => {
     try {
-      // 1. Actualizar la TV GLOBAL
-      const tvDocRef = doc(db, 'estadoSistema', 'llamadaActual');
-      await setDoc(tvDocRef, {
-        codigoLlamado: cita.codigo,
-        modulo: modulo,
-        timestamp: Timestamp.now()
-      });
+      const modulo = moduloEfectivo;
+      if (!modulo) return alert('No tienes módulo asignado.');
 
-      // 2. Actualizar el estado del TRÁMITE (seguimiento/QR)
-      const tramiteDocRef = doc(db, 'estadoSistema', `tramite_${cita.tramiteID}`);
-      await setDoc(tramiteDocRef, {
-        codigoLlamado: cita.codigo,
-        modulo: modulo,
-        timestamp: Timestamp.now()
-      });
+      if (atencionActual) {
+        return alert(`Ya estás atendiendo un ${atencionActual.tipo} (${atencionActual.codigo}). Finaliza antes de llamar otro.`);
+      }
 
-      // 3. Marcar la cita como LLAMADA
-      const citaDocRef = doc(db, 'citas', cita.id);
-      await updateDoc(citaDocRef, {
+      const ref = doc(db, 'citas', cita.id);
+
+      await updateDoc(ref, {
         estado: 'llamado',
-        agenteID: currentUser.uid,
-        modulo: modulo
+        moduloAsignado: modulo
       });
 
-      // 4. Poner en estado de atención en el front
-      setCitaLlamada({
-        id: cita.id,
-        codigo: cita.codigo,
+      const tramiteNombre = tramitesMap[cita.tramiteID] || cita.tramiteID || '';
+
+      const payload = {
+        codigoLlamado: cita.codigo || cita.id,
+        modulo: modulo,
+        timestamp: Timestamp.now(),
         tipo: 'Cita',
-        nombreCliente: cita.userNombre
-      });
-      setCitaActiva(null);
-    } catch (error) {
-      console.error("Error al atender cita:", error);
-      alert("Error al intentar llamar la cita. Revise la consola.");
+        tramiteID: cita.tramiteID || '',
+        tramiteNombre
+      };
+
+      await setDoc(doc(db, 'estadoSistema', 'llamadaActual'), payload, { merge: true });
+
+      if (cita.tramiteID) {
+        await setDoc(doc(db, 'estadoSistema', `tramite_${cita.tramiteID}`), payload, { merge: true });
+      }
+    } catch (e) {
+      console.error('Error llamando cita:', e);
+      alert('Error al llamar la cita. Revisa consola.');
     }
   };
 
-  const handleFinalizarExito = (tipo, codigo) => {
-    setCitaLlamada(null);
-    setShowModal(false);
-    alert(`Atención de ${tipo} ${codigo} finalizada.`);
-  };
-
-  // --- Render ---
-  if (loading) return <p>Cargando citas web...</p>;
-
-  // Lista de próximas sin duplicar la que está arriba como prioritaria
-  const citasSiguientes = citasProximas.filter(
-    (c) => !citaActiva || c.id !== citaActiva.id
-  );
+  const rows = useMemo(() => {
+    return citas.map(c => {
+      const tramiteNombre = tramitesMap[c.tramiteID] || c.tramiteID || 'Trámite';
+      const fecha = c.fechaHora?.toDate ? format(c.fechaHora.toDate(), 'dd/MM/yyyy HH:mm') : '—';
+      return { ...c, tramiteNombre, fecha };
+    });
+  }, [citas, tramitesMap]);
 
   return (
-    <div style={styles.container}>
-      {showModal && (
-        <FinalizarAtencionModal
-          turnoEnAtencion={citaLlamada}
-          onClose={() => setShowModal(false)}
-          onFinalizarExito={handleFinalizarExito}
-        />
-      )}
+    <div>
+      <h2 style={styles.title}>Citas Web (Agendadas)</h2>
 
-      {/* Bloque de cita en atención */}
-      {citaLlamada ? (
-        <div style={styles.atencionBox}>
-          <p style={styles.atencionTipo}>Atendiendo Cita Agendada:</p>
-          <p style={{ fontSize: '32px', margin: '0 0 10px 0' }}>
-            {citaLlamada.nombreCliente || 'Ciudadano'} ({citaLlamada.codigo})
-          </p>
-          <p style={styles.atencionTurno}>
-            MÓDULO {currentUser.moduloAsignado || 'N/A'}
-          </p>
-          <button
-            style={styles.finishButton}
-            onClick={() => setShowModal(true)}
-          >
-            Finalizar Atención
-          </button>
-        </div>
-      ) : citaActiva ? (
-        <div style={styles.citaBox}>
-          <p style={styles.citaHeader}>
-            {citaActiva.esAhora
-              ? '¡Cita agendada para AHORA!'
-              : !citaActiva.esMomentoDeLlamar
-              ? 'Cita próxima (aún no es hora de llamar)'
-              : citaActiva.estaRetrasada
-              ? 'Cita atrasada (aún dentro de la tolerancia)'
-              : 'Cita para este momento'}
-          </p>
-
-          <p style={{ fontSize: '20px' }}>
-            Cliente: {citaActiva.userNombre || 'Ciudadano'}
-          </p>
-          <p style={styles.citaCode}>{citaActiva.codigo}</p>
-
-          <p style={{ fontSize: '16px', color: 'gray' }}>
-            Hora:{' '}
-            {format(citaActiva.fechaHora.toDate(), 'HH:mm')} | Tolerancia hasta:{' '}
-            {format(citaActiva.limite, 'HH:mm')}
-          </p>
-
-          <button
-            style={
-              citaActiva.esMomentoDeLlamar
-                ? styles.atenderButton
-                : styles.atenderButtonDisabled
-            }
-            onClick={() =>
-              citaActiva.esMomentoDeLlamar && handleAtenderCita(citaActiva)
-            }
-            disabled={!citaActiva.esMomentoDeLlamar}
-          >
-            Atender Cita Ahora
-          </button>
-
-          {!citaActiva.esMomentoDeLlamar && (
-            <p style={styles.helperText}>
-              Espere a que sea la hora de la cita para poder llamar al ciudadano.
-            </p>
-          )}
-        </div>
+      {rows.length === 0 ? (
+        <div style={styles.empty}>No hay citas agendadas activas para atender en este momento.</div>
       ) : (
-        <p
-          style={{
-            fontSize: '18px',
-            padding: '20px',
-            border: '1px solid #ccc',
-            borderRadius: '5px'
-          }}
-        >
-          No hay citas agendadas activas para atender en este momento.
-        </p>
-      )}
-
-      {/* Lista informativa de próximas citas del día */}
-      {citasProximas.length > 0 && (
-        <div style={styles.listaContainer}>
-          <div style={styles.listaTitulo}>Próximas citas del día</div>
-          <table style={styles.listaTable}>
-            <thead>
-              <tr>
-                <th style={styles.listaTh}>Hora</th>
-                <th style={styles.listaTh}>Código</th>
-                <th style={styles.listaTh}>Cliente</th>
-                <th style={styles.listaTh}>Trámite</th>
-                <th style={styles.listaTh}>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {citasProximas.map((cita) => {
-                const esPrincipal = citaActiva && cita.id === citaActiva.id;
-                const labelEstado = cita.esMomentoDeLlamar
-                  ? cita.estaRetrasada
-                    ? 'En atraso (tolerancia)'
-                    : 'Listo para llamar'
-                  : 'Pendiente';
-
-                return (
-                  <tr
-                    key={cita.id}
-                    style={esPrincipal ? styles.listaRowDestacada : {}}
-                  >
-                    <td style={styles.listaTd}>
-                      {format(cita.fechaHora.toDate(), 'HH:mm')}
-                    </td>
-                    <td style={styles.listaTd}>{cita.codigo}</td>
-                    <td style={styles.listaTd}>
-                      {cita.userNombre || 'Ciudadano'}
-                    </td>
-                    <td style={styles.listaTd}>{cita.tramiteID}</td>
-                    <td style={styles.listaTd}>{labelEstado}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th style={styles.th}>Código</th>
+              <th style={styles.th}>Trámite</th>
+              <th style={styles.th}>Fecha</th>
+              <th style={styles.th}>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => {
+              const disabled = !!atencionActual;
+              return (
+                <tr key={c.id}>
+                  <td style={styles.td}><strong>{c.codigo}</strong></td>
+                  <td style={styles.td}>{c.tramiteNombre}</td>
+                  <td style={styles.td}>{c.fecha}</td>
+                  <td style={styles.td}>
+                    <button
+                      style={{ ...styles.btn, ...(disabled ? styles.btnDisabled : {}) }}
+                      disabled={disabled}
+                      onClick={() => llamarCita(c)}
+                      title={disabled ? 'Finaliza la atención actual para llamar otra' : 'Llamar cita'}
+                    >
+                      Llamar
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       )}
     </div>
   );

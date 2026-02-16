@@ -1,7 +1,8 @@
 // 1. Importar las funciones que necesitas del SDK
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore"; // Importamos Firestore
+import { getFirestore } from "firebase/firestore";
+import { getFunctions } from "firebase/functions";
 
 // 2. Tu configuración de Firebase
 const firebaseConfig = {
@@ -14,9 +15,11 @@ const firebaseConfig = {
 };
 
 // 3. Inicializar la app de Firebase
-// ✅ SOLUCIÓN: Añadimos 'export' para que otros archivos puedan importarla.
 export const app = initializeApp(firebaseConfig);
 
 // 4. Exportar los servicios que usaremos en la aplicación
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// 5. Cloud Functions (misma región donde desplegaste los callables)
+export const functions = getFunctions(app, "southamerica-west1");

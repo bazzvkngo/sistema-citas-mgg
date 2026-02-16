@@ -2,25 +2,36 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- HELPER FUNCTIONS ---
-    function getUserData(userId) {
-      return get(/databases/$(database)/documents/usuarios/$(userId)).data;
-    }
-    function getAuthData() {
-      return getUserData(request.auth.uid);
-    }
-    function isAgente() {
-      let userRole = getAuthData().rol;
-      return userRole == 'agente' || userRole == 'admin';
-    }
-    function isAdmin() {
-      return getAuthData().rol == 'admin';
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // --- COLECCIONES ---
+    function userDocPath(uid) {
+      return /databases/$(database)/documents/usuarios/$(uid);
+    }
+
+    function authUserExists() {
+      return isSignedIn() && exists(userDocPath(request.auth.uid));
+    }
+
+    function authRole() {
+      return authUserExists() ? get(userDocPath(request.auth.uid)).data.rol : null;
+    }
+
+    function isAgente() {
+      return authRole() == 'agente' || authRole() == 'admin';
+    }
+
+    function isAdmin() {
+      return authRole() == 'admin';
+    }
+
+    function isPantalla() {
+      return authRole() == 'pantalla';
+    }
 
     match /usuarios/{userId} {
-      allow create, get, update: if request.auth.uid == userId;
+      allow create, get, update: if isSignedIn() && request.auth.uid == userId;
       allow list, get, update: if isAdmin();
       allow delete: if false;
     }
@@ -30,32 +41,21 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // ✅ NUEVA COLECCIÓN: FERIADOS / DÍAS BLOQUEADOS
-    // Usa el mismo nombre de colección que en AdminHolidays.jsx (por ejemplo "feriados")
     match /feriados/{feriadoId} {
-      // Lectura: cualquiera logueado puede leerlos (para deshabilitar fechas en el calendario)
-      // Si prefieres que sea público incluso sin login, puedes usar `if true`.
-      allow get, list: if request.auth != null;
-
-      // Escritura solo para administradores
+      allow get, list: if isSignedIn();
       allow create, update, delete: if isAdmin();
     }
 
-    // ✅ --- REGLAS DE 'CITAS' CORREGIDAS ---
-    match /citas/{citaId} {
-      // Ciudadano puede crear o borrar sus propias citas
-      allow create: if request.auth.uid == request.resource.data.userID;
-      allow delete: if request.auth.uid == resource.data.userID;
-      
-      // Agente/Admin puede actualizar citas
-      allow update: if isAgente();
-      
-      // Un usuario puede LEER una cita si:
-      // 1. Es Agente/Admin
-      // 2. O es el dueño (userID) de esa cita.
-      allow read: if isAgente() || request.auth.uid == resource.data.userID;
+    match /slotLocks/{lockId} {
+      allow read, write: if false;
     }
-    // --- FIN DE LA CORRECCIÓN ---
+
+    match /citas/{citaId} {
+      allow create: if false; // Se agenda solo por Cloud Function (agendarCitaWebLock)
+      allow delete: if isSignedIn() && resource.data.userID == request.auth.uid;
+      allow update: if isAgente();
+      allow read: if isAgente() || (isSignedIn() && resource.data.userID == request.auth.uid);
+    }
 
     match /turnos/{turnoId} {
       allow create: if true;
@@ -69,5 +69,23 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isAgente();
     }
+
+    // NUEVO: Configuración Pantalla TV (publicidad)
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /ciudadanos/{docId} {
+      allow read: if isAgente() || isPantalla() || isAdmin();
+      allow create, update, delete: if isAgente();
+    }
+
+    // Bitácora / auditoría de atenciones (solo lectura desde clientes autorizados)
+    match /serviceAudit/{docId} {
+      allow read: if isAgente() || isAdmin();
+      allow create, update, delete: if false;
+    }
+
   }
 }

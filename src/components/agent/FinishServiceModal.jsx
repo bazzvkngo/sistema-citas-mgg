@@ -1,6 +1,7 @@
 // src/components/agent/FinishServiceModal.jsx
 import React, { useState } from 'react';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 import { db } from '../../firebase';
 // ✅ Importa el archivo simplificado
 import { CLASSIFICATION_OPTIONS } from '../../constants/classifications'; 
@@ -76,12 +77,15 @@ export default function FinishServiceModal({ turnoEnAtencion, onClose, onFinaliz
 
     try {
       const docRef = doc(db, coleccion, id);
+      const uid = getAuth().currentUser?.uid || '';
 
       const updateData = {
         estado: 'completado',
         fechaHoraAtencionFin: Timestamp.now(),
         clasificacion: clasificacion, // Será 'ATENDIDO_OK', 'FALLO_ACCION', o 'NO_SE_PRESENTO'
-        comentariosAgente: comentarios
+        comentariosAgente: comentarios,
+        agenteID: uid,
+        modulo: turnoEnAtencion?.modulo || turnoEnAtencion?.moduloAsignado || ''
       };
 
       await updateDoc(docRef, updateData);

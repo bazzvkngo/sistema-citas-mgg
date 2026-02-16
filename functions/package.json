@@ -15,7 +15,8 @@
   "dependencies": {
     "date-fns": "^2.30.0",
     "firebase-admin": "^12.1.1",
-    "firebase-functions": "^5.0.1"
+    "firebase-functions": "^5.0.1",
+    "nodemailer": "^7.0.12"
   },
   "devDependencies": {
     "firebase-functions-test": "^3.1.0"

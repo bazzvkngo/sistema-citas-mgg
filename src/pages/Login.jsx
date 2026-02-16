@@ -6,14 +6,13 @@ import { auth } from '../firebase';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-// --- ESTILOS (mismo layout, nuevos colores Consulado Perú) ---
 const styles = {
   container: {
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: '100vh',
-    backgroundColor: '#F4F5F7', // gris más suave
+    backgroundColor: '#F4F5F7',
     padding: '20px'
   },
   formCard: {
@@ -64,7 +63,7 @@ const styles = {
     background: 'none',
     border: 'none',
     cursor: 'pointer',
-    color: '#9CA3AF', // gris, no azul
+    color: '#9CA3AF',
     padding: 0,
     display: 'flex',
     alignItems: 'center',
@@ -77,7 +76,7 @@ const styles = {
   submitButton: {
     width: '100%',
     padding: '15px',
-    backgroundColor: '#E5E7EB', // gris cuando está desactivado
+    backgroundColor: '#E5E7EB',
     color: '#9CA3AF',
     border: 'none',
     borderRadius: '25px',
@@ -88,7 +87,7 @@ const styles = {
     transition: 'all 0.3s'
   },
   submitButtonActive: {
-    backgroundColor: '#C8102E', // rojo Consulado
+    backgroundColor: '#C8102E',
     color: '#ffffff',
     cursor: 'pointer',
     boxShadow: '0 4px 14px rgba(200,16,46,0.35)'
@@ -109,7 +108,6 @@ const styles = {
     color: '#4B5563',
     textAlign: 'center'
   },
-  // fila para "¿No tienes cuenta? Regístrate"
   linksRow: {
     display: 'flex',
     justifyContent: 'center',
@@ -118,19 +116,18 @@ const styles = {
     gap: '4px'
   },
   link: {
-    color: '#007BFF', // CELESTE, antes amarillo
+    color: '#28A745',
     textDecoration: 'none',
     fontWeight: 'bold'
   },
   secondaryLink: {
-    color: '#000000ff', // rojo, antes azul
+    color: '#007BFF',
     textDecoration: 'none',
     fontSize: '13px',
     fontWeight: 500
   }
 };
 
-// --- ICONOS SVG ---
 const EyeIcon = () => (
   <svg width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -149,8 +146,10 @@ export default function Login() {
   const {
     register,
     handleSubmit,
-    formState: { errors, isValid }
+    formState: { errors, isValid },
+    watch
   } = useForm({ mode: 'onChange' });
+
   const navigate = useNavigate();
   const { currentUser } = useAuth();
 
@@ -158,12 +157,16 @@ export default function Login() {
   const [loginError, setLoginError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Si ya está logueado, redirigir a /inicio
+  const emailValue = watch('email');
+  const passValue = watch('password');
+
   useEffect(() => {
-    if (currentUser) {
-      navigate('/inicio');
-    }
+    if (currentUser) navigate('/inicio');
   }, [currentUser, navigate]);
+
+  useEffect(() => {
+    if (loginError) setLoginError(null);
+  }, [emailValue, passValue]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const onSubmit = async (data) => {
     setLoading(true);
@@ -171,10 +174,12 @@ export default function Login() {
 
     try {
       await signInWithEmailAndPassword(auth, data.email, data.password);
+      setLoading(false);
       navigate('/inicio');
     } catch (error) {
       setLoading(false);
       console.error('Error al iniciar sesión:', error);
+
       if (
         error.code === 'auth/invalid-credential' ||
         error.code === 'auth/user-not-found' ||
@@ -189,23 +194,17 @@ export default function Login() {
     }
   };
 
-  if (currentUser) return null; // Evita parpadeo antes de redirigir
+  if (currentUser) return null;
+
+  const hasFieldErrors = Boolean(errors.email || errors.password);
 
   return (
     <div style={styles.container}>
       <form onSubmit={handleSubmit(onSubmit)} style={styles.formCard}>
-        <h2
-          style={{
-            textAlign: 'center',
-            color: '#243447',
-            marginBottom: '10px',
-            fontSize: '22px'
-          }}
-        >
+        <h2 style={{ textAlign: 'center', color: '#243447', marginBottom: '10px', fontSize: '22px' }}>
           Iniciar sesión
         </h2>
 
-        {/* Email */}
         <div style={styles.inputGroup}>
           <label style={styles.label}>Correo electrónico</label>
           <div style={styles.inputContainer}>
@@ -221,7 +220,6 @@ export default function Login() {
           {errors.email && <p style={styles.errorText}>{errors.email.message}</p>}
         </div>
 
-        {/* Contraseña */}
         <div style={styles.inputGroup}>
           <label style={styles.label}>Contraseña</label>
           <div style={styles.inputContainer}>
@@ -230,32 +228,19 @@ export default function Login() {
               style={styles.input}
               {...register('password', { required: 'La contraseña es obligatoria' })}
             />
-            <button
-              type="button"
-              style={styles.iconButton}
-              onClick={() => setShowPassword(!showPassword)}
-                >
-            {showPassword ? <EyeIcon /> : <EyeOffIcon />}
+            <button type="button" style={styles.iconButton} onClick={() => setShowPassword((v) => !v)}>
+              {showPassword ? <EyeIcon /> : <EyeOffIcon />}
             </button>
           </div>
           {errors.password && <p style={styles.errorText}>{errors.password.message}</p>}
         </div>
 
-        {/* Mensaje de Error General */}
-        {loginError && (
-          <p
-            style={{
-              ...styles.errorText,
-              textAlign: 'center',
-              fontSize: '14px',
-              fontWeight: 'bold'
-            }}
-          >
+        {loginError && !hasFieldErrors && (
+          <p style={{ ...styles.errorText, textAlign: 'center', fontSize: '14px', fontWeight: 'bold' }}>
             {loginError}
           </p>
         )}
 
-        {/* Botón */}
         <button
           type="submit"
           disabled={!isValid || loading}
@@ -267,7 +252,6 @@ export default function Login() {
           {loading ? 'Ingresando...' : 'Ingresar'}
         </button>
 
-        {/* Enlaces */}
         <div style={styles.linksContainer}>
           <div style={styles.linksRow}>
             <span>¿No tienes cuenta?</span>

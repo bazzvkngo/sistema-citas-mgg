@@ -1,4 +1,3 @@
-// src/components/common/Navbar.jsx
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import "./Navbar.css";
@@ -17,12 +16,12 @@ export default function Navbar() {
     }
   };
 
-  const rol = currentUser?.rol || "ciudadano";
+  const rol = String(currentUser?.rol || "ciudadano").toLowerCase().trim();
 
-  // Texto bonito para el rol
   const roleLabelMap = {
     ciudadano: "Ciudadano",
     agente: "Agente",
+    agent: "Agente",
     admin: "Admin",
     pantalla: "Pantalla TV",
     kiosko: "Kiosko",
@@ -48,32 +47,26 @@ export default function Navbar() {
     }
   };
 
-  // Mostrar botón solo en las vistas que lo necesitan
   const isKioskView =
     (rol === "kiosko" || rol === "admin") && location.pathname === "/kiosko";
   const isScreenView =
-    (rol === "pantalla" || rol === "admin") &&
-    location.pathname === "/pantalla-tv";
+    (rol === "pantalla" || rol === "admin") && location.pathname === "/pantalla-tv";
 
   const showFullscreenButton = isKioskView || isScreenView;
 
-  // Helper para aplicar la clase "active" según la ruta
   const linkClass = (path) =>
     `navbar-link ${location.pathname === path ? "active" : ""}`;
 
   return (
     <nav className="navbar">
       <div className="navbar-content">
-        {/* IZQUIERDA */}
         <div className="navbar-left">
-          {/* Logo -> siempre lleva a /inicio */}
           <Link to="/inicio" className="navbar-logo">
             Consulado del Perú
           </Link>
 
           {currentUser && (
             <ul className="navbar-links">
-              {/* === Ciudadano === */}
               {rol === "ciudadano" && (
                 <>
                   <li>
@@ -89,15 +82,16 @@ export default function Navbar() {
                 </>
               )}
 
-              {/* === Agente === */}
-              {rol === "agente" && (
+              {(rol === "agente" || rol === "agent") && (
                 <>
                   <li>
-                    <Link
-                      to="/panel-agente"
-                      className={linkClass("/panel-agente")}
-                    >
+                    <Link to="/panel-agente" className={linkClass("/panel-agente")}>
                       Panel Agente
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/agenda" className={linkClass("/agenda")}>
+                      Agenda
                     </Link>
                   </li>
                   <li>
@@ -108,22 +102,20 @@ export default function Navbar() {
                 </>
               )}
 
-              {/* === Admin === */}
               {rol === "admin" && (
                 <>
                   <li>
-                    <Link
-                      to="/panel-agente"
-                      className={linkClass("/panel-agente")}
-                    >
+                    <Link to="/panel-agente" className={linkClass("/panel-agente")}>
                       Panel Agente
                     </Link>
                   </li>
                   <li>
-                    <Link
-                      to="/administrador"
-                      className={linkClass("/administrador")}
-                    >
+                    <Link to="/agenda" className={linkClass("/agenda")}>
+                      Agenda
+                    </Link>
+                  </li>
+                  <li>
+                    <Link to="/administrador" className={linkClass("/administrador")}>
                       Admin
                     </Link>
                   </li>
@@ -133,10 +125,7 @@ export default function Navbar() {
                     </Link>
                   </li>
                   <li>
-                    <Link
-                      to="/pantalla-tv"
-                      className={linkClass("/pantalla-tv")}
-                    >
+                    <Link to="/pantalla-tv" className={linkClass("/pantalla-tv")}>
                       Pantalla TV
                     </Link>
                   </li>
@@ -153,14 +142,10 @@ export default function Navbar() {
                 </>
               )}
 
-              {/* === Pantalla === */}
               {rol === "pantalla" && (
                 <>
                   <li>
-                    <Link
-                      to="/pantalla-tv"
-                      className={linkClass("/pantalla-tv")}
-                    >
+                    <Link to="/pantalla-tv" className={linkClass("/pantalla-tv")}>
                       Pantalla TV
                     </Link>
                   </li>
@@ -172,7 +157,6 @@ export default function Navbar() {
                 </>
               )}
 
-              {/* === Kiosko === */}
               {rol === "kiosko" && (
                 <>
                   <li>
@@ -191,7 +175,6 @@ export default function Navbar() {
           )}
         </div>
 
-        {/* DERECHA */}
         {currentUser && (
           <div className="navbar-right">
             {showFullscreenButton && (
@@ -199,9 +182,7 @@ export default function Navbar() {
                 className="navbar-button navbar-button-secondary"
                 onClick={handleToggleFullscreen}
               >
-                {isFullscreen
-                  ? "Salir Pantalla Completa"
-                  : "Pantalla Completa"}
+                {isFullscreen ? "Salir Pantalla Completa" : "Pantalla Completa"}
               </button>
             )}
 
