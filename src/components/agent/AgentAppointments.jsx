@@ -1,44 +1,42 @@
+// src/components/agent/AgentAppointments.jsx
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   collection,
-  doc,
   onSnapshot,
   orderBy,
   query,
-  updateDoc,
   where,
-  Timestamp,
-  setDoc
+  Timestamp
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { format } from 'date-fns';
 
 const styles = {
-  title: { fontSize: 22, color: '#C8102E', marginBottom: 16, fontWeight: 800 },
+  title: { fontSize: 22, color: '#C8102E', marginBottom: 10, fontWeight: 800 },
+  subtitle: { margin: '0 0 16px', fontSize: 12, color: '#666', fontWeight: 700 },
+
   empty: { padding: 14, border: '1px solid #ddd', borderRadius: 10, background: '#fff' },
+
   table: { width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 10, overflow: 'hidden' },
-  th: { textAlign: 'left', padding: 12, background: '#f3f3f3', borderBottom: '1px solid #ddd' },
-  td: { padding: 12, borderBottom: '1px solid #eee', verticalAlign: 'top' },
-  btn: {
-    backgroundColor: '#0d6efd',
-    color: '#fff',
-    border: 'none',
-    borderRadius: 8,
-    padding: '10px 12px',
-    cursor: 'pointer',
-    fontWeight: 800
-  },
-  btnDisabled: {
-    backgroundColor: '#0d6efd',
-    opacity: 0.55,
-    cursor: 'not-allowed'
-  }
+  th: { textAlign: 'left', padding: 12, background: '#f3f3f3', borderBottom: '1px solid #ddd', fontSize: 12 },
+  td: { padding: 12, borderBottom: '1px solid #eee', verticalAlign: 'top', fontSize: 12 },
+
+  badge: (bg) => ({
+    display: 'inline-block',
+    padding: '4px 8px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 900,
+    background: bg,
+    color: '#111'
+  })
 };
 
 export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
   const [citas, setCitas] = useState([]);
   const [tramitesMap, setTramitesMap] = useState({});
 
+  // Mapa de trámites
   useEffect(() => {
     const qT = query(collection(db, 'tramites'));
     const unsub = onSnapshot(qT, (snap) => {
@@ -52,6 +50,7 @@ export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
     return () => unsub();
   }, []);
 
+  // Citas web activas de HOY (solo informativo)
   useEffect(() => {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
@@ -75,49 +74,15 @@ export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
     return () => unsub();
   }, []);
 
-  const llamarCita = async (cita) => {
-    try {
-      const modulo = moduloEfectivo;
-      if (!modulo) return alert('No tienes módulo asignado.');
-
-      if (atencionActual) {
-        return alert(`Ya estás atendiendo un ${atencionActual.tipo} (${atencionActual.codigo}). Finaliza antes de llamar otro.`);
-      }
-
-      const ref = doc(db, 'citas', cita.id);
-
-      await updateDoc(ref, {
-        estado: 'llamado',
-        moduloAsignado: modulo
-      });
-
-      const tramiteNombre = tramitesMap[cita.tramiteID] || cita.tramiteID || '';
-
-      const payload = {
-        codigoLlamado: cita.codigo || cita.id,
-        modulo: modulo,
-        timestamp: Timestamp.now(),
-        tipo: 'Cita',
-        tramiteID: cita.tramiteID || '',
-        tramiteNombre
-      };
-
-      await setDoc(doc(db, 'estadoSistema', 'llamadaActual'), payload, { merge: true });
-
-      if (cita.tramiteID) {
-        await setDoc(doc(db, 'estadoSistema', `tramite_${cita.tramiteID}`), payload, { merge: true });
-      }
-    } catch (e) {
-      console.error('Error llamando cita:', e);
-      alert('Error al llamar la cita. Revisa consola.');
-    }
-  };
-
   const rows = useMemo(() => {
     return citas.map(c => {
       const tramiteNombre = tramitesMap[c.tramiteID] || c.tramiteID || 'Trámite';
       const fecha = c.fechaHora?.toDate ? format(c.fechaHora.toDate(), 'dd/MM/yyyy HH:mm') : '—';
-      return { ...c, tramiteNombre, fecha };
+
+      const modulo = c.moduloAsignado || '—';
+      const estado = c.estado || '—';
+
+      return { ...c, tramiteNombre, fecha, modulo, estado };
     });
   }, [citas, tramitesMap]);
 
@@ -125,39 +90,45 @@ export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
     <div>
       <h2 style={styles.title}>Citas Web (Agendadas)</h2>
 
+      <p style={styles.subtitle}>
+        Vista informativa. El llamado se realiza únicamente con <strong>“Llamar siguiente”</strong> (Llamado simple).
+        {moduloEfectivo ? (
+          <> Módulo efectivo: <strong>{moduloEfectivo}</strong>.</>
+        ) : (
+          <> Asigna un módulo para poder llamar.</>
+        )}
+        {atencionActual ? (
+          <> Atención en curso: <strong>{atencionActual.codigo}</strong>.</>
+        ) : null}
+      </p>
+
       {rows.length === 0 ? (
         <div style={styles.empty}>No hay citas agendadas activas para atender en este momento.</div>
       ) : (
         <table style={styles.table}>
           <thead>
             <tr>
+              <th style={styles.th}>Tipo</th>
               <th style={styles.th}>Código</th>
               <th style={styles.th}>Trámite</th>
               <th style={styles.th}>Fecha</th>
-              <th style={styles.th}>Acción</th>
+              <th style={styles.th}>Estado</th>
+              <th style={styles.th}>Módulo</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((c) => {
-              const disabled = !!atencionActual;
-              return (
-                <tr key={c.id}>
-                  <td style={styles.td}><strong>{c.codigo}</strong></td>
-                  <td style={styles.td}>{c.tramiteNombre}</td>
-                  <td style={styles.td}>{c.fecha}</td>
-                  <td style={styles.td}>
-                    <button
-                      style={{ ...styles.btn, ...(disabled ? styles.btnDisabled : {}) }}
-                      disabled={disabled}
-                      onClick={() => llamarCita(c)}
-                      title={disabled ? 'Finaliza la atención actual para llamar otra' : 'Llamar cita'}
-                    >
-                      Llamar
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
+            {rows.map((c) => (
+              <tr key={c.id}>
+                <td style={styles.td}>
+                  <span style={styles.badge('#E5F0FF')}>WEB</span>
+                </td>
+                <td style={styles.td}><strong>{c.codigo || c.id}</strong></td>
+                <td style={styles.td}>{c.tramiteNombre}</td>
+                <td style={styles.td}>{c.fecha}</td>
+                <td style={styles.td}>{c.estado}</td>
+                <td style={styles.td}>{c.modulo}</td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}

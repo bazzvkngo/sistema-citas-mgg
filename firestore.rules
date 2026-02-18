@@ -67,10 +67,11 @@ service cloud.firestore {
 
     match /estadoSistema/{docId} {
       allow read: if true;
-      allow write: if isAgente();
+      // Escritura SOLO desde Cloud Functions (cliente no escribe estadoSistema)
+      allow write: if false;
     }
 
-    // NUEVO: Configuración Pantalla TV (publicidad)
+    // Configuración Pantalla TV (publicidad)
     match /config/{docId} {
       allow read: if true;
       allow write: if isAdmin();

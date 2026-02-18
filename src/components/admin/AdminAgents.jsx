@@ -1,12 +1,13 @@
 // src/components/admin/AdminAgents.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { collection, onSnapshot, doc, updateDoc, query } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../../firebase';
 import { useAuth } from '../../context/AuthContext';
 
 // Dominios permitidos para correos institucionales
 const ALLOWED_STAFF_DOMAINS = [
-  '@consulado.pe',
+  '@consulperu.pe',
   // Agrega otros dominios si aplica:
   // '@rree.gob.pe',
 ];
@@ -64,6 +65,7 @@ const styles = {
     fontSize: '14px',
     color: '#333',
     outline: 'none',
+    backgroundColor: '#fff',
     minWidth: '220px'
   },
 
@@ -108,7 +110,7 @@ const styles = {
     borderTopRightRadius: '8px',
     borderBottomRightRadius: '8px',
     borderRight: '1px solid #e9ecef',
-    minWidth: '260px',
+    minWidth: '320px',
   },
 
   // Inputs
@@ -214,6 +216,59 @@ const styles = {
     width: '16px',
     height: '16px',
     accentColor: '#007bff'
+  },
+
+  // Acciones
+  actionsBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '10px',
+    minWidth: '260px'
+  },
+  pwdRow: {
+    display: 'flex',
+    gap: '10px',
+    alignItems: 'center',
+    flexWrap: 'wrap'
+  },
+  pwdInput: {
+    border: '1px solid #ccc',
+    borderRadius: '10px',
+    padding: '0 12px',
+    height: '45px',
+    fontSize: '14px',
+    color: '#333',
+    outline: 'none',
+    width: '220px',
+    boxSizing: 'border-box'
+  },
+  btn: (variant = 'primary') => {
+    const base = {
+      border: 'none',
+      borderRadius: '10px',
+      padding: '10px 14px',
+      fontSize: '14px',
+      fontWeight: 700,
+      cursor: 'pointer',
+      height: '45px',
+      whiteSpace: 'nowrap'
+    };
+
+    if (variant === 'primary') {
+      return { ...base, background: '#0d6efd', color: '#fff' };
+    }
+    if (variant === 'ghost') {
+      return { ...base, background: '#f2f4f7', color: '#111', border: '1px solid #d6dae0' };
+    }
+    if (variant === 'danger') {
+      return { ...base, background: '#C8102E', color: '#fff' };
+    }
+    return base;
+  },
+  helpText: {
+    fontSize: 12,
+    color: '#666',
+    lineHeight: 1.35
   }
 };
 // --- FIN DE ESTILOS ---
@@ -227,6 +282,12 @@ export default function AdminAgents() {
   // Filtros
   const [filtroRol, setFiltroRol] = useState('staff');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Password per usuario (solo UI)
+  const [pwdByUid, setPwdByUid] = useState({});
+  const [savingPwdByUid, setSavingPwdByUid] = useState({});
+
+  const adminUpdateAgente = useMemo(() => httpsCallable(functions, 'adminUpdateAgente'), []);
 
   useEffect(() => {
     const q = query(collection(db, 'tramites'));
@@ -272,8 +333,7 @@ export default function AdminAgents() {
     if (STAFF_ROLES.includes(nuevoRol) && !isInstitutionalEmail(email)) {
       alert(
         'Este usuario no tiene un correo institucional autorizado.\n\n' +
-        'Solo los correos que terminan en los dominios configurados (por ejemplo @consulado.pe) ' +
-        'pueden recibir roles de Agente, Admin, Pantalla TV o Kiosko.'
+        'Solo los correos que terminan en los dominios configurados pueden recibir roles de Agente, Admin, Pantalla TV o Kiosko.'
       );
       return;
     }
@@ -312,7 +372,7 @@ export default function AdminAgents() {
     });
   };
 
-  // NUEVO: nombreCompleto / telefono / activo
+  // nombreCompleto / telefono / activo
   const handleNombreChange = (userId, value) => {
     const nombre = (value || '').toString().trim();
     const userDocRef = doc(db, 'usuarios', userId);
@@ -339,6 +399,38 @@ export default function AdminAgents() {
     });
   };
 
+  const handlePwdChange = (uid, value) => {
+    setPwdByUid((prev) => ({ ...prev, [uid]: value }));
+  };
+
+  const handleGuardarPwd = async (uid) => {
+    const pwd = (pwdByUid[uid] || '').trim();
+    if (!pwd) {
+      alert('Ingresa una contraseña primero.');
+      return;
+    }
+    if (pwd.length < 6) {
+      alert('La contraseña debe tener mínimo 6 caracteres.');
+      return;
+    }
+
+    try {
+      setSavingPwdByUid((prev) => ({ ...prev, [uid]: true }));
+      await adminUpdateAgente({
+        uid,
+        updates: {},
+        newPassword: pwd
+      });
+      setPwdByUid((prev) => ({ ...prev, [uid]: '' }));
+      alert('Contraseña actualizada correctamente.');
+    } catch (err) {
+      console.error('Error al actualizar contraseña:', err);
+      alert('No se pudo actualizar la contraseña. Revisa permisos y vuelve a intentar.');
+    } finally {
+      setSavingPwdByUid((prev) => ({ ...prev, [uid]: false }));
+    }
+  };
+
   // Filtrado
   const usuariosFiltrados = usuarios.filter((user) => {
     const rol = safeRole(user.rol);
@@ -350,7 +442,7 @@ export default function AdminAgents() {
       if (rol !== filtroRol) return false;
     }
 
-    // 2) Texto (email o DNI)
+    // 2) Texto (email o DNI o nombre)
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       const emailMatch = (user.email || '').toLowerCase().includes(term);
@@ -370,7 +462,6 @@ export default function AdminAgents() {
     <div style={styles.card}>
       <h3 style={styles.formTitle}>Gestión de Agentes y Habilidades</h3>
 
-      {/* Barra de filtros */}
       <div style={styles.filterBar}>
         <span style={styles.filterLabel}>Mostrar:</span>
         <select
@@ -408,6 +499,7 @@ export default function AdminAgents() {
               <th style={styles.th}>Rol</th>
               <th style={styles.th}>Módulo</th>
               <th style={styles.th}>Habilidades (Trámites que atiende)</th>
+              <th style={styles.th}>Acciones</th>
             </tr>
           </thead>
 
@@ -418,15 +510,14 @@ export default function AdminAgents() {
 
               const isStaff = rol !== 'ciudadano';
               const activo = user.activo === false ? false : true; // default true
+              const savingPwd = !!savingPwdByUid[user.id];
 
               return (
                 <tr key={user.id} style={styles.tr}>
-                  {/* Email */}
                   <td style={{ ...styles.td, ...styles.tdFirst }}>
                     {user.email || '(sin email)'}
                   </td>
 
-                  {/* Nombre */}
                   <td style={styles.td}>
                     {isStaff ? (
                       <input
@@ -442,7 +533,6 @@ export default function AdminAgents() {
                     )}
                   </td>
 
-                  {/* Teléfono */}
                   <td style={styles.td}>
                     {isStaff ? (
                       <input
@@ -458,7 +548,6 @@ export default function AdminAgents() {
                     )}
                   </td>
 
-                  {/* Activo */}
                   <td style={styles.td}>
                     {isStaff ? (
                       <div style={styles.activoBox}>
@@ -485,7 +574,6 @@ export default function AdminAgents() {
                     )}
                   </td>
 
-                  {/* Rol */}
                   <td style={styles.td}>
                     <select
                       style={styles.select}
@@ -501,7 +589,6 @@ export default function AdminAgents() {
                     </select>
                   </td>
 
-                  {/* Módulo */}
                   <td style={styles.td}>
                     {rol !== 'ciudadano' && rol !== 'pantalla' && rol !== 'kiosko' ? (
                       <input
@@ -517,8 +604,7 @@ export default function AdminAgents() {
                     )}
                   </td>
 
-                  {/* Habilidades */}
-                  <td style={{ ...styles.td, ...styles.tdLast }}>
+                  <td style={styles.td}>
                     {rol === 'agente' || rol === 'admin' ? (
                       <div style={styles.habilidadesBox}>
                         {tramites.map(tramite => {
@@ -546,13 +632,44 @@ export default function AdminAgents() {
                       <span>—</span>
                     )}
                   </td>
+
+                  <td style={{ ...styles.td, ...styles.tdLast }}>
+                    {isStaff ? (
+                      <div style={styles.actionsBox}>
+                        <div style={styles.pwdRow}>
+                          <input
+                            type="password"
+                            style={styles.pwdInput}
+                            placeholder="Nueva contraseña (mín. 6)"
+                            value={pwdByUid[user.id] || ''}
+                            onChange={(e) => handlePwdChange(user.id, e.target.value)}
+                            disabled={savingPwd}
+                          />
+                          <button
+                            style={styles.btn('primary')}
+                            onClick={() => handleGuardarPwd(user.id)}
+                            disabled={savingPwd}
+                            title="Actualiza la contraseña en Firebase Auth"
+                          >
+                            {savingPwd ? 'Guardando...' : 'Guardar contraseña'}
+                          </button>
+                        </div>
+
+                        <div style={styles.helpText}>
+                          Esta acción actualiza la contraseña del usuario en Firebase Auth. El resto de campos se guardan al salir del campo.
+                        </div>
+                      </div>
+                    ) : (
+                      <span>—</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}
 
             {usuariosFiltrados.length === 0 && (
               <tr>
-                <td colSpan={7} style={{ ...styles.td, textAlign: 'center', fontStyle: 'italic' }}>
+                <td colSpan={8} style={{ ...styles.td, textAlign: 'center', fontStyle: 'italic' }}>
                   No hay usuarios que coincidan con el filtro actual.
                 </td>
               </tr>

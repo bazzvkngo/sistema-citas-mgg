@@ -5,6 +5,7 @@ const { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } = require("fir
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { getAuth } = require("firebase-admin/auth"); //  NUEVO (Paso 10)
 const nodemailer = require("nodemailer");
 
 const SANTIAGO_REGION = "southamerica-west1";
@@ -155,7 +156,6 @@ async function writeServiceAuditIfNeeded({ sourceCollection, sourceId, beforeDat
 
   await auditRef.set(payload, { merge: false });
 }
-
 
 function buildLocalRange(startDateISO, endDateISO) {
   const startDate = new Date(`${startDateISO}T00:00:00.000${TZ_OFFSET}`);
@@ -1090,7 +1090,7 @@ exports.adminUpdateClosedCita = onCall({ region: SANTIAGO_REGION }, async (reque
     const u = uSnap.exists ? uSnap.data() : null;
     const rol = u?.rol || u?.role || "user";
 
-    // ✅ Permitir admin y agente
+    //  Permitir admin y agente
     if (!["admin", "agente"].includes(rol)) {
       throw new HttpsError("permission-denied", "No tienes permisos para editar citas cerradas.");
     }
@@ -1131,7 +1131,7 @@ exports.adminReopenCita = onCall({ region: SANTIAGO_REGION }, async (request) =>
     const u = uSnap.exists ? uSnap.data() : null;
     const rol = u?.rol || u?.role || "user";
 
-    // ✅ Permitir admin y agente
+    //  Permitir admin y agente
     if (!["admin", "agente"].includes(rol)) {
       throw new HttpsError("permission-denied", "No tienes permisos para reabrir citas.");
     }
@@ -1171,6 +1171,103 @@ exports.adminReopenCita = onCall({ region: SANTIAGO_REGION }, async (request) =>
   }
 });
 
+/* =========================
+   PASO 10: ADMIN EDITA AGENTES (datos + email + contraseña)
+   ========================= */
+
+async function requireAdmin(uid) {
+  const snap = await db.collection("usuarios").doc(uid).get();
+  const u = snap.exists ? snap.data() : null;
+  const rol = u?.rol || u?.role || "user";
+  if (rol !== "admin") {
+    throw new HttpsError("permission-denied", "Solo un administrador puede realizar esta acción.");
+  }
+  return { userDoc: u || null };
+}
+
+exports.adminUpdateAgente = onCall({ region: SANTIAGO_REGION }, async (request) => {
+  try {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+
+    await requireAdmin(auth.uid);
+
+    const {
+      uid,                 // uid del agente a editar
+      updates = {},        // campos a actualizar en Firestore usuarios/{uid}
+      newPassword = "",    // opcional: set password en Auth
+    } = data || {};
+
+    const targetUid = safeStr(uid).trim();
+    if (!targetUid) throw new HttpsError("invalid-argument", "Falta uid del agente.");
+
+    // Validaciones básicas (sin ser restrictivo)
+    const allowed = [
+      "nombre",
+      "name",
+      "email",
+      "rol",
+      "role",
+      "modulo",
+      "moduloAsignado",
+      "activo",
+      "telefono",
+      "cargo",
+    ];
+
+    const clean = {};
+    for (const k of Object.keys(updates || {})) {
+      if (allowed.includes(k)) clean[k] = updates[k];
+    }
+
+    // Normalizar roles si te llegan en "role"
+    if (clean.role && !clean.rol) clean.rol = clean.role;
+    delete clean.role;
+
+    // Normalizar nombre si te llega en "name"
+    if (clean.name && !clean.nombre) clean.nombre = clean.name;
+    delete clean.name;
+
+    // Si llega email, normalizar
+    if (clean.email) clean.email = safeStr(clean.email).trim().toLowerCase();
+
+    // Si llega activo, convertir a boolean
+    if (clean.activo !== undefined) clean.activo = !!clean.activo;
+
+    const userRef = db.collection("usuarios").doc(targetUid);
+    const userSnap = await userRef.get();
+    if (!userSnap.exists) throw new HttpsError("not-found", "El usuario/agente no existe en Firestore.");
+
+    //  Update Auth (email / password) si corresponde
+    const authUpdates = {};
+    if (clean.email) authUpdates.email = clean.email;
+
+    const pwd = safeStr(newPassword).trim();
+    if (pwd) {
+      if (pwd.length < 6) throw new HttpsError("invalid-argument", "La contraseña debe tener mínimo 6 caracteres.");
+      authUpdates.password = pwd;
+    }
+
+    if (Object.keys(authUpdates).length) {
+      await getAuth().updateUser(targetUid, authUpdates);
+    }
+
+    //  Update Firestore usuarios/{uid}
+    const patch = {
+      ...clean,
+      updatedAt: Timestamp.now(),
+      updatedBy: auth.uid,
+    };
+
+    await userRef.set(patch, { merge: true });
+
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    console.error("adminUpdateAgente error:", err);
+    throw new HttpsError("internal", "Error al actualizar el agente.");
+  }
+});
 
 /* =========================
    OBJETIVO 15: TRIGGERS AUDITORÍA
@@ -1216,3 +1313,386 @@ exports.auditTurnosCompletados = onDocumentUpdated(
   }
 );
 
+/* =========================
+   OBJETIVO A: LLAMADO SIMPLE (1 BOTÓN)
+   - Agente presiona "Llamar siguiente"
+   - Cloud Function decide si corresponde KIOSKO o CITA WEB (hoy)
+   - Actualiza:
+     - /turnos o /citas => estado "llamado" + modulo/agente
+     - /estadoSistema/llamadaActual
+     - /estadoSistema/tramite_{tramiteId}
+   ========================= */
+
+function normalizeModuloServer(v) {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "number") return v;
+  const s = String(v).trim();
+  if (!s) return null;
+  const n = parseInt(s.replace(/\D/g, ""), 10);
+  return Number.isFinite(n) ? n : s; // si no es numérico, devuelve string (por si usan "AP")
+}
+
+function sameModulo(a, b) {
+  const na = normalizeModuloServer(a);
+  const nb = normalizeModuloServer(b);
+  if (na === null || nb === null) return false;
+  return String(na) === String(nb);
+}
+
+async function pickNextCandidate({ nowTs, dateISO, allowedTramites }) {
+  const allowedSet =
+    allowedTramites && typeof allowedTramites.has === "function"
+      ? allowedTramites
+      : null;
+
+  const isAllowed = (docSnap) => {
+    if (!allowedSet) return true;
+    const d = docSnap.data() || {};
+    const tid = String(d.tramiteID || d.tramiteId || "").trim();
+    return !!tid && allowedSet.has(tid);
+  };
+
+  // 1) Citas WEB con hora cumplida (solo hoy) -> prioridad absoluta
+  const { start, end } = buildLocalRange(dateISO, dateISO);
+
+  const citasQ = db
+    .collection("citas")
+    .where("estado", "==", "activa")
+    .where("fechaHora", ">=", start)
+    .where("fechaHora", "<=", end)
+    .where("fechaHora", "<=", nowTs)
+    .orderBy("fechaHora", "asc")
+    .limit(25);
+
+  // 2) Turnos KIOSKO en-espera (por antigüedad)
+  const turnosQ = db
+    .collection("turnos")
+    .where("estado", "==", "en-espera")
+    .orderBy("fechaHoraGenerado", "asc")
+    .limit(25);
+
+  const [citasSnap, turnosSnap] = await Promise.all([citasQ.get(), turnosQ.get()]);
+
+  const citaDoc = !citasSnap.empty ? citasSnap.docs.find(isAllowed) : null;
+  if (citaDoc) return { type: "citas", doc: citaDoc };
+
+  const turnoDoc = !turnosSnap.empty ? turnosSnap.docs.find(isAllowed) : null;
+  if (turnoDoc) return { type: "turnos", doc: turnoDoc };
+
+  return null;
+}
+exports.agentCallNext = onCall({ region: SANTIAGO_REGION }, async (request) => {
+  try {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+
+    const uSnap = await db.collection("usuarios").doc(auth.uid).get();
+    const u = uSnap.exists ? (uSnap.data() || {}) : null;
+    const rol = u?.rol || u?.role || "user";
+
+    if (!["admin", "agente"].includes(rol)) {
+      throw new HttpsError("permission-denied", "No autorizado.");
+    }
+let modulo = null;
+
+// Para agente: el módulo sale del perfil (no se recibe del cliente).
+// Para admin: se permite indicar el módulo a llamar.
+if (rol === "agente") {
+  const moduloAsignado = normalizeModuloServer(u?.moduloAsignado);
+  if (!moduloAsignado) {
+    throw new HttpsError("failed-precondition", "Este agente no tiene módulo asignado.");
+  }
+  modulo = moduloAsignado;
+} else {
+  const moduloReq = data?.modulo;
+  modulo = normalizeModuloServer(moduloReq);
+  if (!modulo) throw new HttpsError("invalid-argument", "Falta modulo.");
+}
+    const now = Timestamp.now();
+    const dateISO = getChileDateISO(new Date());
+    // Habilidades (tramites permitidos) para agentes
+    let allowedTramites = null;
+    if (rol === "agente") {
+      const habs = Array.isArray(u?.habilidades) ? u.habilidades : [];
+      const normalized = habs.map((x) => String(x || "").trim()).filter(Boolean);
+      if (!normalized.length) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Este agente no tiene habilidades asignadas. Asigne trámites permitidos antes de llamar."
+        );
+      }
+      allowedTramites = new Set(normalized);
+    }
+
+
+    // Evita doble llamado: si YA existe llamadaActual reciente, no llames otro
+    const llamadaRef = db.collection("estadoSistema").doc("llamadaActual");
+    const llamadaSnap = await llamadaRef.get();
+    if (llamadaSnap.exists) {
+      const d = llamadaSnap.data() || {};
+      const ts = d.timestamp?.toMillis ? d.timestamp.toMillis() : 0;
+      const ageMs = Date.now() - ts;
+      // Si hay una llamada en los últimos 20 segundos, bloquear (evita doble click)
+      if (d.codigoLlamado && ageMs >= 0 && ageMs < 20000) {
+        return { called: false, message: "Ya hay una llamada reciente. Finaliza o espera unos segundos." };
+      }
+    }
+
+    // Selecciona candidato
+    const candidate = await pickNextCandidate({ nowTs: now, dateISO, allowedTramites });
+    if (!candidate) return { called: false, message: "No hay pendientes para llamar." };
+
+    const sourceCol = candidate.type; // "turnos" o "citas"
+    const docSnap = candidate.doc;
+    const ref = docSnap.ref;
+
+    // Transacción: asegura que nadie lo tomó antes
+    const result = await db.runTransaction(async (tx) => {
+      const fresh = await tx.get(ref);
+      if (!fresh.exists) throw new HttpsError("not-found", "El registro ya no existe.");
+
+      const d = fresh.data() || {};
+      const estado = String(d.estado || "");
+
+      if (rol === "agente") {
+        const tidCheck = String(d.tramiteID || d.tramiteId || "").trim();
+        if (!allowedTramites || !tidCheck || !allowedTramites.has(tidCheck)) {
+          return { called: false, message: "Este agente no tiene habilidad para este trámite." };
+        }
+      }
+
+      if (sourceCol === "turnos" && estado !== "en-espera") {
+        return { called: false, message: "Ese turno ya fue tomado por otro agente." };
+      }
+      if (sourceCol === "citas" && estado !== "activa") {
+        return { called: false, message: "Esa cita ya fue tomada por otro agente." };
+      }
+
+      const codigo = String(d.codigo || d.codigoTurno || "");
+      const tramiteID = String(d.tramiteID || "");
+      const dni = String(d.dni || "");
+      const userNombre = String(d.userNombre || d.nombre || "");
+
+      // Marca como llamado (manteniendo compatibilidad con tu UI actual)
+      if (sourceCol === "turnos") {
+        tx.update(ref, {
+          estado: "llamado",
+          modulo: modulo,
+          agenteID: auth.uid,
+          llamadoAt: now,
+        });
+      } else {
+        tx.update(ref, {
+          estado: "llamado",
+          moduloAsignado: modulo,
+          agenteID: auth.uid,
+          llamadoAt: now,
+        });
+      }
+
+      // estadoSistema/llamadaActual para TV (MonitorScreen)
+      tx.set(llamadaRef, {
+        codigoLlamado: codigo,
+        codigo, // fallback
+        modulo: modulo,
+        dni: dni,
+        userNombre: userNombre,
+        tipo: sourceCol === "turnos" ? "KIOSKO" : "WEB",
+        tramiteID: tramiteID,
+        timestamp: now,
+        agenteID: auth.uid,
+        sourceId: fresh.id,
+        sourceCollection: sourceCol
+      }, { merge: true });
+
+      // estadoSistema/tramite_{tramiteId} (panel lateral por trámite)
+      if (tramiteID) {
+        const tramiteEstadoRef = db.collection("estadoSistema").doc(`tramite_${tramiteID}`);
+        tx.set(tramiteEstadoRef, {
+          codigoLlamado: codigo,
+          modulo: modulo,
+          timestamp: now
+        }, { merge: true });
+      }
+
+      return {
+        called: true,
+        source: sourceCol,
+        id: fresh.id,
+        codigo,
+        tramiteID,
+        modulo
+      };
+    });
+
+    return result;
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    console.error("agentCallNext error:", err);
+    throw new HttpsError("internal", "Error al llamar siguiente.");
+  }
+});
+
+/* =========================
+   OBJETIVO 10: ADMIN GESTIÓN DE AGENTES
+   - Admin puede editar datos del agente en /usuarios/{uid}
+   - Admin puede enviar enlace de recuperación de contraseña al correo del agente
+   ========================= */
+
+function pickAllowed(obj, allowedKeys) {
+  const out = {};
+  for (const k of allowedKeys) {
+    if (Object.prototype.hasOwnProperty.call(obj, k)) out[k] = obj[k];
+  }
+  return out;
+}
+
+async function requireAdmin(uid) {
+  const uSnap = await db.collection("usuarios").doc(uid).get();
+  const u = uSnap.exists ? (uSnap.data() || {}) : null;
+  const rol = u?.rol || u?.role || "user";
+  if (rol !== "admin") throw new HttpsError("permission-denied", "Solo admin.");
+  return u;
+}
+
+exports.adminUpdateAgent = onCall({ region: SANTIAGO_REGION }, async (request) => {
+  try {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+    await requireAdmin(auth.uid);
+
+    const agentUid = String(data?.agentUid || "").trim();
+    if (!agentUid) throw new HttpsError("invalid-argument", "Falta agentUid.");
+
+    // Campos permitidos a editar (Firestore)
+    const allowed = [
+      "nombre",
+      "email",
+      "dni",
+      "rol",
+      "moduloAsignado",
+      "activo",
+    ];
+
+    const patch = pickAllowed(data || {}, allowed);
+
+    // Validaciones mínimas
+    if (patch.rol && !["admin", "agente", "pantalla"].includes(String(patch.rol))) {
+      throw new HttpsError("invalid-argument", "Rol inválido.");
+    }
+
+    if (patch.email) patch.email = String(patch.email).trim().toLowerCase();
+    if (patch.nombre) patch.nombre = String(patch.nombre).trim();
+    if (patch.dni) patch.dni = String(patch.dni).trim();
+    if (patch.moduloAsignado !== undefined) {
+      patch.moduloAsignado = String(patch.moduloAsignado).trim(); // puede ser "AP" o "1"
+    }
+    if (patch.activo !== undefined) patch.activo = !!patch.activo;
+
+    // 1) Update Firestore
+    const ref = db.collection("usuarios").doc(agentUid);
+    const snap = await ref.get();
+    if (!snap.exists) throw new HttpsError("not-found", "Agente no existe en usuarios.");
+
+    await ref.set(
+      {
+        ...patch,
+        updatedAt: Timestamp.now(),
+        updatedBy: auth.uid,
+      },
+      { merge: true }
+    );
+
+    // 2) (Opcional) Si cambiaron el email, reflejarlo también en Firebase Auth
+    if (patch.email) {
+      try {
+        await getAuth().updateUser(agentUid, { email: patch.email });
+      } catch (e) {
+        console.error("Auth updateUser(email) failed:", e);
+        // No rompemos: Firestore queda actualizado, pero notificamos
+        return { ok: true, warning: "Actualizado en Firestore, pero no se pudo actualizar email en Auth." };
+      }
+    }
+
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    console.error("adminUpdateAgent error:", err);
+    throw new HttpsError("internal", "Error al actualizar agente.");
+  }
+});
+
+exports.adminSendPasswordReset = onCall(
+  {
+    region: SANTIAGO_REGION,
+    secrets: [SMTP_USER, SMTP_PASS, MAIL_FROM, APP_PUBLIC_URL],
+  },
+  async (request) => {
+    try {
+      const { auth, data } = request;
+      if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+      await requireAdmin(auth.uid);
+
+      const agentUid = String(data?.agentUid || "").trim();
+      if (!agentUid) throw new HttpsError("invalid-argument", "Falta agentUid.");
+
+      // Tomamos el email del usuario (preferimos Auth, fallback Firestore)
+      let email = "";
+      try {
+        const userAuth = await getAuth().getUser(agentUid);
+        email = String(userAuth.email || "").trim().toLowerCase();
+      } catch (e) {
+        console.error("getUser failed:", e);
+      }
+
+      if (!email) {
+        const snap = await db.collection("usuarios").doc(agentUid).get();
+        const u = snap.exists ? (snap.data() || {}) : null;
+        email = String(u?.email || "").trim().toLowerCase();
+      }
+
+      if (!email) throw new HttpsError("failed-precondition", "El agente no tiene email registrado.");
+
+      const baseUrl = (APP_PUBLIC_URL.value() || "").replace(/\/+$/, "");
+      const continueUrl = `${baseUrl}/login`;
+
+      const resetLink = await getAuth().generatePasswordResetLink(email, { url: continueUrl });
+
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: SMTP_USER.value(), pass: SMTP_PASS.value() },
+      });
+
+      const html = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111;">
+          <h2 style="margin:0 0 12px;">Restablecimiento de contraseña</h2>
+          <p style="margin:0 0 12px;">
+            Se solicitó un restablecimiento de contraseña para su cuenta del Sistema de Citas.
+          </p>
+          <p style="margin:0 0 12px;">
+            Haga clic en el siguiente enlace para crear una nueva contraseña:
+          </p>
+          <p style="margin:0 0 12px;">
+            <a href="${resetLink}" target="_blank" rel="noopener noreferrer">${resetLink}</a>
+          </p>
+          <p style="margin:0; color:#666; font-size:12px;">
+            Si usted no solicitó esto, puede ignorar este correo.
+          </p>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: MAIL_FROM.value(),
+        to: email,
+        subject: "Restablecer contraseña - Sistema de Citas",
+        html,
+      });
+
+      return { ok: true, sentTo: email };
+    } catch (err) {
+      if (err instanceof HttpsError) throw err;
+      console.error("adminSendPasswordReset error:", err);
+      throw new HttpsError("internal", "Error al enviar recuperación de contraseña.");
+    }
+  }
+);

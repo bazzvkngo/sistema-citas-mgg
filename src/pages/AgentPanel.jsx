@@ -81,7 +81,7 @@ const styles = {
     fontWeight: 700
   },
 
-  // Banner verde (tal cual el backup)
+  // Banner verde
   attentionBanner: {
     marginTop: '10px',
     padding: '14px',
@@ -96,7 +96,6 @@ const styles = {
   attentionTitle: { margin: 0, fontSize: '14px', color: '#1e7e34', fontWeight: '700' },
   attentionCode: { margin: 0, fontSize: '28px', fontWeight: '900', color: '#155724' },
 
-  // Botón de finalizar (verde y clickeable siempre)
   attentionBtn: {
     backgroundColor: '#16a34a',
     color: '#fff',
@@ -194,7 +193,10 @@ export default function AgentPanel() {
     return r === 'admin' || r === 'agente' || currentUser?.isAdmin === true;
   }, [currentUser]);
 
-  const moduloAsignado = useMemo(() => normalizeModuloValue(currentUser?.moduloAsignado), [currentUser?.moduloAsignado]);
+  const moduloAsignado = useMemo(
+    () => normalizeModuloValue(currentUser?.moduloAsignado),
+    [currentUser?.moduloAsignado]
+  );
   const moduloSeleccionado = useMemo(() => normalizeModuloValue(moduloFiltro), [moduloFiltro]);
 
   // modulo efectivo: si el usuario tiene módulo asignado, se usa ese. si no, usa el filtro (admin).
@@ -203,13 +205,13 @@ export default function AgentPanel() {
   }, [moduloAsignado, moduloSeleccionado]);
 
   useEffect(() => {
-    // set default del filtro cuando es admin y tiene módulo asignado o no
     if (!currentUser) return;
     if (!isAdmin) return;
+
     if (moduloAsignado) {
       setModuloFiltro(moduloAsignado);
     } else if (moduloFiltro === null) {
-      setModuloFiltro(null); // sin filtro por defecto
+      setModuloFiltro(null);
     }
   }, [currentUser, isAdmin, moduloAsignado]);
 
@@ -220,10 +222,7 @@ export default function AgentPanel() {
       return;
     }
 
-    const uid = currentUser.uid;
-
-    // Importante: para el “filtro por módulo”, filtramos SOLO la atención “llamado”
-    // (Turnos tienen campo "modulo", Citas tienen campo "moduloAsignado")
+    // Para el “filtro por módulo”, filtramos SOLO la atención “llamado”
     const filtroModulo = isAdmin ? moduloSeleccionado : moduloAsignado;
 
     const qTurnos = filtroModulo
@@ -233,11 +232,7 @@ export default function AgentPanel() {
           where('modulo', '==', filtroModulo),
           limit(1)
         )
-      : query(
-          collection(db, 'turnos'),
-          where('estado', '==', 'llamado'),
-          limit(1)
-        );
+      : query(collection(db, 'turnos'), where('estado', '==', 'llamado'), limit(1));
 
     const qCitas = filtroModulo
       ? query(
@@ -246,33 +241,33 @@ export default function AgentPanel() {
           where('moduloAsignado', '==', filtroModulo),
           limit(1)
         )
-      : query(
-          collection(db, 'citas'),
-          where('estado', '==', 'llamado'),
-          limit(1)
-        );
+      : query(collection(db, 'citas'), where('estado', '==', 'llamado'), limit(1));
 
     const unsubTurnos = onSnapshot(qTurnos, (snap) => {
       if (snap.empty) return setCalledTurno(null);
       const d = snap.docs[0];
-      const data = d.data();
+      const data = d.data() || {};
       setCalledTurno({
         id: d.id,
         tipo: 'Turno',
         codigo: data.codigo,
-        tramiteID: data.tramiteID
+        tramiteID: data.tramiteID,
+        // ✅ IMPORTANTE: traer módulo para que al finalizar quede registrado
+        modulo: data.modulo ?? null
       });
     });
 
     const unsubCitas = onSnapshot(qCitas, (snap) => {
       if (snap.empty) return setCalledCita(null);
       const d = snap.docs[0];
-      const data = d.data();
+      const data = d.data() || {};
       setCalledCita({
         id: d.id,
         tipo: 'Cita',
         codigo: data.codigo,
-        tramiteID: data.tramiteID
+        tramiteID: data.tramiteID,
+        // ✅ IMPORTANTE: traer móduloAsignado para que al finalizar quede registrado
+        moduloAsignado: data.moduloAsignado ?? null
       });
     });
 
@@ -348,9 +343,7 @@ export default function AgentPanel() {
               <span style={{ fontWeight: 'bold' }}>{currentUser.email}</span>
               <span style={{ fontSize: '12px', color: '#666' }}>
                 Módulo Asignado:{' '}
-                <strong style={{ color: '#007bff' }}>
-                  {moduloAsignado || 'Sin Asignar'}
-                </strong>
+                <strong style={{ color: '#007bff' }}>{moduloAsignado || 'Sin Asignar'}</strong>
               </span>
 
               {isAdmin && (
@@ -387,6 +380,7 @@ export default function AgentPanel() {
             <p style={styles.attentionTitle}>Atendiendo {atencionActual.tipo}:</p>
             <p style={styles.attentionCode}>{atencionActual.codigo}</p>
           </div>
+
           <button style={styles.attentionBtn} onClick={() => setShowFinishModal(true)}>
             Finalizar Atención
           </button>
@@ -434,17 +428,11 @@ export default function AgentPanel() {
       {activeTab === 'hoy' && (
         <>
           <div style={styles.section}>
-            <AgentAppointments
-              atencionActual={atencionActual}
-              moduloEfectivo={moduloEfectivo}
-            />
+            <AgentAppointments atencionActual={atencionActual} moduloEfectivo={moduloEfectivo} />
           </div>
 
           <div style={styles.section}>
-            <AgentQueue
-              atencionActual={atencionActual}
-              moduloEfectivo={moduloEfectivo}
-            />
+            <AgentQueue atencionActual={atencionActual} moduloEfectivo={moduloEfectivo} />
           </div>
         </>
       )}

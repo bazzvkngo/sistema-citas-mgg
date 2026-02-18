@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 
+// --- ESTILOS EN LÍNEA PARA LA PANTALLA TV ---
 const styles = {
   tvScreen: {
     backgroundColor: '#FFFFFF',
@@ -20,9 +21,9 @@ const styles = {
     display: 'flex',
     fontFamily: 'Arial, sans-serif',
     overflow: 'hidden',
-    position: 'relative' // para overlay flotante
   },
 
+  // Sección principal (turno grande)
   mainSection: {
     flex: 3,
     display: 'flex',
@@ -30,7 +31,9 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  mainInner: { textAlign: 'center' },
+  mainInner: {
+    textAlign: 'center',
+  },
   turnoLabel: {
     fontSize: '3vw',
     letterSpacing: '0.6vw',
@@ -41,212 +44,175 @@ const styles = {
     fontWeight: 'bold',
     color: '#C8102E',
     lineHeight: 1,
-    marginBottom: '1.2vw',
   },
-  turnoModulo: {
-    fontSize: '4vw',
+  moduloText: {
+    marginTop: '1.4vw',
+    fontSize: '2.4vw',
     fontWeight: 'bold',
-    marginTop: '0.4vw'
-  },
-  turnoPlaceholder: {
-    fontSize: '4vw',
-    color: '#999999',
   },
 
-  citizenBox: {
+  citizenRow: {
     marginTop: '1.2vw',
     display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35vw',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  citizenLine: {
-    fontSize: '2.3vw',
-    fontWeight: 800,
-    color: '#222'
-  },
-  citizenSubLine: {
-    fontSize: '1.8vw',
-    color: '#444',
-    fontWeight: 700
-  },
-
-  sidePanel: {
-    flex: 1.6,
-    borderLeft: '8px solid #C8102E',
-    backgroundColor: '#f8f8f8',
-    display: 'flex',
-    flexDirection: 'column',
-    padding: '1.5vw 1.8vw',
-    boxSizing: 'border-box',
-  },
-  sideHeader: {
-    fontSize: '2.2vw',
-    fontWeight: 'bold',
-    color: '#C8102E',
-    marginBottom: '0.6vw',
-  },
-  sideSubHeader: {
-    borderBottom: '4px solid #C8102E',
-    marginBottom: '1.2vw',
-  },
-  cardsContainer: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.6vw',
-    overflowY: 'auto',
-    paddingRight: '0.4vw',
-  },
-  card: {
-    backgroundColor: '#ffffff',
-    borderRadius: '4px',
-    padding: '0.6vw 0.9vw',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
-    borderLeft: '4px solid #C8102E',
-    display: 'flex',
-    flexDirection: 'column',
+    gap: '1.4vw',
     justifyContent: 'center',
-    minHeight: '4vw',
+    alignItems: 'center',
+    flexWrap: 'wrap'
   },
-  cardNombre: {
+  citizenChip: {
+    padding: '0.8vw 1.2vw',
+    borderRadius: '999px',
+    background: '#f3f4f6',
     fontSize: '1.2vw',
     fontWeight: 'bold',
-    color: '#222222',
-    marginBottom: '0.2vw',
-  },
-  cardPrefijo: {
-    fontSize: '0.9vw',
-    color: '#666666',
-    marginBottom: '0.1vw',
-  },
-  cardLinea: {
-    fontSize: '1.0vw',
-    color: '#333333',
-  },
-  cardLineaCita: {
-    fontSize: '0.9vw',
-    color: '#555555',
-    marginTop: '0.15vw',
-  },
-  cardSinLlamados: {
-    fontSize: '0.95vw',
-    color: '#777777',
   },
 
-  // --- Publicidad flotante ---
+  // Sección lateral (turnos por trámite)
+  sideSection: {
+    flex: 1.3,
+    backgroundColor: '#f9fafb',
+    borderLeft: '2px solid #e5e7eb',
+    padding: '2vw',
+    overflowY: 'auto',
+  },
+  sideTitle: {
+    fontSize: '1.6vw',
+    fontWeight: 'bold',
+    marginBottom: '1vw',
+    color: '#111',
+  },
+  tramiteItem: {
+    backgroundColor: '#ffffff',
+    padding: '1vw',
+    marginBottom: '1vw',
+    borderRadius: '12px',
+    border: '1px solid #e5e7eb',
+    boxShadow: '0 4px 10px rgba(0,0,0,0.05)',
+  },
+  tramiteName: {
+    fontSize: '1.2vw',
+    fontWeight: 'bold',
+    marginBottom: '0.6vw',
+  },
+  tramiteCodigo: {
+    fontSize: '2.2vw',
+    fontWeight: 'bold',
+    color: '#0d6efd',
+    lineHeight: 1,
+  },
+  tramiteModulo: {
+    marginTop: '0.5vw',
+    fontSize: '1.1vw',
+    fontWeight: 'bold',
+    color: '#444',
+  },
+
+  // Publicidad flotante
   adBox: {
-    position: 'absolute',
-    zIndex: 50,
-    borderRadius: '14px',
+    position: 'fixed',
+    zIndex: 20,
+    borderRadius: 14,
     overflow: 'hidden',
-    boxShadow: '0 10px 25px rgba(0,0,0,0.25)',
-    background: '#000'
+    background: '#111',
+    boxShadow: '0 12px 28px rgba(0,0,0,0.25)',
+    border: '2px solid rgba(255,255,255,0.18)',
   },
   adMedia: {
     width: '100%',
     height: '100%',
+    display: 'block',
     objectFit: 'cover',
-    display: 'block'
+    background: '#111',
   },
   adFallback: {
+    position: 'absolute',
+    inset: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 10,
     color: '#fff',
-    padding: '10px',
-    fontSize: '14px',
-    fontWeight: 700
-  }
+    fontWeight: 800,
+    textAlign: 'center',
+    background: 'rgba(0,0,0,0.55)',
+    fontSize: 14
+  },
 };
 
-function normalizeDocId(v) {
-  return (v || '').toString().trim().toUpperCase().replace(/[^0-9K]/g, '');
+function getAdPositionStyle(pos, pad = 16) {
+  const p = (pos || 'br').toLowerCase();
+  const base = { right: pad, bottom: pad };
+  if (p === 'bl') return { left: pad, bottom: pad };
+  if (p === 'tr') return { right: pad, top: pad, bottom: 'auto' };
+  if (p === 'tl') return { left: pad, top: pad, bottom: 'auto', right: 'auto' };
+  return base; // br
 }
 
-function buildNombreCompleto(nombres, apellidos) {
-  const a = (nombres || '').toString().trim();
-  const b = (apellidos || '').toString().trim();
-  return [a, b].filter(Boolean).join(' ').trim();
-}
-
-async function lookupNombrePorDni(dniRaw) {
-  try {
-    const dniNorm = normalizeDocId(dniRaw);
-    if (!dniNorm) return '';
-
-    const refCitizen = doc(db, 'ciudadanos', dniNorm);
-    const snapCitizen = await getDoc(refCitizen);
-    if (snapCitizen.exists()) {
-      const data = snapCitizen.data() || {};
-      const nombre =
-        data.nombreCompleto ||
-        data.userNombre ||
-        data.nombre ||
-        buildNombreCompleto(data.nombres, data.apellidos);
-      return (nombre || '').toString().trim();
-    }
-
-    const qExact = query(collection(db, 'usuarios'), where('dni', '==', dniNorm), limit(1));
-    const snapExact = await getDocs(qExact);
-    if (!snapExact.empty) {
-      const data = snapExact.docs[0].data() || {};
-      const nombre =
-        data.nombreCompleto ||
-        data.userNombre ||
-        data.nombre ||
-        buildNombreCompleto(data.nombres, data.apellidos);
-      return (nombre || '').toString().trim();
-    }
-
-    return '';
-  } catch (err) {
-    console.error('lookupNombrePorDni error:', err);
-    return '';
-  }
-}
-
-function getAdPositionStyle(position, marginPx = 18) {
-  const base = { margin: `${marginPx}px` };
-  switch ((position || 'br').toLowerCase()) {
-    case 'tl':
-      return { top: marginPx, left: marginPx };
-    case 'tr':
-      return { top: marginPx, right: marginPx };
-    case 'bl':
-      return { bottom: marginPx, left: marginPx };
-    case 'br':
-    default:
-      return { bottom: marginPx, right: marginPx };
-  }
+function normalizeDocId(text) {
+  return (text || '').toString().trim().replace(/\s+/g, '').toUpperCase();
 }
 
 export default function MonitorScreen() {
-  const [llamadaActual, setLlamadaActual] = useState(null);
   const [tramites, setTramites] = useState([]);
   const [tramitesEstado, setTramitesEstado] = useState({});
+  const [llamadaActual, setLlamadaActual] = useState(null);
+
   const [nombreCiudadano, setNombreCiudadano] = useState('');
 
   const [adConfig, setAdConfig] = useState(null);
   const [adError, setAdError] = useState('');
 
+  // Buscar nombre por DNI/RUT en ciudadanos
+  async function lookupNombrePorDni(dniRaw) {
+    try {
+      const dni = normalizeDocId(dniRaw);
+      if (!dni) return '';
+
+      // Intento 1: doc id = dni
+      const ref = doc(db, 'ciudadanos', dni);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const d = snap.data() || {};
+        return (d.nombre || d.nombres || d.fullName || '').toString().trim();
+      }
+
+      // Intento 2: query por campo dni
+      const q = query(
+        collection(db, 'ciudadanos'),
+        where('dni', '==', dniRaw),
+        limit(1)
+      );
+      const qs = await getDocs(q);
+      if (!qs.empty) {
+        const d = qs.docs[0].data() || {};
+        return (d.nombre || d.nombres || d.fullName || '').toString().trim();
+      }
+
+      return '';
+    } catch (e) {
+      console.error('lookupNombrePorDni error:', e);
+      return '';
+    }
+  }
+
   // Llamada actual
   useEffect(() => {
-    const ref = doc(db, 'estadoSistema', 'llamadaActual');
-
     const mountedAt = Date.now();
     let firstSnap = true;
 
+    const ref = doc(db, 'estadoSistema', 'llamadaActual');
     const unsubscribe = onSnapshot(ref, (snap) => {
-      const data = snap.exists() ? snap.data() : null;
-
-      if (!data || !data.codigoLlamado) {
+      if (!snap.exists()) {
         setLlamadaActual(null);
-        firstSnap = false;
         return;
       }
 
-      const tsMs =
-        data.timestamp && typeof data.timestamp.toMillis === 'function'
-          ? data.timestamp.toMillis()
+      const data = snap.data() || {};
+
+      const tsMs = data.timestamp?.toMillis
+        ? data.timestamp.toMillis()
+        : data.timestamp?.seconds
+          ? data.timestamp.seconds * 1000
           : null;
 
       if (firstSnap) {
@@ -271,7 +237,8 @@ export default function MonitorScreen() {
       const dniRaw = (llamadaActual?.dni || '').toString().trim();
       const nombreDirecto = (llamadaActual?.userNombre || '').toString().trim();
 
-      if (!llamadaActual || !llamadaActual.codigoLlamado) {
+      const codigo = (llamadaActual?.codigoLlamado || llamadaActual?.codigo || '').toString().trim();
+      if (!llamadaActual || !codigo) {
         setNombreCiudadano('');
         return;
       }
@@ -340,7 +307,7 @@ export default function MonitorScreen() {
     return () => unsub();
   }, []);
 
-  const codigoCentral = llamadaActual?.codigoLlamado || '';
+  const codigoCentral = (llamadaActual?.codigoLlamado || llamadaActual?.codigo || '');
   const moduloCentral = llamadaActual?.modulo || '';
   const dniCentralRaw = (llamadaActual?.dni || '').toString().trim();
   const dniCentralNorm = normalizeDocId(dniCentralRaw);
@@ -352,7 +319,6 @@ export default function MonitorScreen() {
   const adWidthVW = Number.isFinite(adConfig?.widthVW) ? adConfig.widthVW : 28;
   const adAspect = adConfig?.aspect || '16/9';
 
-  // tamaño: usamos width en vw y calculamos height por aspect ratio con CSS aspectRatio
   const adStyle = {
     ...styles.adBox,
     ...getAdPositionStyle(adPos, 18),
@@ -392,70 +358,46 @@ export default function MonitorScreen() {
 
       <div style={styles.mainSection}>
         <div style={styles.mainInner}>
-          <div style={styles.turnoLabel}>TURNO LLAMADO</div>
+          <div style={styles.turnoLabel}>TURNO</div>
 
-          {hayLlamada ? (
-            <>
-              <div style={styles.turnoCodigo}>{codigoCentral}</div>
+          <div style={styles.turnoCodigo}>
+            {hayLlamada ? codigoCentral : '—'}
+          </div>
 
-              {moduloCentral && (
-                <div style={styles.turnoModulo}>MÓDULO {moduloCentral}</div>
-              )}
+          <div style={styles.moduloText}>
+            {hayLlamada ? `Módulo ${moduloCentral || '—'}` : 'Esperando llamado...'}
+          </div>
 
-              {(dniCentralRaw || nombreCiudadano) && (
-                <div style={styles.citizenBox}>
-                  <div style={styles.citizenLine}>DNI/RUT: {dniCentralRaw || dniCentralNorm}</div>
-                  {nombreCiudadano && <div style={styles.citizenSubLine}>{nombreCiudadano}</div>}
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={styles.turnoPlaceholder}>ESPERANDO LLAMADA…</div>
+          {hayLlamada && (
+            <div style={styles.citizenRow}>
+              <div style={styles.citizenChip}>
+                {dniCentralNorm ? `DNI/RUT: ${dniCentralNorm}` : 'DNI/RUT: —'}
+              </div>
+
+              <div style={styles.citizenChip}>
+                {nombreCiudadano ? `Nombre: ${nombreCiudadano}` : 'Nombre: —'}
+              </div>
+            </div>
           )}
         </div>
       </div>
 
-      <div style={styles.sidePanel}>
-        <div style={styles.sideHeader}>ESTADO DE TURNOS</div>
-        <div style={styles.sideHeader}>POR TRÁMITE</div>
-        <div style={styles.sideSubHeader} />
+      <div style={styles.sideSection}>
+        <div style={styles.sideTitle}>Siguientes por Trámite</div>
 
-        <div style={styles.cardsContainer}>
-          {tramites.map((tramite) => {
-            const estado = tramitesEstado[tramite.id];
-            const tieneLlamado = !!(estado && estado.codigoLlamado);
-            const codigo = estado?.codigoLlamado || '';
-            const esCitaWeb = (estado?.tipo && String(estado.tipo).toLowerCase() === 'cita') || false;
-            const prefijo = tramite.prefijo || tramite.codigo || tramite.abreviatura || '--';
+        {tramites.map((t) => {
+          const est = tramitesEstado[t.id];
+          const codigo = est?.codigoLlamado || '—';
+          const modulo = est?.modulo || '—';
 
-            return (
-              <div key={tramite.id} style={styles.card}>
-                <div style={styles.cardNombre}>{tramite.nombre || tramite.id}</div>
-                <div style={styles.cardPrefijo}>Prefijo: {prefijo}</div>
-
-                {tieneLlamado && !esCitaWeb && (
-                  <div style={styles.cardLinea}>
-                    Vamos en: <strong>{codigo}</strong> — Módulo {estado.modulo}
-                  </div>
-                )}
-
-                {!tieneLlamado && (
-                  <div style={styles.cardSinLlamados}>Sin llamados aún para este trámite.</div>
-                )}
-
-                {tieneLlamado && esCitaWeb && (
-                  <div style={styles.cardLineaCita}>
-                    Cita web en atención: <strong>{codigo}</strong> — Módulo {estado.modulo}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {tramites.length === 0 && (
-            <div style={styles.cardSinLlamados}>No hay trámites configurados en el sistema.</div>
-          )}
-        </div>
+          return (
+            <div key={t.id} style={styles.tramiteItem}>
+              <div style={styles.tramiteName}>{t.nombre || t.id}</div>
+              <div style={styles.tramiteCodigo}>{codigo}</div>
+              <div style={styles.tramiteModulo}>Módulo: {modulo}</div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

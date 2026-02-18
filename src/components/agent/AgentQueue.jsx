@@ -2,82 +2,76 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   collection,
-  doc,
-  getDocs,
   limit,
   onSnapshot,
   orderBy,
   query,
-  updateDoc,
-  where,
-  setDoc,
-  Timestamp
+  where
 } from 'firebase/firestore';
-import { db } from '../../firebase';
-import { getAuth } from 'firebase/auth';
+import { db, app } from '../../firebase';
+import { getFunctions, httpsCallable } from 'firebase/functions';
+
+const FUNCTIONS_REGION = 'southamerica-west1';
 
 const styles = {
   container: { width: '100%' },
-  title: { fontSize: 22, color: '#C8102E', marginBottom: 16, fontWeight: 800 },
 
-  grid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(3, minmax(260px, 1fr))',
-    gap: 18
-  },
-
-  card: {
-    border: '2px solid #0d6efd',
-    borderRadius: 16,
-    padding: 18,
-    background: '#fff',
-    boxShadow: '0 6px 16px rgba(0,0,0,0.07)',
-    minHeight: 240,
+  // Header compacto
+  headerRow: {
     display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'space-between'
-  },
-
-  header: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 10
-  },
-
-  tramiteTitle: {
-    fontSize: 20,
-    fontWeight: 900,
-    margin: 0,
-    lineHeight: 1.2
-  },
-
-  centerArea: {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: '10px 0'
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+    marginBottom: 12
   },
+  title: { fontSize: 18, color: '#111', fontWeight: 900, margin: 0 },
 
-  count: {
-    fontSize: 78,
-    fontWeight: 900,
-    color: '#0d6efd',
-    margin: 0,
-    lineHeight: 1
-  },
+  chipsRow: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' },
+  chip: (variant = 'neutral') => {
+    const base = {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 8,
+      padding: '8px 10px',
+      borderRadius: 999,
+      fontSize: 12,
+      fontWeight: 900,
+      border: '1px solid #e5e7eb',
+      background: '#fff',
+      color: '#111'
+    };
 
-  sub: {
-    margin: '6px 0 0',
-    color: '#666',
-    fontWeight: 700,
-    fontSize: 14
+    if (variant === 'kiosko') return { ...base, background: '#f1f5f9' };
+    if (variant === 'web') return { ...base, background: '#eaf2ff', border: '1px solid #cfe0ff' };
+    if (variant === 'danger') return { ...base, background: '#ffecec', border: '1px solid #ffd0d0' };
+    return base;
   },
+  chipDot: (color) => ({
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    background: color
+  }),
+  chipValue: { fontSize: 14, fontWeight: 900 },
 
-  footer: {
-    marginTop: 12
+  // Card principal
+  mainCard: {
+    border: '1px solid #e5e7eb',
+    borderRadius: 16,
+    padding: 16,
+    background: '#fff',
+    boxShadow: '0 6px 16px rgba(0,0,0,0.06)'
   },
+  mainTop: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap'
+  },
+  mainTitle: { margin: 0, fontWeight: 900, fontSize: 16, color: '#0b3d91' },
+  mainSub: { margin: '6px 0 0', color: '#666', fontWeight: 700, fontSize: 12, maxWidth: 560 },
 
   btn: {
     width: '100%',
@@ -89,284 +83,324 @@ const styles = {
     fontSize: 16,
     transition: 'transform 0.04s ease'
   },
+  btnEnabled: { background: '#0d6efd', color: '#fff' },
+  btnDisabled: { background: '#d9d9d9', color: '#666', cursor: 'not-allowed' },
 
-  btnEnabled: {
-    background: '#0d6efd',
-    color: '#fff'
+  // Footer acciones
+  actionsRow: {
+    display: 'flex',
+    gap: 10,
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12
   },
-
-  btnDisabled: {
-    background: '#d9d9d9',
-    color: '#666',
-    cursor: 'not-allowed'
-  },
-
-  empty: {
-    padding: 14,
-    border: '1px solid #ddd',
-    borderRadius: 10,
+  smallBtn: {
+    border: '1px solid #e5e7eb',
     background: '#fff',
-    color: '#444',
-    fontWeight: 600
-  },
-
-  bigListBox: {
-    marginTop: 16,
-    padding: 14,
+    color: '#111',
+    padding: '8px 10px',
     borderRadius: 12,
+    cursor: 'pointer',
+    fontWeight: 900,
+    fontSize: 12
+  },
+  hint: { fontSize: 12, color: '#777', fontWeight: 700 },
+
+  // Detalle colapsable
+  detailBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 14,
     border: '1px solid #e5e7eb',
     background: '#fff'
   },
-  bigListTitle: { margin: 0, fontWeight: 900, color: '#111', fontSize: 14 },
-  bigListSub: { margin: '6px 0 0', color: '#666', fontWeight: 700, fontSize: 12 },
-  bigTable: { width: '100%', borderCollapse: 'collapse', marginTop: 10 },
+  detailTitle: { margin: 0, fontWeight: 900, color: '#111', fontSize: 13 },
+  detailSub: { margin: '6px 0 0', color: '#666', fontWeight: 700, fontSize: 12 },
+
+  table: { width: '100%', borderCollapse: 'collapse', marginTop: 10 },
   th: { textAlign: 'left', padding: 10, background: '#f3f4f6', borderBottom: '1px solid #e5e7eb', fontSize: 12 },
-  td: { padding: 10, borderBottom: '1px solid #f1f5f9', fontSize: 12, verticalAlign: 'top' }
+  td: { padding: 10, borderBottom: '1px solid #f1f5f9', fontSize: 12, verticalAlign: 'top' },
+
+  badge: (bg) => ({
+    display: 'inline-block',
+    padding: '4px 8px',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: 900,
+    background: bg,
+    color: '#111'
+  })
 };
 
+function getLocalDateISOChile() {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const dd = String(now.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function buildDayRangeISO(dateISO) {
+  const start = new Date(`${dateISO}T00:00:00.000-03:00`);
+  const end = new Date(`${dateISO}T23:59:59.999-03:00`);
+  return { start, end };
+}
+
 export default function AgentQueue({ atencionActual, moduloEfectivo }) {
-  const [tramites, setTramites] = useState([]);
-  const [counts, setCounts] = useState({});
-  const [loading, setLoading] = useState(true);
+  const [pendingTurnos, setPendingTurnos] = useState(0);
+  const [pendingCitas, setPendingCitas] = useState(0);
 
-  const [waitingList, setWaitingList] = useState([]); // lista informativa grande
+  const [list, setList] = useState([]);
+  const [calling, setCalling] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
+  const totalPendientes = pendingTurnos + pendingCitas;
+
+  // Turnos kiosko pendientes (en-espera)
   useEffect(() => {
-    const fetchTramites = async () => {
-      try {
-        const snap = await getDocs(collection(db, 'tramites'));
-        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-        setTramites(list);
-      } catch (e) {
-        console.error('Error cargando tramites:', e);
-      }
-    };
-    fetchTramites();
-  }, []);
-
-  useEffect(() => {
-    if (!tramites.length) return;
-
-    setLoading(true);
-
-    const unsubs = tramites.map((t) => {
-      const q = query(
-        collection(db, 'turnos'),
-        where('tramiteID', '==', t.id),
-        where('estado', '==', 'en-espera')
-      );
-
-      return onSnapshot(q, (snap) => {
-        setCounts(prev => ({ ...prev, [t.id]: snap.size }));
-        setLoading(false);
-      });
-    });
-
-    return () => unsubs.forEach(u => u());
-  }, [tramites]);
-
-  // Lista grande informativa: últimos turnos en espera (ordenados)
-  useEffect(() => {
-    const qWait = query(
+    const qTurnos = query(
       collection(db, 'turnos'),
-      where('estado', '==', 'en-espera'),
-      orderBy('fechaHoraGenerado', 'asc'),
-      limit(200)
+      where('estado', '==', 'en-espera')
     );
 
-    const unsub = onSnapshot(qWait, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setWaitingList(list);
+    const unsub = onSnapshot(qTurnos, (snap) => {
+      setPendingTurnos(snap.size);
     });
 
     return () => unsub();
   }, []);
 
-  const llamarSiguiente = async (tramiteId, tramiteNombre) => {
+  // Citas web pendientes (activa) SOLO hoy y SOLO hasta ahora (para no llamar citas futuras)
+  useEffect(() => {
+    const todayISO = getLocalDateISOChile();
+    const { start, end } = buildDayRangeISO(todayISO);
+    const now = new Date();
+
+    const qCitas = query(
+      collection(db, 'citas'),
+      where('estado', '==', 'activa'),
+      where('fechaHora', '>=', start),
+      where('fechaHora', '<=', end),
+      where('fechaHora', '<=', now)
+    );
+
+    const unsub = onSnapshot(qCitas, (snap) => {
+      setPendingCitas(snap.size);
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Lista unificada informativa (máximo 120, ordenada por prioridad)
+  useEffect(() => {
+    const todayISO = getLocalDateISOChile();
+    const { start, end } = buildDayRangeISO(todayISO);
+    const now = new Date();
+
+    const qTurnosList = query(
+      collection(db, 'turnos'),
+      where('estado', '==', 'en-espera'),
+      orderBy('fechaHoraGenerado', 'asc'),
+      limit(80)
+    );
+
+    const qCitasList = query(
+      collection(db, 'citas'),
+      where('estado', '==', 'activa'),
+      where('fechaHora', '>=', start),
+      where('fechaHora', '<=', end),
+      where('fechaHora', '<=', now),
+      orderBy('fechaHora', 'asc'),
+      limit(80)
+    );
+
+    let turnosCache = [];
+    let citasCache = [];
+
+    const recompute = () => {
+      const turnosRows = turnosCache.map((t) => ({
+        id: t.id,
+        tipo: 'KIOSKO',
+        codigo: t.codigo || t.codigoTurno || t.turnoCodigo || t.numero || t.nro || t.id,
+        dni: t.dni || t.rut || t.documento || '',
+        tramiteID: t.tramiteID || '',
+        tramiteNombre: t.tramiteNombre || '',
+        effectiveMs: t.fechaHoraGenerado?.toDate ? t.fechaHoraGenerado.toDate().getTime() : 0
+      }));
+
+      const citasRows = citasCache.map((c) => ({
+        id: c.id,
+        tipo: 'WEB',
+        codigo: c.codigo || '',
+        dni: c.dni || '',
+        tramiteID: c.tramiteID || '',
+        tramiteNombre: c.tramiteNombre || '',
+        effectiveMs: c.fechaHora?.toDate ? c.fechaHora.toDate().getTime() : 0
+      }));
+
+      const merged = [...turnosRows, ...citasRows]
+        .sort((a, b) => a.effectiveMs - b.effectiveMs)
+        .slice(0, 120);
+
+      setList(merged);
+    };
+
+    const unsubTurnos = onSnapshot(qTurnosList, (snap) => {
+      turnosCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      recompute();
+    });
+
+    const unsubCitas = onSnapshot(qCitasList, (snap) => {
+      citasCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      recompute();
+    });
+
+    return () => {
+      unsubTurnos();
+      unsubCitas();
+    };
+  }, []);
+
+  const llamarSiguiente = async () => {
+    if (calling) return;
+
+    const modulo = moduloEfectivo;
+    if (!modulo) return alert('No tienes módulo asignado.');
+
+    if (atencionActual) {
+      return alert(`Ya estás atendiendo un ${atencionActual.tipo} (${atencionActual.codigo}). Finaliza antes de llamar otro.`);
+    }
+
+    if (totalPendientes <= 0) {
+      return alert('No hay pendientes por llamar.');
+    }
+
+    setCalling(true);
     try {
-      const modulo = moduloEfectivo;
-      if (!modulo) return alert('No tienes módulo asignado.');
+      const functions = getFunctions(app, FUNCTIONS_REGION);
+      const fn = httpsCallable(functions, 'agentCallNext');
+      const res = await fn({ modulo, sources: ['turnos', 'citas'] });
 
-      if (atencionActual) {
-        return alert(`Ya estás atendiendo un ${atencionActual.tipo} (${atencionActual.codigo}). Finaliza antes de llamar otro.`);
+      const ok = res?.data?.called;
+      if (!ok) {
+        alert(res?.data?.message || 'No hay pendientes.');
       }
-
-      const qTurno = query(
-        collection(db, 'turnos'),
-        where('tramiteID', '==', tramiteId),
-        where('estado', '==', 'en-espera'),
-        orderBy('fechaHoraGenerado', 'asc'),
-        limit(1)
-      );
-
-      const snap = await getDocs(qTurno);
-      if (snap.empty) return alert('No hay turnos en espera.');
-
-      const turnoDoc = snap.docs[0];
-      const turnoData = turnoDoc.data();
-      const turnoRef = doc(db, 'turnos', turnoDoc.id);
-
-      const codigoTurno =
-        turnoData.codigo ||
-        turnoData.codigoTurno ||
-        turnoData.turnoCodigo ||
-        turnoData.numero ||
-        turnoData.nro ||
-        turnoDoc.id;
-
-      const uid = getAuth().currentUser?.uid || '';
-
-      await updateDoc(turnoRef, {
-        estado: 'llamado',
-        modulo: modulo,
-        tramiteNombre: tramiteNombre || '',
-        agenteID: uid,
-        llamadoAt: Timestamp.now()
-      });
-
-      const payload = {
-        codigoLlamado: codigoTurno,
-        modulo: modulo,
-        timestamp: Timestamp.now(),
-        agenteID: uid,
-        tipo: 'Turno',
-        tramiteID: tramiteId,
-        tramiteNombre: tramiteNombre || ''
-      };
-
-      await setDoc(doc(db, 'estadoSistema', 'llamadaActual'), payload, { merge: true });
-      await setDoc(doc(db, 'estadoSistema', `tramite_${tramiteId}`), payload, { merge: true });
     } catch (e) {
-      console.error('Error llamando siguiente turno:', e);
-      alert('Error al llamar el siguiente turno. Revisa consola.');
+      console.error('Error llamando siguiente:', e);
+      alert(e?.message || 'Error al llamar siguiente.');
+    } finally {
+      setCalling(false);
     }
   };
 
-  // Cards: SOLO las que tienen gente en espera
-  const cards = useMemo(() => {
-    const list = tramites.map(t => ({
-      ...t,
-      count: counts[t.id] ?? 0
-    }));
-    return list.filter(t => t.count > 0);
-  }, [tramites, counts]);
+  const disabled = calling || !!atencionActual || !moduloEfectivo;
 
-  // Lista informativa agrupada por trámite (para que se vea “grande” y útil)
-  const waitingRows = useMemo(() => {
-    if (!waitingList.length) return [];
-    const byTramite = {};
-    waitingList.forEach(t => {
-      const key = t.tramiteID || 'sin_tramite';
-      if (!byTramite[key]) byTramite[key] = [];
-      byTramite[key].push(t);
-    });
-
-    const out = [];
-    Object.keys(byTramite).forEach(tramiteID => {
-      const nombre = tramites.find(x => x.id === tramiteID)?.nombre || tramiteID;
-      byTramite[tramiteID].forEach(t => {
-        const codigo =
-          t.codigo || t.codigoTurno || t.turnoCodigo || t.numero || t.nro || t.id;
-        const dni = t.dni || t.rut || t.documento || '';
-        out.push({
-          id: t.id,
-          tramiteID,
-          tramiteNombre: nombre,
-          codigo,
-          dni,
-          fecha: t.fechaHoraGenerado?.toDate ? t.fechaHoraGenerado.toDate() : null
-        });
-      });
-    });
-
-    // orden global por fecha
-    out.sort((a, b) => {
-      const ta = a.fecha ? a.fecha.getTime() : 0;
-      const tb = b.fecha ? b.fecha.getTime() : 0;
-      return ta - tb;
-    });
-
-    return out;
-  }, [waitingList, tramites]);
+  const explain = useMemo(() => {
+    return 'El sistema decide automáticamente si corresponde KIOSKO o WEB según prioridad.';
+  }, []);
 
   return (
     <div style={styles.container}>
-      <h2 style={styles.title}>Colas Presenciales en Espera (Turnos Kiosko)</h2>
+      <div style={styles.headerRow}>
+        <h2 style={styles.title}>Cola unificada</h2>
 
-      {cards.length === 0 ? (
-        <div style={styles.empty}>
-          No hay turnos presenciales en espera en este momento.
+        <div style={styles.chipsRow}>
+          <span style={styles.chip('kiosko')}>
+            <span style={styles.chipDot('#64748b')} />
+            Kiosko <span style={styles.chipValue}>{pendingTurnos}</span>
+          </span>
+
+          <span style={styles.chip('web')}>
+            <span style={styles.chipDot('#0d6efd')} />
+            Web (hoy) <span style={styles.chipValue}>{pendingCitas}</span>
+          </span>
+
+          {!moduloEfectivo && (
+            <span style={styles.chip('danger')}>
+              Asigna un módulo para llamar
+            </span>
+          )}
         </div>
-      ) : (
-        <div style={styles.grid}>
-          {cards.map((t) => {
-            const disabled = loading || !!atencionActual;
+      </div>
 
-            return (
-              <div key={t.id} style={styles.card}>
-                <div style={styles.header}>
-                  <h3 style={styles.tramiteTitle}>{t.nombre}</h3>
-                </div>
-
-                <div style={styles.centerArea}>
-                  <p style={styles.count}>{t.count}</p>
-                  <p style={styles.sub}>en espera</p>
-                </div>
-
-                <div style={styles.footer}>
-                  <button
-                    style={{
-                      ...styles.btn,
-                      ...(disabled ? styles.btnDisabled : styles.btnEnabled)
-                    }}
-                    disabled={disabled}
-                    onClick={() => llamarSiguiente(t.id, t.nombre)}
-                    onMouseDown={(e) => {
-                      if (disabled) return;
-                      e.currentTarget.style.transform = 'scale(0.99)';
-                    }}
-                    onMouseUp={(e) => {
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
-                  >
-                    Llamar Siguiente
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      <div style={styles.bigListBox}>
-        <p style={styles.bigListTitle}>Detalle turnos en espera (lista informativa)</p>
-        <p style={styles.bigListSub}>
-          Se muestra una lista ordenada por antigüedad (máximo 200).
-        </p>
-
-        {waitingRows.length === 0 ? (
-          <div style={{ marginTop: 10, color: '#444', fontWeight: 700, fontSize: 12 }}>
-            No hay registros en espera.
+      <div style={styles.mainCard}>
+        <div style={styles.mainTop}>
+          <div>
+            <p style={styles.mainTitle}>Llamado simple</p>
+            <p style={styles.mainSub}>{explain}</p>
           </div>
-        ) : (
-          <table style={styles.bigTable}>
-            <thead>
-              <tr>
-                <th style={styles.th}>Trámite</th>
-                <th style={styles.th}>Código</th>
-                <th style={styles.th}>DNI/RUT</th>
-              </tr>
-            </thead>
-            <tbody>
-              {waitingRows.map((r) => (
-                <tr key={r.id}>
-                  <td style={styles.td}>{r.tramiteNombre}</td>
-                  <td style={styles.td}><strong>{r.codigo}</strong></td>
-                  <td style={styles.td}>{r.dni || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+          <div style={styles.hint}>
+            {atencionActual ? 'Tienes una atención en curso.' : `Pendientes totales: ${totalPendientes}`}
+          </div>
+        </div>
+
+        <button
+          style={{ ...styles.btn, ...(disabled ? styles.btnDisabled : styles.btnEnabled) }}
+          disabled={disabled}
+          onClick={llamarSiguiente}
+          onMouseDown={(e) => {
+            if (disabled) return;
+            e.currentTarget.style.transform = 'scale(0.99)';
+          }}
+          onMouseUp={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          {calling ? 'Llamando…' : 'Llamar siguiente'}
+        </button>
+
+        <div style={styles.actionsRow}>
+          <button
+            style={styles.smallBtn}
+            onClick={() => setShowDetails((v) => !v)}
+            type="button"
+          >
+            {showDetails ? 'Ocultar detalle' : 'Ver detalle'}
+          </button>
+
+          <span style={styles.hint}>
+            (Solo informativo. El botón principal decide el siguiente.)
+          </span>
+        </div>
+
+        {showDetails && (
+          <div style={styles.detailBox}>
+            <p style={styles.detailTitle}>Detalle de pendientes</p>
+            <p style={styles.detailSub}>Lista unificada por prioridad (máx. 120).</p>
+
+            {list.length === 0 ? (
+              <div style={{ marginTop: 10, color: '#444', fontWeight: 800, fontSize: 12 }}>
+                No hay registros en espera.
+              </div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Tipo</th>
+                    <th style={styles.th}>Trámite</th>
+                    <th style={styles.th}>Código</th>
+                    <th style={styles.th}>DNI/RUT</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {list.map((r) => (
+                    <tr key={`${r.tipo}_${r.id}`}>
+                      <td style={styles.td}>
+                        <span style={styles.badge(r.tipo === 'WEB' ? '#E5F0FF' : '#F1F5F9')}>
+                          {r.tipo}
+                        </span>
+                      </td>
+                      <td style={styles.td}>{r.tramiteNombre || r.tramiteID || '-'}</td>
+                      <td style={styles.td}><strong>{r.codigo}</strong></td>
+                      <td style={styles.td}>{r.dni || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         )}
       </div>
     </div>

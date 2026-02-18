@@ -3,8 +3,7 @@ import React, { useState } from 'react';
 import { doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../firebase';
-// ✅ Importa el archivo simplificado
-import { CLASSIFICATION_OPTIONS } from '../../constants/classifications'; 
+import { CLASSIFICATION_OPTIONS } from '../../constants/classifications';
 
 const styles = {
   modalOverlay: {
@@ -52,7 +51,7 @@ const styles = {
     border: 'none',
     borderRadius: '5px',
     cursor: 'pointer'
-  },
+  }
 };
 
 export default function FinishServiceModal({ turnoEnAtencion, onClose, onFinalizarExito }) {
@@ -62,9 +61,10 @@ export default function FinishServiceModal({ turnoEnAtencion, onClose, onFinaliz
   const [error, setError] = useState(null);
 
   if (!turnoEnAtencion) return null;
+
   const { id, tipo, codigo } = turnoEnAtencion;
-  
-  const coleccion = tipo === 'Cita' ? 'citas' : 'turnos';
+  const esCita = tipo === 'Cita';
+  const coleccion = esCita ? 'citas' : 'turnos';
 
   const handleFinalizar = async () => {
     if (!clasificacion) {
@@ -79,19 +79,28 @@ export default function FinishServiceModal({ turnoEnAtencion, onClose, onFinaliz
       const docRef = doc(db, coleccion, id);
       const uid = getAuth().currentUser?.uid || '';
 
+      // ✅ módulo correcto según tipo
+      const moduloTurno = turnoEnAtencion?.modulo ?? null;
+      const moduloCita = turnoEnAtencion?.moduloAsignado ?? null;
+
       const updateData = {
         estado: 'completado',
         fechaHoraAtencionFin: Timestamp.now(),
-        clasificacion: clasificacion, // Será 'ATENDIDO_OK', 'FALLO_ACCION', o 'NO_SE_PRESENTO'
+        clasificacion,
         comentariosAgente: comentarios,
-        agenteID: uid,
-        modulo: turnoEnAtencion?.modulo || turnoEnAtencion?.moduloAsignado || ''
+        agenteID: uid
       };
+
+      // ✅ Guardar el campo correcto
+      if (esCita) {
+        updateData.moduloAsignado = moduloCita ?? '';
+      } else {
+        updateData.modulo = moduloTurno ?? '';
+      }
 
       await updateDoc(docRef, updateData);
 
       onFinalizarExito(tipo, codigo);
-
     } catch (err) {
       console.error(`Error al finalizar ${tipo} en DB:`, err);
       setError('Error al guardar la clasificación. Revise la consola.');
@@ -111,11 +120,13 @@ export default function FinishServiceModal({ turnoEnAtencion, onClose, onFinaliz
           <select
             style={styles.input}
             value={clasificacion}
-            onChange={(e) => { setClasificacion(e.target.value); setError(null); }}
+            onChange={(e) => {
+              setClasificacion(e.target.value);
+              setError(null);
+            }}
             disabled={loading}
           >
-            {/* Uso de la variable simplificada */}
-            {CLASSIFICATION_OPTIONS.map(option => (
+            {CLASSIFICATION_OPTIONS.map((option) => (
               <option key={option.value} value={option.value} disabled={option.value === ''}>
                 {option.label}
               </option>
@@ -136,18 +147,10 @@ export default function FinishServiceModal({ turnoEnAtencion, onClose, onFinaliz
         {error && <p style={{ color: 'red' }}>{error}</p>}
 
         <div style={styles.buttonGroup}>
-          <button
-            style={styles.cancelButton}
-            onClick={onClose}
-            disabled={loading}
-          >
+          <button style={styles.cancelButton} onClick={onClose} disabled={loading}>
             Cancelar
           </button>
-          <button
-            style={styles.saveButton}
-            onClick={handleFinalizar}
-            disabled={loading || !clasificacion}
-          >
+          <button style={styles.saveButton} onClick={handleFinalizar} disabled={loading || !clasificacion}>
             {loading ? 'Guardando...' : 'Guardar y Finalizar'}
           </button>
         </div>
