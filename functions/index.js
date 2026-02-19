@@ -619,11 +619,34 @@ exports.resetContadoresDiarios = onSchedule(
 );
 
 /* =========================
-   METRICAS
+   METRICAS (v2)
+   - Mantiene compatibilidad con respuesta anterior (stats.citas/turnos + detalle arrays)
+   - Agrega:
+     - agrupaciones: byAgente / byModulo / byTramite
+     - tiempos: espera (llamadoAt - base) y atención (fechaHoraAtencionFin - llamadoAt)
+       * base: WEB usa fechaHora (programada); KIOSKO usa fechaHoraGenerado
    ========================= */
 
+function initTimeStats() {
+  return { count: 0, minMs: null, maxMs: null, sumMs: 0, avgMs: 0 };
+}
+
+function addTimeSample(obj, ms) {
+  if (!Number.isFinite(ms) || ms < 0) return;
+  obj.count++;
+  obj.sumMs += ms;
+  obj.minMs = obj.minMs === null ? ms : Math.min(obj.minMs, ms);
+  obj.maxMs = obj.maxMs === null ? ms : Math.max(obj.maxMs, ms);
+  obj.avgMs = obj.count ? Math.round(obj.sumMs / obj.count) : 0;
+}
+
+function msToMinutes(ms) {
+  if (!Number.isFinite(ms)) return null;
+  return Math.round((ms / 60000) * 10) / 10; // 1 decimal
+}
+
 exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => {
-  const { startDateISO, endDateISO } = request.data || {};
+  const { startDateISO, endDateISO, includeDetails = true } = request.data || {};
 
   if (!startDateISO || !endDateISO) {
     throw new HttpsError("invalid-argument", "Fechas son requeridas.");
@@ -633,10 +656,27 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
     const { start, end } = buildLocalRange(startDateISO, endDateISO);
 
     const stats = {
+      // Compatibilidad (lo que ya consume el front)
       citas: { atendido_total: 0, fallo_accion: 0, no_presento: 0 },
       turnos: { atendido_total: 0, fallo_accion: 0, no_presento: 0 },
       detalleCitas: [],
       detalleTurnos: [],
+
+      // Nuevos
+      byAgente: {},   // agenteID -> { total, WEB, KIOSKO, modulos: {m: n}, tramites: {t: n} }
+      byModulo: {},   // modulo -> { total, WEB, KIOSKO, agentes: {a: n}, tramites: {t: n} }
+      byTramite: {},  // tramiteID -> { total, WEB, KIOSKO, agentes: {a: n}, modulos: {m: n} }
+
+      tiempos: {
+        espera: initTimeStats(),
+        atencion: initTimeStats()
+      },
+
+      // Top (para reportes: mayor/menor)
+      topEsperaMin: [],
+      topEsperaMax: [],
+      topAtencionMin: [],
+      topAtencionMax: [],
     };
 
     const toIsoOrNull = (ts) => {
@@ -647,6 +687,63 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
       } catch {
         return null;
       }
+    };
+
+    const toMillisOrNull = (ts) => {
+      if (!ts) return null;
+      if (typeof ts.toMillis === "function") return ts.toMillis();
+      try {
+        const d = new Date(ts);
+        const m = d.getTime();
+        return Number.isFinite(m) ? m : null;
+      } catch {
+        return null;
+      }
+    };
+
+    const safeKey = (v) => safeStr(v || "").trim();
+
+    const bumpNested = (obj, key) => {
+      if (!key) return;
+      obj[key] = (obj[key] || 0) + 1;
+    };
+
+    const ensureAgg = (map, key, base) => {
+      if (!map[key]) map[key] = JSON.parse(JSON.stringify(base));
+      return map[key];
+    };
+
+    const pushTop = (arr, item, maxLen = 10) => {
+      arr.push(item);
+      if (arr.length > maxLen) arr.length = maxLen;
+    };
+
+    const sortTopAsc = (arr, field) => arr.sort((a, b) => (a[field] ?? 0) - (b[field] ?? 0));
+    const sortTopDesc = (arr, field) => arr.sort((a, b) => (b[field] ?? 0) - (a[field] ?? 0));
+
+    const updateTopLists = ({ esperaMs, atencionMs, baseItem }) => {
+      if (Number.isFinite(esperaMs)) {
+        // min
+        pushTop(stats.topEsperaMin, { ...baseItem, esperaMin: msToMinutes(esperaMs) });
+        sortTopAsc(stats.topEsperaMin, "esperaMin");
+        // max
+        pushTop(stats.topEsperaMax, { ...baseItem, esperaMin: msToMinutes(esperaMs) });
+        sortTopDesc(stats.topEsperaMax, "esperaMin");
+      }
+      if (Number.isFinite(atencionMs)) {
+        // min
+        pushTop(stats.topAtencionMin, { ...baseItem, atencionMin: msToMinutes(atencionMs) });
+        sortTopAsc(stats.topAtencionMin, "atencionMin");
+        // max
+        pushTop(stats.topAtencionMax, { ...baseItem, atencionMin: msToMinutes(atencionMs) });
+        sortTopDesc(stats.topAtencionMax, "atencionMin");
+      }
+
+      // recorta para quedar en top 10
+      stats.topEsperaMin = stats.topEsperaMin.slice(0, 10);
+      stats.topEsperaMax = stats.topEsperaMax.slice(0, 10);
+      stats.topAtencionMin = stats.topAtencionMin.slice(0, 10);
+      stats.topAtencionMax = stats.topAtencionMax.slice(0, 10);
     };
 
     const acumularDocumento = (coleccion, docId, data) => {
@@ -680,30 +777,104 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
           break;
       }
 
-      const fechaHoraAtencionFin = toIsoOrNull(data.fechaHoraAtencionFin);
-      const fechaHoraGenerado = toIsoOrNull(data.fechaHoraGenerado);
+      const modulo = safeKey(data.modulo || data.moduloAsignado);
+      const agenteID = safeKey(data.agenteID || data.agenteId || data.agenteUid || data.cerradoPor);
+      const tramiteID = safeKey(data.tramiteID || data.tramiteId);
+      const origen = coleccion === "citas" ? "WEB" : "KIOSKO";
 
-      const fechaHoraProgramada = coleccion === "citas" ? toIsoOrNull(data.fechaHora) : null;
+      // ---------- tiempos ----------
+      const finMs = toMillisOrNull(data.fechaHoraAtencionFin);
+      const llamadoMs = toMillisOrNull(data.llamadoAt);
+      const baseMs = coleccion === "citas"
+        ? toMillisOrNull(data.fechaHora)           // programada
+        : toMillisOrNull(data.fechaHoraGenerado);  // generado
 
-      detalleArr.push({
+      const esperaMs = (llamadoMs != null && baseMs != null) ? (llamadoMs - baseMs) : null;
+      const atencionMs = (finMs != null && llamadoMs != null) ? (finMs - llamadoMs) : null;
+
+      addTimeSample(stats.tiempos.espera, esperaMs);
+      addTimeSample(stats.tiempos.atencion, atencionMs);
+
+      const baseItem = {
         id: docId,
-        codigo: data.codigo || "",
-        dni: data.dni || "",
-        tramiteID: data.tramiteID || "",
-        clasificacion,
-        comentario: data.comentariosAgente || "",
-        modulo: data.modulo || data.moduloAsignado || "",
+        origen,
+        codigo: safeKey(data.codigo),
+        dni: safeKey(data.dni),
+        tramiteID,
+        modulo,
+        agenteID
+      };
+      updateTopLists({ esperaMs, atencionMs, baseItem });
 
-        agenteID: data.agenteID || "",
-        fechaHoraProgramada,
-        fechaHoraGenerado,
-        fechaHoraAtencionFin,
-
-        estado: data.estado || "",
-        cierreMasivo: !!data.cierreMasivo,
-        cierreMotivo: data.cierreMotivo || "",
-        cerradoPor: data.cerradoPor || "",
+      // ---------- agrupaciones ----------
+      const agenteAgg = ensureAgg(stats.byAgente, agenteID || "SIN_AGENTE", {
+        total: 0,
+        WEB: 0,
+        KIOSKO: 0,
+        modulos: {},
+        tramites: {}
       });
+      agenteAgg.total++;
+      agenteAgg[origen] = (agenteAgg[origen] || 0) + 1;
+      bumpNested(agenteAgg.modulos, modulo || "SIN_MODULO");
+      bumpNested(agenteAgg.tramites, tramiteID || "SIN_TRAMITE");
+
+      const moduloAgg = ensureAgg(stats.byModulo, modulo || "SIN_MODULO", {
+        total: 0,
+        WEB: 0,
+        KIOSKO: 0,
+        agentes: {},
+        tramites: {}
+      });
+      moduloAgg.total++;
+      moduloAgg[origen] = (moduloAgg[origen] || 0) + 1;
+      bumpNested(moduloAgg.agentes, agenteID || "SIN_AGENTE");
+      bumpNested(moduloAgg.tramites, tramiteID || "SIN_TRAMITE");
+
+      const tramiteAgg = ensureAgg(stats.byTramite, tramiteID || "SIN_TRAMITE", {
+        total: 0,
+        WEB: 0,
+        KIOSKO: 0,
+        agentes: {},
+        modulos: {}
+      });
+      tramiteAgg.total++;
+      tramiteAgg[origen] = (tramiteAgg[origen] || 0) + 1;
+      bumpNested(tramiteAgg.agentes, agenteID || "SIN_AGENTE");
+      bumpNested(tramiteAgg.modulos, modulo || "SIN_MODULO");
+
+      // ---------- detalle (compatibilidad) ----------
+      if (includeDetails) {
+        const fechaHoraAtencionFin = toIsoOrNull(data.fechaHoraAtencionFin);
+        const fechaHoraGenerado = toIsoOrNull(data.fechaHoraGenerado);
+        const fechaHoraProgramada = coleccion === "citas" ? toIsoOrNull(data.fechaHora) : null;
+
+        detalleArr.push({
+          id: docId,
+          codigo: data.codigo || "",
+          dni: data.dni || "",
+          tramiteID: data.tramiteID || "",
+          clasificacion,
+          comentario: data.comentariosAgente || "",
+          modulo: data.modulo || data.moduloAsignado || "",
+
+          agenteID: data.agenteID || "",
+          fechaHoraProgramada,
+          fechaHoraGenerado,
+          fechaHoraAtencionFin,
+
+          llamadoAt: toIsoOrNull(data.llamadoAt) || null,
+
+          // métricas unitarias (minutos)
+          esperaMin: msToMinutes(esperaMs),
+          atencionMin: msToMinutes(atencionMs),
+
+          estado: data.estado || "",
+          cierreMasivo: !!data.cierreMasivo,
+          cierreMotivo: data.cierreMotivo || "",
+          cerradoPor: data.cerradoPor || "",
+        });
+      }
     };
 
     for (const collectionName of ["citas", "turnos"]) {
@@ -717,13 +888,28 @@ exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => 
       snapshot.forEach((docSnap) => acumularDocumento(collectionName, docSnap.id, docSnap.data()));
     }
 
+    // Devuelve también promedios en minutos (más útil para UI)
+    stats.tiempos = {
+      espera: {
+        ...stats.tiempos.espera,
+        minMin: msToMinutes(stats.tiempos.espera.minMs),
+        maxMin: msToMinutes(stats.tiempos.espera.maxMs),
+        avgMin: msToMinutes(stats.tiempos.espera.avgMs),
+      },
+      atencion: {
+        ...stats.tiempos.atencion,
+        minMin: msToMinutes(stats.tiempos.atencion.minMs),
+        maxMin: msToMinutes(stats.tiempos.atencion.maxMs),
+        avgMin: msToMinutes(stats.tiempos.atencion.avgMs),
+      }
+    };
+
     return stats;
   } catch (error) {
     console.error("Error en getMetricsData:", error);
     throw new HttpsError("internal", "Error al procesar métricas. Revisa los índices.");
   }
 });
-
 /* =========================
    RESET PANTALLA TV
    ========================= */

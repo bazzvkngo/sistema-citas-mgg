@@ -11,618 +11,330 @@ import { saveAs } from "file-saver";
 import Chart from "chart.js/auto";
 import ReportChart from "../components/common/ReportChart";
 
+import "./Metrics.css";
+
 const FUNCTIONS_REGION = "southamerica-west1";
 
 const styles = {
-  page: { padding: 20, maxWidth: 1200, margin: "0 auto", fontFamily: "Arial, sans-serif" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14 },
-  title: { margin: 0, fontSize: 24, fontWeight: "bold", color: "#C8102E" },
+  page: { padding: 20, maxWidth: 1250, margin: "0 auto", fontFamily: "Arial, sans-serif" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 14, flexWrap: "wrap" },
+  title: { margin: 0, fontSize: 24, fontWeight: 900, color: "#C8102E" },
+
   card: {
     background: "#fff",
-    borderRadius: 12,
-    boxShadow: "0 4px 12px rgba(0,0,0,0.05)",
+    borderRadius: 14,
+    boxShadow: "0 6px 16px rgba(0,0,0,0.06)",
     padding: 16,
     marginBottom: 14,
+    border: "1px solid #eee",
   },
-  controlsRow: { display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" },
-  input: { border: "1px solid #ccc", borderRadius: 10, padding: "8px 12px", fontSize: 14 },
+
   button: {
     border: "none",
-    borderRadius: 10,
+    borderRadius: 12,
     padding: "10px 14px",
-    fontSize: 14,
-    fontWeight: "bold",
+    fontSize: 13,
+    fontWeight: 900,
     backgroundColor: "#C8102E",
     color: "#fff",
     cursor: "pointer",
-  },
-  small: { fontSize: 12, color: "#666", marginBottom: 4 },
-  tabs: { display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" },
-  tab: {
-    border: "1px solid #ddd",
-    background: "#f9f9f9",
-    padding: "8px 12px",
-    borderRadius: 10,
-    cursor: "pointer",
-    fontSize: 14,
-  },
-  tabActive: { borderColor: "#C8102E", color: "#C8102E", fontWeight: "bold" },
-  tableWrap: { overflowX: "auto" },
-  table: { width: "100%", borderCollapse: "collapse" },
-  th: { textAlign: "left", borderBottom: "2px solid #eee", padding: "10px 8px", fontSize: 12, color: "#444" },
-  td: { borderBottom: "1px solid #eee", padding: "10px 8px", fontSize: 13, color: "#222", verticalAlign: "top" },
-  badge: (bg, color) => ({
-    display: "inline-block",
-    background: bg,
-    color,
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: "bold",
     whiteSpace: "nowrap",
-  }),
-  linkBtn: {
-    border: "none",
-    background: "transparent",
-    color: "#C8102E",
-    fontWeight: "bold",
+  },
+  buttonSecondary: {
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    padding: "10px 14px",
+    fontSize: 13,
+    fontWeight: 900,
+    backgroundColor: "#fff",
+    color: "#111",
     cursor: "pointer",
-    padding: 0,
-    textDecoration: "underline",
+    whiteSpace: "nowrap",
+  },
+  buttonDanger: {
+    border: "1px solid #ffd0d0",
+    borderRadius: 12,
+    padding: "10px 14px",
+    fontSize: 13,
+    fontWeight: 900,
+    backgroundColor: "#fff5f5",
+    color: "#7a0000",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
   },
 
-  modalOverlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.35)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 16,
-    zIndex: 9999,
-  },
-  modalCard: {
-    width: "min(980px, 96vw)",
-    maxHeight: "92vh",
-    overflow: "auto",
+  input: { border: "1px solid #e5e7eb", borderRadius: 12, padding: "10px 12px", fontSize: 13, fontWeight: 800 },
+  select: { border: "1px solid #e5e7eb", borderRadius: 12, padding: "10px 12px", fontSize: 13, fontWeight: 900, background: "#fff" },
+
+  small: { fontSize: 12, color: "#666", margin: 0, fontWeight: 800, lineHeight: 1.35 },
+
+  tabs: { display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" },
+  tab: {
+    border: "1px solid #e5e7eb",
     background: "#fff",
-    borderRadius: 14,
-    boxShadow: "0 10px 30px rgba(0,0,0,0.18)",
-  },
-  modalHeader: { padding: "14px 18px", borderBottom: "1px solid #eee", display: "flex", gap: 10, alignItems: "start" },
-  modalTitle: { margin: 0, fontSize: 18, color: "#C8102E" },
-  modalClose: {
-    marginLeft: "auto",
-    border: "none",
-    background: "#fff",
+    padding: "9px 12px",
+    borderRadius: 999,
     cursor: "pointer",
-    fontSize: 22,
-    lineHeight: 1,
-    color: "#444",
+    fontSize: 13,
+    fontWeight: 900,
+    color: "#111",
   },
-  modalBody: { padding: 18 },
-  grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
-  box: { border: "1px solid #eee", borderRadius: 12, padding: 12, background: "#fafafa" },
-  boxTitle: { margin: 0, fontSize: 11, letterSpacing: 0.6, color: "#666" },
-  boxValue: { margin: "6px 0 0 0", fontSize: 14, fontWeight: "bold", color: "#222" },
-  modalFooter: {
-    padding: 14,
-    borderTop: "1px solid #eee",
-    display: "flex",
-    gap: 10,
-    justifyContent: "flex-end",
-    flexWrap: "wrap",
-  },
-  modalBtn: {
-    border: "none",
-    borderRadius: 10,
-    padding: "10px 14px",
-    fontSize: 14,
-    fontWeight: "bold",
-    cursor: "pointer",
-  },
-  modalBtnPrimary: { background: "#C8102E", color: "#fff" },
-  modalBtnGhost: { background: "#f3f4f6", color: "#111" },
-  modalBtnExcel: { background: "#0f7a2a", color: "#fff" },
+  tabActive: { borderColor: "#cfe0ff", background: "#eaf2ff", color: "#0b3d91" },
+
+  tableWrap: { overflowX: "auto" },
+  table: { width: "100%", borderCollapse: "collapse" },
+  th: { textAlign: "left", borderBottom: "2px solid #eee", padding: "10px 8px", fontSize: 12, color: "#444", fontWeight: 900, whiteSpace: "nowrap" },
+  td: { borderBottom: "1px solid #eee", padding: "10px 8px", fontSize: 13, verticalAlign: "top" },
+
+  badge: (bg, color) => ({
+    display: "inline-block",
+    padding: "4px 9px",
+    borderRadius: 999,
+    background: bg,
+    color,
+    fontWeight: 900,
+    fontSize: 12,
+    border: "1px solid rgba(0,0,0,0.05)",
+    whiteSpace: "nowrap",
+  }),
+
+  kpiGrid: { display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 10 },
+  kpi: { border: "1px solid #eee", borderRadius: 14, padding: 12, background: "#fff" },
+  kpiLabel: { fontSize: 12, fontWeight: 800, color: "#666", marginBottom: 6 },
+  kpiValue: { fontSize: 20, fontWeight: 900, color: "#111" },
+  kpiHint: { fontSize: 12, fontWeight: 800, color: "#777", marginTop: 6, lineHeight: 1.25 },
+
+  split2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
 };
 
 function isoToday() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  const now = new Date();
+  const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
 }
 
-function chunk(arr, size) {
-  const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
+function safeToDate(ts) {
+  if (!ts) return null;
+  if (ts?.toDate) return ts.toDate();
+  const d = new Date(ts);
+  return Number.isFinite(d.getTime()) ? d : null;
 }
 
-function safeFileName(name) {
-  return String(name || "reporte")
-    .trim()
-    .replace(/[\\/:*?"<>|]/g, "_")
-    .replace(/\s+/g, "_")
-    .slice(0, 80);
+function fmtDate(ts) {
+  const d = safeToDate(ts);
+  if (!d) return "-";
+  return format(d, "dd/MM/yyyy HH:mm");
 }
 
-async function exportRecordToExcelPro(record, agentsMap) {
-  if (!record) return;
+function msToMin(ms) {
+  if (ms == null) return "-";
+  const n = Number(ms);
+  if (!Number.isFinite(n)) return "-";
+  return Math.round((n / 60000) * 10) / 10;
+}
 
-  const ag = agentsMap?.[record.agenteID] || {};
-  const origen = record.__origen || "-";
+function normalizeCountMap(maybe) {
+  if (!maybe) return [];
+  if (Array.isArray(maybe)) {
+    if (maybe.length === 0) return [];
+    if (Array.isArray(maybe[0])) return maybe.map(([k, v]) => ({ key: String(k), count: Number(v) || 0 }));
+    if (typeof maybe[0] === "object") {
+      return maybe.map((x) => ({ key: String(x.key ?? x.id ?? x.name ?? "-"), count: Number(x.count ?? x.value ?? 0) || 0 }));
+    }
+    return [];
+  }
+  if (typeof maybe === "object") {
+    return Object.entries(maybe).map(([k, v]) => ({ key: String(k), count: Number(v) || 0 }));
+  }
+  return [];
+}
 
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "Consulado del Perú";
-  wb.created = new Date();
+function sortDesc(arr) {
+  return [...arr].sort((a, b) => (b.count || 0) - (a.count || 0));
+}
 
-  const ws = wb.addWorksheet("Detalle", {
-    views: [{ state: "frozen", ySplit: 6 }],
-    pageSetup: { fitToPage: true, fitToWidth: 1 },
+function countBy(list, getKey) {
+  const m = new Map();
+  list.forEach((r) => {
+    const k = String(getKey(r) ?? "-");
+    m.set(k, (m.get(k) || 0) + 1);
   });
-
-  ws.columns = [
-    { width: 24 }, // A
-    { width: 44 }, // B
-    { width: 4 }, // C
-    { width: 24 }, // D
-    { width: 44 }, // E
-  ];
-
-  const border = {
-    top: { style: "thin", color: { argb: "FFE5E7EB" } },
-    left: { style: "thin", color: { argb: "FFE5E7EB" } },
-    bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
-    right: { style: "thin", color: { argb: "FFE5E7EB" } },
-  };
-
-  const headerFill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC8102E" } };
-  const headerFont = { bold: true, color: { argb: "FFFFFFFF" }, size: 14 };
-  const titleFont = { bold: true, color: { argb: "FFC8102E" }, size: 18 };
-
-  ws.mergeCells("A1:E1");
-  ws.getCell("A1").value = `${origen}: ${record.codigo || record.id || "Detalle"}`;
-  ws.getCell("A1").font = titleFont;
-  ws.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
-
-  ws.mergeCells("A2:E2");
-  ws.getCell("A2").value = `ID Doc: ${record.id || "-"}  |  Trámite: ${record.tramiteID || "-"}`;
-  ws.getCell("A2").alignment = { vertical: "middle", horizontal: "center" };
-  ws.getCell("A2").font = { color: { argb: "FF374151" } };
-
-  ws.mergeCells("A4:B4");
-  ws.getCell("A4").value = record.clasificacion || "";
-  ws.getCell("A4").font = { bold: true, color: { argb: "FF111827" } };
-  ws.getCell("A4").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF3CD" } };
-  ws.getCell("A4").alignment = { vertical: "middle", horizontal: "center" };
-  ws.getCell("A4").border = border;
-
-  ws.mergeCells("D4:E4");
-  ws.getCell("D4").value = `Estado: ${record.estado || "-"}`;
-  ws.getCell("D4").font = { bold: true, color: { argb: "FF1D4ED8" } };
-  ws.getCell("D4").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFF6FF" } };
-  ws.getCell("D4").alignment = { vertical: "middle", horizontal: "center" };
-  ws.getCell("D4").border = border;
-
-  const addPair = (r, c, label, value) => {
-    const lab = ws.getCell(r, c);
-    const val = ws.getCell(r + 1, c);
-
-    ws.mergeCells(r, c, r, c + 1);
-    ws.mergeCells(r + 1, c, r + 1, c + 1);
-
-    lab.value = label;
-    lab.font = { bold: true, size: 10, color: { argb: "FF6B7280" } };
-    lab.alignment = { vertical: "middle", horizontal: "left" };
-
-    val.value = value ?? "";
-    val.font = { bold: true, size: 12, color: { argb: "FF111827" } };
-    val.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
-    val.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFFFFF" } };
-    val.border = border;
-  };
-
-  addPair(6, 1, "CÓDIGO", record.codigo || "");
-  addPair(6, 4, "DNI CIUDADANO", record.dni || "");
-
-  addPair(8, 1, "MÓDULO", record.modulo ?? "");
-  addPair(8, 4, "AGENTE (UID)", record.agenteID || "");
-
-  addPair(10, 1, "AGENTE (EMAIL)", ag.email || "");
-  addPair(10, 4, "AGENTE (DNI)", ag.dni || "");
-
-  addPair(12, 1, "AGENTE (NOMBRE)", ag.nombre || "");
-  addPair(12, 4, "ORIGEN", origen);
-
-  addPair(14, 1, "HORA AGENDADA", record.fechaHora ? format(new Date(record.fechaHora), "dd/MM/yyyy HH:mm") : "");
-  addPair(
-    14,
-    4,
-    "HORA CREACIÓN",
-    record.fechaHoraCreacion ? format(new Date(record.fechaHoraCreacion), "dd/MM/yyyy HH:mm") : ""
-  );
-
-  addPair(
-    16,
-    1,
-    "HORA FIN",
-    record.fechaHoraAtencionFin ? format(new Date(record.fechaHoraAtencionFin), "dd/MM/yyyy HH:mm") : ""
-  );
-  addPair(16, 4, "CIERRE MASIVO", record.cierreMasivo ? "Sí" : "No");
-
-  addPair(18, 1, "MOTIVO CIERRE", record.motivoCierre || "");
-  addPair(20, 1, "COMENTARIO / OBSERVACIÓN", record.comentario || "");
-
-  for (let r = 6; r <= 21; r++) ws.getRow(r).height = 22;
-
-  ws.getCell("A23").value = "Generado:";
-  ws.getCell("B23").value = format(new Date(), "dd/MM/yyyy HH:mm");
-  ws.getCell("A23").font = { bold: true, color: { argb: "FF6B7280" } };
-  ws.getCell("B23").font = { color: { argb: "FF374151" } };
-
-  ws.getCell("A1").fill = headerFill;
-  ws.getCell("A1").font = headerFont;
-  ws.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
-  ws.getRow(1).height = 26;
-
-  const fileName = safeFileName(`${origen}_${record.codigo || record.id || "detalle"}`) + ".xlsx";
-  const buf = await wb.xlsx.writeBuffer();
-  saveAs(new Blob([buf]), fileName);
-}
-
-function buildResumenFromRecords(detalleCitas = [], detalleTurnos = []) {
-  const resumen = {
-    total: detalleCitas.length + detalleTurnos.length,
-    citas: detalleCitas.length,
-    turnos: detalleTurnos.length,
-  };
-
-  const countBy = (arr, keyFn) => {
-    const m = new Map();
-    arr.forEach((r) => {
-      const k = keyFn(r);
-      if (!k) return;
-      m.set(k, (m.get(k) || 0) + 1);
-    });
-    return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
-  };
-
-  const byTramite = countBy([...detalleCitas, ...detalleTurnos], (r) => r.tramiteID || "SIN_TRAMITE");
-  const byAgente = countBy([...detalleCitas, ...detalleTurnos], (r) => r.agenteID || "SIN_AGENTE");
-  const byEstado = countBy([...detalleCitas, ...detalleTurnos], (r) => r.estado || "SIN_ESTADO");
-
-  return { resumen, byTramite, byAgente, byEstado };
+  return sortDesc(Array.from(m.entries()).map(([key, count]) => ({ key, count })));
 }
 
 function makeChartImageBase64({ type, labels, values, title }) {
   const canvas = document.createElement("canvas");
-  canvas.width = 900;
-  canvas.height = 420;
+  canvas.width = 1000;
+  canvas.height = 430;
   const ctx = canvas.getContext("2d");
 
   const chart = new Chart(ctx, {
     type,
-    data: {
-      labels,
-      datasets: [
-        {
-          label: title || "",
-          data: values,
-        },
-      ],
-    },
+    data: { labels, datasets: [{ label: title || "", data: values }] },
     options: {
       responsive: false,
-      plugins: {
-        legend: { display: false },
-        title: { display: !!title, text: title },
-      },
-      scales: type === "pie" ? {} : { y: { beginAtZero: true } },
+      animation: false,
+      plugins: { legend: { display: false }, title: { display: !!title, text: title || "" } },
     },
   });
 
-  const base64 = chart.toBase64Image("image/png", 1);
+  chart.update();
+  const b64 = canvas.toDataURL("image/png");
   chart.destroy();
-  return base64;
+  return b64;
 }
 
-function applyHeaderRowStyle(row) {
-  row.font = { bold: true, color: { argb: "FFFFFFFF" } };
-  row.alignment = { vertical: "middle", horizontal: "center" };
-  row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC8102E" } };
-  row.border = {
-    top: { style: "thin", color: { argb: "FFE5E7EB" } },
-    left: { style: "thin", color: { argb: "FFE5E7EB" } },
-    bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
-    right: { style: "thin", color: { argb: "FFE5E7EB" } },
-  };
-}
+function buildPrintableHTML({ title, rangeText, sections }) {
+  const css = `
+    <style>
+      body { font-family: Arial, sans-serif; margin: 18px; color: #111; }
+      h1 { margin: 0 0 6px 0; font-size: 20px; color: #C8102E; }
+      .sub { margin: 0 0 14px 0; font-size: 12px; color: #555; font-weight: 700; }
+      .section { border: 1px solid #eee; border-radius: 12px; padding: 12px; margin: 10px 0; }
+      .section h2 { margin: 0 0 10px 0; font-size: 14px; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border-bottom: 1px solid #eee; padding: 8px; font-size: 12px; text-align: left; vertical-align: top; }
+      th { font-weight: 900; color: #444; border-bottom: 2px solid #ddd; }
+      .img { width: 100%; max-width: 1000px; margin-top: 10px; }
+      .badge { display: inline-block; padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(0,0,0,0.08); font-weight: 800; font-size: 11px; }
+      .kpiGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+      .kpi { border: 1px solid #eee; border-radius: 12px; padding: 10px; }
+      .kpi .l { font-size: 11px; color: #666; font-weight: 800; margin-bottom: 6px; }
+      .kpi .v { font-size: 18px; font-weight: 900; }
+      @media print { .noPrint { display: none; } }
+    </style>
+  `;
 
-function addTableSheet(workbook, name, columns, rows) {
-  const ws = workbook.addWorksheet(name, {
-    views: [{ state: "frozen", ySplit: 1 }],
-    pageSetup: { fitToPage: true, fitToWidth: 1 },
-  });
+  const body = sections
+    .map((s) => {
+      const imgHTML = s.chartBase64 ? `<img class="img" src="${s.chartBase64}" />` : "";
+      const tableHTML = s.table
+        ? `
+          <table>
+            <thead><tr>${s.table.headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+            <tbody>
+              ${s.table.rows.map((r) => `<tr>${r.map((c) => `<td>${c ?? ""}</td>`).join("")}</tr>`).join("")}
+            </tbody>
+          </table>
+        `
+        : "";
 
-  ws.columns = columns.map((c) => ({ header: c.header, key: c.key, width: c.width || 18 }));
+      const kpisHTML = s.kpis
+        ? `
+          <div class="kpiGrid">
+            ${s.kpis.map((k) => `<div class="kpi"><div class="l">${k.label}</div><div class="v">${k.value}</div><div style="font-size:11px;color:#777;font-weight:700;margin-top:6px">${k.hint || ""}</div></div>`).join("")}
+          </div>
+        `
+        : "";
 
-  const headerRow = ws.getRow(1);
-  applyHeaderRowStyle(headerRow);
-
-  rows.forEach((r) => ws.addRow(r));
-
-  ws.autoFilter = {
-    from: { row: 1, column: 1 },
-    to: { row: 1, column: columns.length },
-  };
-
-  ws.eachRow((row, rowNumber) => {
-    row.height = rowNumber === 1 ? 22 : 18;
-    row.eachCell((cell) => {
-      cell.border = {
-        top: { style: "thin", color: { argb: "FFE5E7EB" } },
-        left: { style: "thin", color: { argb: "FFE5E7EB" } },
-        bottom: { style: "thin", color: { argb: "FFE5E7EB" } },
-        right: { style: "thin", color: { argb: "FFE5E7EB" } },
-      };
-      if (rowNumber !== 1) {
-        cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
-      }
-    });
-  });
-
-  return ws;
-}
-
-async function exportAllToExcelPro({
-  startDateISO,
-  endDateISO,
-  detalleCitas,
-  detalleTurnos,
-  agentsMap,
-  searchText,
-}) {
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "Consulado del Perú";
-  wb.created = new Date();
-
-  const now = new Date();
-  const safeFrom = String(startDateISO || "").slice(0, 10);
-  const safeTo = String(endDateISO || "").slice(0, 10);
-  const filtroTexto = (searchText || "").trim();
-
-  const { resumen, byTramite, byAgente, byEstado } = buildResumenFromRecords(detalleCitas, detalleTurnos);
-
-  const wsResumen = wb.addWorksheet("Resumen", {
-    views: [{ state: "frozen", ySplit: 6 }],
-    pageSetup: { fitToPage: true, fitToWidth: 1 },
-  });
-
-  wsResumen.columns = [
-    { width: 26 },
-    { width: 42 },
-    { width: 3 },
-    { width: 26 },
-    { width: 42 },
-  ];
-
-  wsResumen.mergeCells("A1:E1");
-  wsResumen.getCell("A1").value = "Reporte de Métricas";
-  wsResumen.getCell("A1").font = { bold: true, size: 18, color: { argb: "FFC8102E" } };
-  wsResumen.getCell("A1").alignment = { vertical: "middle", horizontal: "center" };
-
-  wsResumen.getCell("A3").value = "Rango:";
-  wsResumen.getCell("B3").value = `${safeFrom} a ${safeTo}`;
-  wsResumen.getCell("D3").value = "Generado:";
-  wsResumen.getCell("E3").value = format(now, "dd/MM/yyyy HH:mm");
-
-  wsResumen.getCell("A4").value = "Filtro texto:";
-  wsResumen.getCell("B4").value = filtroTexto ? filtroTexto : "(sin filtro)";
-
-  const kpi = [
-    ["Total registros", resumen.total],
-    ["Citas web", resumen.citas],
-    ["Turnos kiosko", resumen.turnos],
-  ];
-
-  let row = 6;
-  wsResumen.getCell(`A${row}`).value = "Indicador";
-  wsResumen.getCell(`B${row}`).value = "Valor";
-  applyHeaderRowStyle(wsResumen.getRow(row));
-  row += 1;
-  kpi.forEach(([k, v]) => {
-    wsResumen.getCell(`A${row}`).value = k;
-    wsResumen.getCell(`B${row}`).value = v;
-    row += 1;
-  });
-
-  const topTramites = byTramite.slice(0, 8);
-  const topAgentes = byAgente.slice(0, 8);
-  const topEstados = byEstado.slice(0, 8);
-
-  const tramiteLabels = topTramites.map(([k]) => k);
-  const tramiteValues = topTramites.map(([, v]) => v);
-
-  const agenteLabels = topAgentes.map(([uid]) => {
-    const ag = agentsMap?.[uid] || {};
-    return ag.email || uid;
-  });
-  const agenteValues = topAgentes.map(([, v]) => v);
-
-  const estadoLabels = topEstados.map(([k]) => k);
-  const estadoValues = topEstados.map(([, v]) => v);
-
-  const imgTramite = makeChartImageBase64({
-    type: "bar",
-    labels: tramiteLabels,
-    values: tramiteValues,
-    title: "Atenciones por Trámite (Top)",
-  });
-
-  const imgAgente = makeChartImageBase64({
-    type: "bar",
-    labels: agenteLabels,
-    values: agenteValues,
-    title: "Atenciones por Agente (Top)",
-  });
-
-  const imgEstado = makeChartImageBase64({
-    type: "pie",
-    labels: estadoLabels,
-    values: estadoValues,
-    title: "Distribución por Estado (Top)",
-  });
-
-  const imgId1 = wb.addImage({ base64: imgTramite, extension: "png" });
-  const imgId2 = wb.addImage({ base64: imgAgente, extension: "png" });
-  const imgId3 = wb.addImage({ base64: imgEstado, extension: "png" });
-
-  wsResumen.addImage(imgId1, { tl: { col: 0, row: 11 }, ext: { width: 900, height: 420 } });
-  wsResumen.addImage(imgId2, { tl: { col: 0, row: 32 }, ext: { width: 900, height: 420 } });
-  wsResumen.addImage(imgId3, { tl: { col: 0, row: 53 }, ext: { width: 900, height: 420 } });
-
-  const columns = [
-    { header: "Origen", key: "origen", width: 12 },
-    { header: "Código", key: "codigo", width: 14 },
-    { header: "Trámite", key: "tramiteID", width: 22 },
-    { header: "DNI", key: "dni", width: 14 },
-    { header: "Estado", key: "estado", width: 14 },
-    { header: "Clasificación", key: "clasificacion", width: 18 },
-    { header: "Módulo", key: "modulo", width: 10 },
-    { header: "Agente (email)", key: "agenteEmail", width: 24 },
-    { header: "Agente (dni)", key: "agenteDni", width: 16 },
-    { header: "Agente (nombre)", key: "agenteNombre", width: 20 },
-    { header: "Hora Agendada", key: "fechaHora", width: 18 },
-    { header: "Hora Creación", key: "fechaHoraCreacion", width: 18 },
-    { header: "Hora Fin", key: "fechaHoraAtencionFin", width: 18 },
-    { header: "Cierre masivo", key: "cierreMasivo", width: 14 },
-    { header: "Motivo cierre", key: "motivoCierre", width: 22 },
-    { header: "Comentario/Observación", key: "comentario", width: 28 },
-  ];
-
-  const mapRow = (r, origen) => {
-    const ag = agentsMap?.[r.agenteID] || {};
-    return {
-      origen,
-      codigo: r.codigo || "",
-      tramiteID: r.tramiteID || "",
-      dni: r.dni || "",
-      estado: r.estado || "",
-      clasificacion: r.clasificacion || "",
-      modulo: r.modulo ?? "",
-      agenteEmail: ag.email || "",
-      agenteDni: ag.dni || "",
-      agenteNombre: ag.nombre || "",
-      fechaHora: r.fechaHora ? format(new Date(r.fechaHora), "dd/MM/yyyy HH:mm") : "",
-      fechaHoraCreacion: r.fechaHoraCreacion ? format(new Date(r.fechaHoraCreacion), "dd/MM/yyyy HH:mm") : "",
-      fechaHoraAtencionFin: r.fechaHoraAtencionFin ? format(new Date(r.fechaHoraAtencionFin), "dd/MM/yyyy HH:mm") : "",
-      cierreMasivo: r.cierreMasivo ? "Sí" : "No",
-      motivoCierre: r.motivoCierre || "",
-      comentario: r.comentario || "",
-    };
-  };
-
-  const sheetAllRows = [
-    ...detalleCitas.map((r) => mapRow(r, "WEB")),
-    ...detalleTurnos.map((r) => mapRow(r, "KIOSKO")),
-  ];
-
-  addTableSheet(wb, "Registros", columns, sheetAllRows);
-  addTableSheet(wb, "Citas Web", columns, detalleCitas.map((r) => mapRow(r, "WEB")));
-  addTableSheet(wb, "Turnos Kiosko", columns, detalleTurnos.map((r) => mapRow(r, "KIOSKO")));
-
-  const meta = wb.addWorksheet("Meta");
-  meta.columns = [{ width: 26 }, { width: 80 }];
-  meta.addRow(["Desde", safeFrom]);
-  meta.addRow(["Hasta", safeTo]);
-  meta.addRow(["Filtro texto", filtroTexto ? filtroTexto : "(sin filtro)"]);
-  meta.addRow(["Total exportado", String(sheetAllRows.length)]);
-  meta.addRow(["Generado", format(now, "dd/MM/yyyy HH:mm")]);
-
-  const fileName = safeFileName(`reporte_${safeFrom}_a_${safeTo}`) + ".xlsx";
-  const buffer = await wb.xlsx.writeBuffer();
-  saveAs(new Blob([buffer]), fileName);
-}
-
-function openPrintWindowForRecord(record, agentsMap) {
-  if (!record) return;
-  const ag = agentsMap?.[record.agenteID] || {};
-  const origen = record.__origen || "-";
-  const titulo = `${origen}: ${record.codigo || record.id || "Detalle"}`;
-
-  const rows = [
-    ["Código", record.codigo || record.id || ""],
-    ["DNI Ciudadano", record.dni || ""],
-    ["Trámite", record.tramiteID || ""],
-    ["Estado", record.estado || ""],
-    ["Clasificación", record.clasificacion || ""],
-    ["Módulo", record.modulo ?? ""],
-    ["Agente (email)", ag.email || ""],
-    ["Agente (dni)", ag.dni || ""],
-    ["Agente (nombre)", ag.nombre || ""],
-    ["Origen", origen],
-    ["Hora agendada", record.fechaHora ? format(new Date(record.fechaHora), "dd/MM/yyyy HH:mm") : ""],
-    ["Hora creación", record.fechaHoraCreacion ? format(new Date(record.fechaHoraCreacion), "dd/MM/yyyy HH:mm") : ""],
-    ["Hora fin", record.fechaHoraAtencionFin ? format(new Date(record.fechaHoraAtencionFin), "dd/MM/yyyy HH:mm") : ""],
-    ["Cierre masivo", record.cierreMasivo ? "Sí" : "No"],
-    ["Motivo cierre", record.motivoCierre || ""],
-    ["Comentario / Observación", record.comentario || ""],
-  ];
-
-  const win = window.open("", "_blank", "noopener,noreferrer,width=900,height=700");
-  if (!win) return;
-
-  const htmlRows = rows
-    .map(
-      ([k, v]) => `
-      <tr>
-        <td class="k">${String(k)}</td>
-        <td class="v">${String(v ?? "")}</td>
-      </tr>`
-    )
+      return `
+        <div class="section">
+          <h2>${s.title}</h2>
+          ${kpisHTML}
+          ${tableHTML}
+          ${imgHTML}
+        </div>
+      `;
+    })
     .join("");
 
-  win.document.open();
-  win.document.write(`
-    <!doctype html>
+  return `
     <html>
       <head>
-        <meta charset="utf-8" />
-        <title>${titulo}</title>
-        <style>
-          body{font-family:Arial,sans-serif;margin:24px;color:#111;}
-          h1{margin:0 0 6px 0;font-size:20px;color:#C8102E;}
-          .sub{margin:0 0 18px 0;color:#444;font-size:12px;}
-          table{width:100%;border-collapse:collapse;}
-          td{border:1px solid #e5e7eb;padding:10px;vertical-align:top;font-size:13px;}
-          td.k{width:220px;background:#f9fafb;font-weight:700;}
-          .foot{margin-top:18px;color:#666;font-size:12px;}
-          @media print { body{margin:0;} }
-        </style>
+        <title>${title}</title>
+        ${css}
       </head>
       <body>
-        <h1>${titulo}</h1>
-        <p class="sub">Documento: ${record.id || ""} | Trámite: ${record.tramiteID || ""}</p>
-        <table>${htmlRows}</table>
-        <p class="foot">Generado: ${format(new Date(), "dd/MM/yyyy HH:mm")}</p>
-        <script>
-          window.onload = function(){ window.focus(); window.print(); };
-        </script>
+        <div class="noPrint" style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:10px">
+          <button onclick="window.print()">Imprimir / Guardar PDF</button>
+        </div>
+        <h1>${title}</h1>
+        <p class="sub">${rangeText}</p>
+        ${body}
       </body>
     </html>
-  `);
-  win.document.close();
+  `;
+}
+
+async function exportAllToExcelPro({ filename, overview, tiempos, byAgente, byModulo, byTramite, detalleCitas, detalleTurnos, agentsMap }) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Sistema de Citas";
+  wb.created = new Date();
+
+  const boldHeader = (row) => {
+    row.font = { bold: true };
+    row.alignment = { vertical: "middle" };
+  };
+
+  // Resumen
+  const sResumen = wb.addWorksheet("Resumen");
+  const header = sResumen.addRow(["Métrica", "Valor"]);
+  boldHeader(header);
+  sResumen.addRow(["Total registros", overview.total]);
+  sResumen.addRow(["WEB", overview.totalWeb]);
+  sResumen.addRow(["KIOSKO", overview.totalKiosko]);
+  sResumen.addRow(["Completadas", overview.atendidas]);
+  sResumen.addRow(["No se presentó", overview.noPresento]);
+
+  // Agrupaciones
+  const sAg = wb.addWorksheet("PorAgente");
+  boldHeader(sAg.addRow(["AgenteID", "Agente", "Cantidad"]));
+  byAgente.forEach((x) => {
+    const ag = agentsMap?.[x.key] || {};
+    const label = ag.nombreCompleto || ag.email || (x.key === "SIN_AGENTE" ? "SIN AGENTE" : x.key);
+    sAg.addRow([x.key, label, x.count]);
+  });
+
+  const sMod = wb.addWorksheet("PorModulo");
+  boldHeader(sMod.addRow(["Módulo", "Cantidad"]));
+  byModulo.forEach((x) => sMod.addRow([x.key, x.count]));
+
+  const sTra = wb.addWorksheet("PorTramite");
+  boldHeader(sTra.addRow(["Trámite", "Cantidad"]));
+  byTramite.forEach((x) => sTra.addRow([x.key, x.count]));
+
+  // Tiempos
+  const sT = wb.addWorksheet("Tiempos");
+  boldHeader(sT.addRow(["Métrica", "Min (min)", "Prom (min)", "Max (min)"]));
+  sT.addRow(["Espera", msToMin(tiempos.espera.minMs), msToMin(tiempos.espera.avgMs), msToMin(tiempos.espera.maxMs)]);
+  sT.addRow(["Atención", msToMin(tiempos.atencion.minMs), msToMin(tiempos.atencion.avgMs), msToMin(tiempos.atencion.maxMs)]);
+
+  // Detalle WEB
+  const sC = wb.addWorksheet("DetalleCitas_WEB");
+  boldHeader(
+    sC.addRow(["ID", "Código", "DNI", "Trámite", "Estado", "Clasificación", "Agente", "Módulo", "FechaHora", "Llamado", "Fin", "Espera(min)", "Atención(min)"])
+  );
+  detalleCitas.forEach((r) => {
+    const ag = agentsMap?.[r.agenteID] || {};
+    const label = ag.nombreCompleto || ag.email || r.agenteID || "";
+    sC.addRow([
+      r.id, r.codigo || "", r.dni || r.dniCiudadano || "", r.tramiteID || "", r.estado || "", r.clasificacion || "",
+      label, r.moduloAsignado || "", fmtDate(r.fechaHora), fmtDate(r.llamadoAt), fmtDate(r.finAt), msToMin(r.esperaMs), msToMin(r.atencionMs)
+    ]);
+  });
+
+  // Detalle KIOSKO
+  const sK = wb.addWorksheet("DetalleTurnos_KIOSKO");
+  boldHeader(
+    sK.addRow(["ID", "Código", "Trámite", "Estado", "Clasificación", "Agente", "Módulo", "Generado", "Llamado", "Fin", "Espera(min)", "Atención(min)"])
+  );
+  detalleTurnos.forEach((r) => {
+    const ag = agentsMap?.[r.agenteID] || {};
+    const label = ag.nombreCompleto || ag.email || r.agenteID || "";
+    sK.addRow([
+      r.id, r.codigo || "", r.tramiteID || "", r.estado || "", r.clasificacion || "",
+      label, r.modulo || "", fmtDate(r.fechaHoraGenerado || r.createdAt || r.fechaHora), fmtDate(r.llamadoAt), fmtDate(r.finAt), msToMin(r.esperaMs), msToMin(r.atencionMs)
+    ]);
+  });
+
+  const buf = await wb.xlsx.writeBuffer();
+  saveAs(new Blob([buf]), filename);
 }
 
 function RecordModal({ open, onClose, record, agentsMap }) {
   useEffect(() => {
     if (!open) return;
-
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
+    const onKey = (e) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
@@ -641,132 +353,50 @@ function RecordModal({ open, onClose, record, agentsMap }) {
       ? styles.badge("#f8d7da", "#721c24")
       : styles.badge("#fff3cd", "#856404");
 
-  const stop = (e) => e.stopPropagation();
-
   return (
-    <div style={styles.modalOverlay} onMouseDown={onClose} role="dialog" aria-modal="true">
-      <div style={styles.modalCard} onMouseDown={stop}>
-        <div style={styles.modalHeader}>
+    <div onClick={onClose} className="metrics-modal-overlay">
+      <div onClick={(e) => e.stopPropagation()} className="metrics-modal">
+        <div className="metrics-modal-head">
           <div>
-            <h3 style={styles.modalTitle}>{titulo}</h3>
-            <p style={{ margin: 0, fontSize: 12, color: "#555" }}>
-              ID Doc: {record.id || "-"} | Trámite: {record.tramiteID || "-"}
-            </p>
+            <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>{titulo}</h3>
+            <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <span style={styles.badge("#eaf2ff", "#0b3d91")}>{origen}</span>
+              <span style={badgeStyle}>{clasificacion || record.estado || "—"}</span>
+              <span style={styles.badge("#f3f4f6", "#111")}>Módulo: {record.moduloAsignado || record.modulo || "—"}</span>
+              <span style={styles.badge("#f3f4f6", "#111")}>Trámite: {record.tramiteID || "—"}</span>
+            </div>
           </div>
-
-          <button style={styles.modalClose} onClick={onClose} title="Cerrar">
-            ×
-          </button>
+          <button onClick={onClose} style={styles.buttonSecondary}>Cerrar</button>
         </div>
 
-        <div style={styles.modalBody}>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-            {clasificacion ? <span style={badgeStyle}>{clasificacion}</span> : null}
-            <span style={styles.badge("#e5e7eb", "#111")}>Estado: {record.estado || "-"}</span>
+        <div className="metrics-modal-grid">
+          <div className="metrics-modal-box">
+            <div className="metrics-modal-label">Agente</div>
+            <div className="metrics-modal-value">{ag.nombreCompleto || ag.email || record.agenteID || "—"}</div>
           </div>
-
-          <div style={styles.grid}>
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>CÓDIGO</p>
-              <p style={styles.boxValue}>{record.codigo || "-"}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>DNI CIUDADANO</p>
-              <p style={styles.boxValue}>{record.dni || "-"}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>MÓDULO</p>
-              <p style={styles.boxValue}>{record.modulo ?? "-"}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>AGENTE (UID)</p>
-              <p style={styles.boxValue}>{record.agenteID || "-"}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>AGENTE (EMAIL)</p>
-              <p style={styles.boxValue}>{ag.email || "-"}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>AGENTE (DNI)</p>
-              <p style={styles.boxValue}>{ag.dni || "-"}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>AGENTE (NOMBRE)</p>
-              <p style={styles.boxValue}>{ag.nombre || "-"}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>ORIGEN</p>
-              <p style={styles.boxValue}>{origen}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>HORA AGENDADA</p>
-              <p style={styles.boxValue}>
-                {record.fechaHora ? format(new Date(record.fechaHora), "dd/MM/yyyy HH:mm") : "-"}
-              </p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>HORA CREACIÓN</p>
-              <p style={styles.boxValue}>
-                {record.fechaHoraCreacion ? format(new Date(record.fechaHoraCreacion), "dd/MM/yyyy HH:mm") : "-"}
-              </p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>HORA FIN</p>
-              <p style={styles.boxValue}>
-                {record.fechaHoraAtencionFin ? format(new Date(record.fechaHoraAtencionFin), "dd/MM/yyyy HH:mm") : "-"}
-              </p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>CIERRE MASIVO</p>
-              <p style={styles.boxValue}>{record.cierreMasivo ? "Sí" : "No"}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>MOTIVO CIERRE</p>
-              <p style={styles.boxValue}>{record.motivoCierre || "-"}</p>
-            </div>
-
-            <div style={styles.box}>
-              <p style={styles.boxTitle}>COMENTARIO / OBSERVACIÓN</p>
-              <p style={styles.boxValue}>{record.comentario || "-"}</p>
+          <div className="metrics-modal-box">
+            <div className="metrics-modal-label">Ciudadano</div>
+            <div className="metrics-modal-value">
+              {record.dni || record.dniCiudadano || "—"} {record.nombreCiudadano ? `· ${record.nombreCiudadano}` : ""}
             </div>
           </div>
         </div>
 
-        <div style={styles.modalFooter}>
-          <button
-            style={{ ...styles.modalBtn, ...styles.modalBtnExcel }}
-            onClick={() => exportRecordToExcelPro(record, agentsMap)}
-            title="Descargar ficha en Excel"
-          >
-            Descargar Excel
-          </button>
+        <div className="metrics-modal-box" style={{ marginTop: 10 }}>
+          <div className="metrics-modal-row">
+            <div><span className="metrics-modal-label">Fecha/Hora: </span><strong>{fmtDate(record.fechaHora || record.fechaHoraGenerado || record.createdAt)}</strong></div>
+            <div><span className="metrics-modal-label">Llamado: </span><strong>{fmtDate(record.llamadoAt)}</strong></div>
+            <div><span className="metrics-modal-label">Fin: </span><strong>{fmtDate(record.finAt)}</strong></div>
+            <div><span className="metrics-modal-label">Espera (min): </span><strong>{msToMin(record.esperaMs)}</strong></div>
+            <div><span className="metrics-modal-label">Atención (min): </span><strong>{msToMin(record.atencionMs)}</strong></div>
+          </div>
 
-          <button
-            style={{ ...styles.modalBtn, ...styles.modalBtnGhost }}
-            onClick={() => openPrintWindowForRecord(record, agentsMap)}
-            title="Imprimir ficha"
-          >
-            Imprimir
-          </button>
-
-          <button style={{ ...styles.modalBtn, ...styles.modalBtnGhost }} onClick={onClose}>
-            Cerrar
-          </button>
-          <button style={{ ...styles.modalBtn, ...styles.modalBtnPrimary }} onClick={onClose}>
-            OK
-          </button>
+          {record.comentariosAgente ? (
+            <div style={{ marginTop: 10 }}>
+              <div className="metrics-modal-label">Comentarios agente</div>
+              <div style={{ marginTop: 6, fontSize: 13 }}>{record.comentariosAgente}</div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -782,40 +412,220 @@ export default function Metrics() {
 
   const [stats, setStats] = useState(null);
   const [activeTab, setActiveTab] = useState("resumen");
-  const [showCharts, setShowCharts] = useState(false);
+  const [showCharts, setShowCharts] = useState(true);
 
+  // Panel desplegable (control center)
+  const [controlOpen, setControlOpen] = useState(true);
+
+  // filtros (interactivos)
+  const [originFilter, setOriginFilter] = useState("ALL"); // ALL | WEB | KIOSKO
+  const [estadoFilter, setEstadoFilter] = useState("ALL");
+  const [moduloFilter, setModuloFilter] = useState("ALL");
+  const [tramiteFilter, setTramiteFilter] = useState("ALL");
+  const [agenteFilter, setAgenteFilter] = useState("ALL");
+  const [topN, setTopN] = useState(12);
+
+  // búsqueda general
   const [searchText, setSearchText] = useState("");
+
   const [agentsMap, setAgentsMap] = useState({});
 
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
 
   const isAdmin = useMemo(() => {
-    const rol = currentUser?.rol || currentUser?.role;
-    return rol === "admin";
+    const r = currentUser?.rol || currentUser?.role || currentUser?.tipoUsuario || currentUser?.perfil;
+    return r === "admin" || currentUser?.isAdmin === true;
   }, [currentUser]);
+
+  // base detalle
+  const detalleCitas = useMemo(() => {
+    const list = stats?.detalleCitas || [];
+    return list.map((r) => ({
+      ...r,
+      __origen: "WEB",
+      llamadoAt: r.llamadoAt || r.fechaHoraLlamado || r.fechaHoraLlamadoAt || null,
+      finAt: r.finAt || r.fechaHoraAtencionFin || null,
+      moduloKey: r.moduloAsignado || "SIN_MODULO",
+      estadoKey: r.estado || "SIN_ESTADO",
+      tramiteKey: r.tramiteID || "SIN_TRAMITE",
+      agenteKey: r.agenteID || "SIN_AGENTE",
+      dniKey: r.dni || r.dniCiudadano || "SIN_DNI",
+    }));
+  }, [stats]);
+
+  const detalleTurnos = useMemo(() => {
+    const list = stats?.detalleTurnos || [];
+    return list.map((r) => ({
+      ...r,
+      __origen: "KIOSKO",
+      llamadoAt: r.llamadoAt || r.fechaHoraLlamado || null,
+      finAt: r.finAt || r.fechaHoraAtencionFin || null,
+      moduloKey: r.modulo || "SIN_MODULO",
+      estadoKey: r.estado || "SIN_ESTADO",
+      tramiteKey: r.tramiteID || "SIN_TRAMITE",
+      agenteKey: r.agenteID || "SIN_AGENTE",
+      dniKey: r.dni || r.dniCiudadano || "SIN_DNI",
+    }));
+  }, [stats]);
+
+  const allRecords = useMemo(() => [...detalleCitas, ...detalleTurnos], [detalleCitas, detalleTurnos]);
+
+  // opciones dinámicas para filtros
+  const estadoOptions = useMemo(() => {
+    const set = new Set(allRecords.map((r) => r.estadoKey));
+    return ["ALL", ...Array.from(set).sort()];
+  }, [allRecords]);
+
+  const moduloOptions = useMemo(() => {
+    const set = new Set(allRecords.map((r) => r.moduloKey));
+    return ["ALL", ...Array.from(set).sort()];
+  }, [allRecords]);
+
+  const tramiteOptions = useMemo(() => {
+    const set = new Set(allRecords.map((r) => r.tramiteKey));
+    return ["ALL", ...Array.from(set).sort()];
+  }, [allRecords]);
+
+  const agenteOptions = useMemo(() => {
+    const set = new Set(allRecords.map((r) => r.agenteKey));
+    return ["ALL", ...Array.from(set).sort()];
+  }, [allRecords]);
+
+  // aplicar filtros + búsqueda
+  const filteredRecords = useMemo(() => {
+    const t = searchText.trim().toLowerCase();
+
+    return allRecords.filter((r) => {
+      if (originFilter !== "ALL" && r.__origen !== originFilter) return false;
+      if (estadoFilter !== "ALL" && r.estadoKey !== estadoFilter) return false;
+      if (moduloFilter !== "ALL" && r.moduloKey !== moduloFilter) return false;
+      if (tramiteFilter !== "ALL" && r.tramiteKey !== tramiteFilter) return false;
+      if (agenteFilter !== "ALL" && r.agenteKey !== agenteFilter) return false;
+
+      if (t) {
+        const blob = JSON.stringify(r).toLowerCase();
+        if (!blob.includes(t)) return false;
+      }
+      return true;
+    });
+  }, [allRecords, originFilter, estadoFilter, moduloFilter, tramiteFilter, agenteFilter, searchText]);
+
+  const filteredCitas = useMemo(() => filteredRecords.filter((r) => r.__origen === "WEB"), [filteredRecords]);
+  const filteredTurnos = useMemo(() => filteredRecords.filter((r) => r.__origen === "KIOSKO"), [filteredRecords]);
+
+  // KPI overview en base a filteredRecords
+  const overview = useMemo(() => {
+    const total = filteredRecords.length;
+    const totalWeb = filteredCitas.length;
+    const totalKiosko = filteredTurnos.length;
+
+    const atendidas = filteredRecords.filter((r) => r.estadoKey === "completado").length;
+    const noPresento = filteredRecords.filter((r) => (r.clasificacion || r.estadoKey) === "NO_SE_PRESENTO").length;
+
+    const porEstado = countBy(filteredRecords, (r) => r.estadoKey);
+    const porTramite = countBy(filteredRecords, (r) => r.tramiteKey);
+    const porAgente = countBy(filteredRecords, (r) => r.agenteKey);
+    const porModulo = countBy(filteredRecords, (r) => r.moduloKey);
+
+    return { total, totalWeb, totalKiosko, atendidas, noPresento, porEstado, porTramite, porAgente, porModulo };
+  }, [filteredRecords, filteredCitas, filteredTurnos]);
+
+  // agrupaciones preferentes (si el backend las trajo, igual las recalculamos por filtros)
+  const byAgente = useMemo(() => overview.porAgente, [overview]);
+  const byModulo = useMemo(() => overview.porModulo, [overview]);
+  const byTramite = useMemo(() => overview.porTramite, [overview]);
+
+  // reporte por DNI (usuario/ciudadano)
+  const byDni = useMemo(() => {
+    const m = new Map();
+    filteredRecords.forEach((r) => {
+      const dni = r.dniKey || "SIN_DNI";
+      const prev = m.get(dni) || { dni, total: 0, web: 0, kiosko: 0, esperaMs: [], atencionMs: [] };
+      prev.total += 1;
+      if (r.__origen === "WEB") prev.web += 1;
+      if (r.__origen === "KIOSKO") prev.kiosko += 1;
+      if (Number.isFinite(Number(r.esperaMs))) prev.esperaMs.push(Number(r.esperaMs));
+      if (Number.isFinite(Number(r.atencionMs))) prev.atencionMs.push(Number(r.atencionMs));
+      m.set(dni, prev);
+    });
+
+    const rows = Array.from(m.values()).map((x) => {
+      const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+      return {
+        dni: x.dni,
+        total: x.total,
+        web: x.web,
+        kiosko: x.kiosko,
+        esperaAvgMin: msToMin(avg(x.esperaMs)),
+        atencionAvgMin: msToMin(avg(x.atencionMs)),
+      };
+    });
+
+    rows.sort((a, b) => (b.total || 0) - (a.total || 0));
+    return rows;
+  }, [filteredRecords]);
+
+  // tiempos (para filtros, recalculamos desde filteredRecords)
+  const tiempos = useMemo(() => {
+    const esperaVals = [];
+    const atVals = [];
+    const esperaItems = [];
+    const atItems = [];
+
+    filteredRecords.forEach((r) => {
+      if (Number.isFinite(Number(r.esperaMs))) {
+        const ms = Number(r.esperaMs);
+        esperaVals.push(ms);
+        esperaItems.push({ id: r.id, codigo: r.codigo || r.id, origen: r.__origen, modulo: r.moduloKey, esperaMs: ms });
+      }
+      if (Number.isFinite(Number(r.atencionMs))) {
+        const ms = Number(r.atencionMs);
+        atVals.push(ms);
+        atItems.push({ id: r.id, codigo: r.codigo || r.id, origen: r.__origen, modulo: r.moduloKey, atencionMs: ms });
+      }
+    });
+
+    const min = (arr) => (arr.length ? Math.min(...arr) : null);
+    const max = (arr) => (arr.length ? Math.max(...arr) : null);
+    const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
+
+    esperaItems.sort((a, b) => b.esperaMs - a.esperaMs);
+    atItems.sort((a, b) => b.atencionMs - a.atencionMs);
+
+    return {
+      espera: { minMs: min(esperaVals), avgMs: avg(esperaVals), maxMs: max(esperaVals) },
+      atencion: { minMs: min(atVals), avgMs: avg(atVals), maxMs: max(atVals) },
+      topEsperaMax: esperaItems.slice(0, 15),
+      topAtencionMax: atItems.slice(0, 15),
+    };
+  }, [filteredRecords]);
 
   const fetchAgentsInfo = async (uids) => {
     try {
-      const groups = chunk(uids, 10);
-      const map = {};
-      for (const g of groups) {
-        const q = query(collection(db, "usuarios"), where(documentId(), "in", g));
-        const snap = await getDocs(q);
-        snap.docs.forEach((d) => {
-          const u = d.data() || {};
-          map[d.id] = {
-            email: u.email || "",
-            dni: u.dni || "",
-            nombre: u.nombre || u.displayName || "",
-            rol: u.rol || u.role || "",
-          };
-        });
+      const chunkSize = 10;
+      const all = {};
+      for (let i = 0; i < uids.length; i += chunkSize) {
+        const chunk = uids.slice(i, i + chunkSize);
+        const qUsers = query(collection(db, "usuarios"), where(documentId(), "in", chunk));
+        const snap = await getDocs(qUsers);
+        snap.docs.forEach((d) => (all[d.id] = d.data()));
       }
-      setAgentsMap(map);
+      setAgentsMap(all);
     } catch (err) {
-      console.error("Error al cargar agentes:", err);
+      console.warn("No se pudo cargar info agentes (usuarios):", err);
     }
+  };
+
+  const openDetails = (record) => {
+    if (!record) return;
+    setSelectedRecord(record);
+    setModalOpen(true);
+  };
+
+  const closeDetails = () => {
+    setModalOpen(false);
+    setSelectedRecord(null);
   };
 
   const fetchMetrics = async () => {
@@ -840,10 +650,7 @@ export default function Metrics() {
       const agenteIds = new Set();
       (data?.detalleCitas || []).forEach((r) => r?.agenteID && agenteIds.add(r.agenteID));
       (data?.detalleTurnos || []).forEach((r) => r?.agenteID && agenteIds.add(r.agenteID));
-
-      if (agenteIds.size > 0) {
-        await fetchAgentsInfo(Array.from(agenteIds));
-      }
+      if (agenteIds.size > 0) await fetchAgentsInfo(Array.from(agenteIds));
     } catch (err) {
       console.error("Error al cargar métricas:", err);
       alert("Error al cargar métricas. Revisa logs / índices.");
@@ -857,430 +664,679 @@ export default function Metrics() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
-  const resumenRows = useMemo(() => {
-    if (!stats) return [];
-    return [
-      {
-        origen: "Citas Agendadas (Web)",
-        atendidas: stats?.citas?.atendido_total ?? 0,
-        fallidas: stats?.citas?.fallo_accion ?? 0,
-        noPresento: stats?.citas?.no_presento ?? 0,
-      },
-      {
-        origen: "Turnos Kiosko (Presencial)",
-        atendidas: stats?.turnos?.atendido_total ?? 0,
-        fallidas: stats?.turnos?.fallo_accion ?? 0,
-        noPresento: stats?.turnos?.no_presento ?? 0,
-      },
-    ];
-  }, [stats]);
+  const canExport = !!stats && !loading;
 
-  const filtered = (arr) => {
-    const t = (searchText || "").trim().toLowerCase();
-    if (!t) return arr;
-
-    return arr.filter((r) => {
-      const ag = agentsMap[r.agenteID] || {};
-      const haystack = [
-        r.id,
-        r.codigo,
-        r.dni,
-        r.tramiteID,
-        r.clasificacion,
-        r.comentario,
-        r.modulo,
-        r.agenteID,
-        ag.email,
-        ag.dni,
-        ag.nombre,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      return haystack.includes(t);
-    });
+  const getAgentLabel = (uid) => {
+    const ag = agentsMap?.[uid] || {};
+    return ag.nombreCompleto || ag.email || (uid === "SIN_AGENTE" ? "SIN AGENTE" : uid);
   };
 
-  const detalleCitas = useMemo(() => filtered(stats?.detalleCitas || []), [stats, searchText, agentsMap]);
-  const detalleTurnos = useMemo(() => filtered(stats?.detalleTurnos || []), [stats, searchText, agentsMap]);
-
-  const chartData = useMemo(() => {
-    const countBy = (arr, keyFn) => {
-      const m = new Map();
-      arr.forEach((r) => {
-        const k = keyFn(r);
-        if (!k) return;
-        m.set(k, (m.get(k) || 0) + 1);
-      });
-      return Array.from(m.entries()).sort((a, b) => b[1] - a[1]);
-    };
-
-    const topN = (pairs, n = 10) => pairs.slice(0, n);
-
-    const totalPie = [
-      ["CITAS", detalleCitas.length],
-      ["TURNOS", detalleTurnos.length],
-    ];
-
-    const clasifCitas = topN(countBy(detalleCitas, (r) => r.clasificacion || "SIN_CLASIFICAR"), 8);
-    const clasifTurnos = topN(countBy(detalleTurnos, (r) => r.clasificacion || "SIN_CLASIFICAR"), 8);
-
-    const byTramite = topN(countBy([...detalleCitas, ...detalleTurnos], (r) => r.tramiteID || "SIN_TRAMITE"), 10);
-
-    const byAgenteRaw = topN(countBy([...detalleCitas, ...detalleTurnos], (r) => r.agenteID || "SIN_AGENTE"), 10);
-    const byAgente = byAgenteRaw.map(([id, n]) => {
-      const info = agentsMap?.[id];
-      const label = info?.email || id;
-      return [label, n];
-    });
-
-    const byEstado = topN(countBy([...detalleCitas, ...detalleTurnos], (r) => r.estado || "SIN_ESTADO"), 10);
-
-    return {
-      totalPie,
-      clasifCitas,
-      clasifTurnos,
-      byTramite,
+  const exportExcel = async () => {
+    await exportAllToExcelPro({
+      filename: `metrics_${startDateISO}_a_${endDateISO}.xlsx`,
+      overview,
+      tiempos,
       byAgente,
-      byEstado,
-    };
-  }, [detalleCitas, detalleTurnos, agentsMap]);
-
-
-  const openDetails = (record, origenLabel) => {
-    setSelectedRecord({ ...record, __origen: origenLabel });
-    setModalOpen(true);
+      byModulo,
+      byTramite,
+      detalleCitas: filteredCitas,
+      detalleTurnos: filteredTurnos,
+      agentsMap,
+    });
   };
 
-  const closeDetails = () => {
-    setModalOpen(false);
-    setSelectedRecord(null);
+  const exportPDF = () => {
+    // Armamos un “documento” imprimible con tablas + gráficos (si están activos)
+    const rangeText = `Rango: ${startDateISO} → ${endDateISO} · Filtros: Origen=${originFilter}, Estado=${estadoFilter}, Módulo=${moduloFilter}, Trámite=${tramiteFilter}, Agente=${agenteFilter}`;
+
+    const topEstado = overview.porEstado.slice(0, topN);
+    const topModulo = byModulo.slice(0, topN);
+    const topTramite = byTramite.slice(0, topN);
+    const topAgente = byAgente.slice(0, topN).map((x) => ({ ...x, label: getAgentLabel(x.key) }));
+
+    const sections = [];
+
+    sections.push({
+      title: "KPIs Resumen",
+      kpis: [
+        { label: "Total registros", value: overview.total, hint: `WEB: ${overview.totalWeb} · KIOSKO: ${overview.totalKiosko}` },
+        { label: "Completadas", value: overview.atendidas, hint: "Estado = completado" },
+        { label: "No se presentó", value: overview.noPresento, hint: "Clasificación = NO_SE_PRESENTO" },
+        { label: "Espera promedio", value: `${msToMin(tiempos.espera.avgMs)} min`, hint: `Min ${msToMin(tiempos.espera.minMs)} · Max ${msToMin(tiempos.espera.maxMs)}` },
+      ],
+    });
+
+    // Por Estado
+    sections.push({
+      title: `Top ${topN} por Estado`,
+      table: {
+        headers: ["Estado", "Cantidad"],
+        rows: topEstado.map((x) => [x.key, x.count]),
+      },
+      chartBase64: showCharts ? makeChartImageBase64({
+        type: "bar",
+        labels: topEstado.map((x) => x.key),
+        values: topEstado.map((x) => x.count),
+        title: `Por Estado (Top ${topN})`
+      }) : null
+    });
+
+    // Por Módulo
+    sections.push({
+      title: `Top ${topN} por Módulo`,
+      table: {
+        headers: ["Módulo", "Cantidad"],
+        rows: topModulo.map((x) => [x.key, x.count]),
+      },
+      chartBase64: showCharts ? makeChartImageBase64({
+        type: "bar",
+        labels: topModulo.map((x) => x.key),
+        values: topModulo.map((x) => x.count),
+        title: `Por Módulo (Top ${topN})`
+      }) : null
+    });
+
+    // Por Trámite
+    sections.push({
+      title: `Top ${topN} por Trámite`,
+      table: {
+        headers: ["Trámite", "Cantidad"],
+        rows: topTramite.map((x) => [x.key, x.count]),
+      },
+      chartBase64: showCharts ? makeChartImageBase64({
+        type: "bar",
+        labels: topTramite.map((x) => x.key),
+        values: topTramite.map((x) => x.count),
+        title: `Por Trámite (Top ${topN})`
+      }) : null
+    });
+
+    // Por Agente
+    sections.push({
+      title: `Top ${topN} por Agente`,
+      table: {
+        headers: ["Agente", "UID", "Cantidad"],
+        rows: topAgente.map((x) => [x.label, x.key, x.count]),
+      },
+      chartBase64: showCharts ? makeChartImageBase64({
+        type: "bar",
+        labels: topAgente.map((x) => x.label),
+        values: topAgente.map((x) => x.count),
+        title: `Por Agente (Top ${topN})`
+      }) : null
+    });
+
+    // Tiempos
+    sections.push({
+      title: "Tiempos (Resumen)",
+      table: {
+        headers: ["Métrica", "Min (min)", "Prom (min)", "Max (min)"],
+        rows: [
+          ["Espera", msToMin(tiempos.espera.minMs), msToMin(tiempos.espera.avgMs), msToMin(tiempos.espera.maxMs)],
+          ["Atención", msToMin(tiempos.atencion.minMs), msToMin(tiempos.atencion.avgMs), msToMin(tiempos.atencion.maxMs)],
+        ],
+      },
+    });
+
+    const html = buildPrintableHTML({
+      title: "Reporte de Métricas (Sistema de Citas)",
+      rangeText,
+      sections,
+    });
+
+    const w = window.open("", "_blank");
+    if (!w) return alert("Bloqueado por el navegador. Permite popups para exportar PDF.");
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
   };
 
-  if (!isAdmin) {
+  const resetFilters = () => {
+    setOriginFilter("ALL");
+    setEstadoFilter("ALL");
+    setModuloFilter("ALL");
+    setTramiteFilter("ALL");
+    setAgenteFilter("ALL");
+    setTopN(12);
+    setSearchText("");
+  };
+
+  const renderCountTable = ({ title, rows, keyLabel, keyToLabel }) => {
+    const top = rows.slice(0, topN);
+
     return (
-      <div style={styles.page}>
-        <h1 style={styles.title}>Métricas</h1>
-        <div style={styles.card}>
-          <p>No tienes permisos para ver métricas.</p>
+      <div style={{ marginTop: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900 }}>{title}</h3>
+          <span style={styles.badge("#f3f4f6", "#111")}>Top {topN}</span>
         </div>
+
+        <div style={{ marginTop: 10, ...styles.tableWrap }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th style={styles.th}>{keyLabel}</th>
+                <th style={styles.th}>Cantidad</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top.map((x) => (
+                <tr key={x.key}>
+                  <td style={styles.td}>{keyToLabel ? keyToLabel(x.key) : x.key}</td>
+                  <td style={styles.td}><span style={styles.badge("#eaf2ff", "#0b3d91")}>{x.count}</span></td>
+                </tr>
+              ))}
+              {top.length === 0 ? (
+                <tr><td style={styles.td} colSpan={2}>Sin datos.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+
+        {showCharts && top.length > 0 ? (
+          <div style={{ marginTop: 14 }}>
+            <ReportChart
+              title={title}
+              type="bar"
+              labels={top.map((x) => (keyToLabel ? keyToLabel(x.key) : x.key))}
+              values={top.map((x) => x.count)}
+            />
+          </div>
+        ) : null}
       </div>
     );
-  }
+  };
 
-  return (
-    <div style={styles.page}>
-      <div style={styles.header}>
-        <h1 style={styles.title}>Métricas</h1>
-      </div>
+  const renderTiempos = () => {
+    const topEspera = (tiempos.topEsperaMax || []).slice(0, 15);
+    const topAt = (tiempos.topAtencionMax || []).slice(0, 15);
 
-      <RecordModal open={modalOpen} onClose={closeDetails} record={selectedRecord} agentsMap={agentsMap} />
-
-      <div style={styles.card}>
-        <div style={styles.controlsRow}>
-          <div>
-            <div style={styles.small}>Desde</div>
-            <input
-              type="date"
-              value={startDateISO}
-              onChange={(e) => setStartDateISO(e.target.value)}
-              style={styles.input}
-            />
+    return (
+      <div>
+        <div style={{ ...styles.kpiGrid, marginTop: 6 }}>
+          <div style={styles.kpi}>
+            <div style={styles.kpiLabel}>Espera promedio</div>
+            <div style={styles.kpiValue}>{msToMin(tiempos.espera.avgMs)} min</div>
+            <div style={styles.kpiHint}>Min: {msToMin(tiempos.espera.minMs)} · Max: {msToMin(tiempos.espera.maxMs)}</div>
           </div>
-
-          <div>
-            <div style={styles.small}>Hasta</div>
-            <input type="date" value={endDateISO} onChange={(e) => setEndDateISO(e.target.value)} style={styles.input} />
+          <div style={styles.kpi}>
+            <div style={styles.kpiLabel}>Atención promedio</div>
+            <div style={styles.kpiValue}>{msToMin(tiempos.atencion.avgMs)} min</div>
+            <div style={styles.kpiHint}>Min: {msToMin(tiempos.atencion.minMs)} · Max: {msToMin(tiempos.atencion.maxMs)}</div>
           </div>
-
-          <button onClick={fetchMetrics} style={styles.button} disabled={loading}>
-            {loading ? "Cargando..." : "Buscar"}
-          </button>
-
-          <button
-            onClick={() =>
-              stats &&
-              exportAllToExcelPro({
-                startDateISO,
-                endDateISO,
-                detalleCitas,
-                detalleTurnos,
-                agentsMap,
-                searchText,
-              })
-            }
-            style={{
-              ...styles.button,
-              backgroundColor: stats ? "#0f7a2a" : "#9ca3af",
-              cursor: stats ? "pointer" : "not-allowed",
-            }}
-            disabled={!stats || loading}
-            title="Exporta todos los registros del rango actual (respeta el filtro de búsqueda)"
-          >
-            Exportar Excel (Todo)
-          </button>
-
-          <button
-            onClick={() => setShowCharts((v) => !v)}
-            style={{ ...styles.button, backgroundColor: showCharts ? "#374151" : "#0d6efd" }}
-            disabled={!stats}
-          >
-            {showCharts ? "Ocultar gráficos" : "Ver gráficos"}
-          </button>
-
-
-          <div style={{ flex: 1 }} />
-
-          <div style={{ minWidth: 280 }}>
-            <div style={styles.small}>Buscar por: (código, dni, trámite o correo)</div>
-            <input
-              type="text"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              placeholder="Ej: AP-002, 123..., pasaportes, gmail..."
-              style={{ ...styles.input, width: "100%" }}
-            />
+          <div style={styles.kpi}>
+            <div style={styles.kpiLabel}>Registros WEB</div>
+            <div style={styles.kpiValue}>{overview.totalWeb}</div>
+            <div style={styles.kpiHint}>Con filtros aplicados</div>
+          </div>
+          <div style={styles.kpi}>
+            <div style={styles.kpiLabel}>Registros KIOSKO</div>
+            <div style={styles.kpiValue}>{overview.totalKiosko}</div>
+            <div style={styles.kpiHint}>Con filtros aplicados</div>
           </div>
         </div>
-      </div>
 
-      {showCharts && stats && (
-        <div style={styles.card}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-            <h2 style={{ margin: 0, fontSize: 18 }}>Gráficos</h2>
-            <div style={{ fontSize: 12, color: "#666" }}>
-              Rango: {startDateISO} a {endDateISO}
-            </div>
-          </div>
+        <div style={{ ...styles.split2, marginTop: 12 }}>
+          <div style={{ border: "1px solid #eee", borderRadius: 14, padding: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900 }}>Top mayor espera</h3>
+            <p style={{ ...styles.small, marginTop: 6 }}>(llamado - origen) en minutos</p>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-              gap: 12,
-              marginTop: 12,
-            }}
-          >
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-              <ReportChart
-                type="pie"
-                title="Citas vs Turnos"
-                labels={chartData.totalPie.map((x) => x[0])}
-                values={chartData.totalPie.map((x) => x[1])}
-                height={260}
-              />
-            </div>
-
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-              <ReportChart
-                type="bar"
-                title="Top trámites (Total)"
-                labels={chartData.byTramite.map((x) => x[0])}
-                values={chartData.byTramite.map((x) => x[1])}
-                height={260}
-              />
-            </div>
-
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-              <ReportChart
-                type="bar"
-                title="Top agentes (Total)"
-                labels={chartData.byAgente.map((x) => x[0])}
-                values={chartData.byAgente.map((x) => x[1])}
-                height={260}
-              />
-            </div>
-
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-              <ReportChart
-                type="bar"
-                title="Estados (Total)"
-                labels={chartData.byEstado.map((x) => x[0])}
-                values={chartData.byEstado.map((x) => x[1])}
-                height={260}
-              />
-            </div>
-
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-              <ReportChart
-                type="pie"
-                title="Clasificación Citas"
-                labels={chartData.clasifCitas.map((x) => x[0])}
-                values={chartData.clasifCitas.map((x) => x[1])}
-                height={260}
-              />
-            </div>
-
-            <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12 }}>
-              <ReportChart
-                type="pie"
-                title="Clasificación Turnos"
-                labels={chartData.clasifTurnos.map((x) => x[0])}
-                values={chartData.clasifTurnos.map((x) => x[1])}
-                height={260}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div style={styles.card}>
-        <div style={styles.tabs}>
-          <button
-            style={{ ...styles.tab, ...(activeTab === "resumen" ? styles.tabActive : {}) }}
-            onClick={() => setActiveTab("resumen")}
-          >
-            Resumen
-          </button>
-          <button
-            style={{ ...styles.tab, ...(activeTab === "detalleCitas" ? styles.tabActive : {}) }}
-            onClick={() => setActiveTab("detalleCitas")}
-          >
-            Detalle Citas (Web)
-          </button>
-          <button
-            style={{ ...styles.tab, ...(activeTab === "detalleTurnos" ? styles.tabActive : {}) }}
-            onClick={() => setActiveTab("detalleTurnos")}
-          >
-            Detalle Turnos (Presencial)
-          </button>
-        </div>
-
-        {!stats && !loading && <p>Selecciona un rango y presiona “Buscar”.</p>}
-        {loading && <p>Cargando métricas...</p>}
-
-        {stats && activeTab === "resumen" && (
-          <div style={styles.tableWrap}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Origen</th>
-                  <th style={styles.th}>Atendidas</th>
-                  <th style={styles.th}>Fallidas / Derivadas</th>
-                  <th style={styles.th}>No se presentó</th>
-                </tr>
-              </thead>
-              <tbody>
-                {resumenRows.map((r) => (
-                  <tr key={r.origen}>
-                    <td style={styles.td}>{r.origen}</td>
-                    <td style={styles.td}>
-                      <span style={styles.badge("#d4edda", "#155724")}>{r.atendidas}</span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={styles.badge("#fff3cd", "#856404")}>{r.fallidas}</span>
-                    </td>
-                    <td style={styles.td}>
-                      <span style={styles.badge("#f8d7da", "#721c24")}>{r.noPresento}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {stats && activeTab === "detalleCitas" && (
-          <>
-            <p style={styles.small}>Mostrando {detalleCitas.length} registros (Web).</p>
-            <div style={styles.tableWrap}>
+            <div style={{ marginTop: 10, ...styles.tableWrap }}>
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    <th style={styles.th}>Origen</th>
                     <th style={styles.th}>Código</th>
-                    <th style={styles.th}>DNI Ciudadano</th>
-                    <th style={styles.th}>Trámite</th>
-                    <th style={styles.th}>Estado</th>
-                    <th style={styles.th}>Agente (email)</th>
+                    <th style={styles.th}>Origen</th>
+                    <th style={styles.th}>Módulo</th>
+                    <th style={styles.th}>Min</th>
                     <th style={styles.th}>Acción</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {detalleCitas.map((r) => {
-                    const ag = agentsMap[r.agenteID] || {};
-                    return (
-                      <tr key={r.id}>
-                        <td style={styles.td}>WEB</td>
-                        <td style={styles.td}>
-                          <button style={styles.linkBtn} onClick={() => openDetails(r, "WEB")}>
-                            {r.codigo || r.id}
-                          </button>
-                        </td>
-                        <td style={styles.td}>{r.dni || "-"}</td>
-                        <td style={styles.td}>{r.tramiteID || "-"}</td>
-                        <td style={styles.td}>{r.estado || "-"}</td>
-                        <td style={styles.td}>{ag.email || "-"}</td>
-                        <td style={styles.td}>
-                          <button style={styles.linkBtn} onClick={() => openDetails(r, "WEB")}>
-                            Ver
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {detalleCitas.length === 0 && (
-                    <tr>
-                      <td colSpan={7} style={{ ...styles.td, textAlign: "center", color: "#666" }}>
-                        Sin resultados.
+                  {topEspera.map((x) => (
+                    <tr key={x.id}>
+                      <td style={styles.td}><strong>{x.codigo || x.id}</strong></td>
+                      <td style={styles.td}>{x.origen}</td>
+                      <td style={styles.td}>{x.modulo || "-"}</td>
+                      <td style={styles.td}><span style={styles.badge("#fff3cd", "#856404")}>{msToMin(x.esperaMs)}</span></td>
+                      <td style={styles.td}>
+                        <button style={styles.buttonSecondary} onClick={() => {
+                          const rec = filteredRecords.find((r) => r.id === x.id);
+                          openDetails(rec);
+                        }}>Ver</button>
                       </td>
                     </tr>
-                  )}
+                  ))}
+                  {topEspera.length === 0 ? (
+                    <tr><td style={styles.td} colSpan={5}>Sin datos (se requiere llamado para calcular).</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            {showCharts && topEspera.length > 0 ? (
+              <div style={{ marginTop: 14 }}>
+                <ReportChart title="Top mayor espera (min)" type="bar"
+                  labels={topEspera.map((x) => x.codigo || x.id)}
+                  values={topEspera.map((x) => msToMin(x.esperaMs))}
+                />
+              </div>
+            ) : null}
+          </div>
+
+          <div style={{ border: "1px solid #eee", borderRadius: 14, padding: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 900 }}>Top mayor tiempo de atención</h3>
+            <p style={{ ...styles.small, marginTop: 6 }}>(fin - llamado) en minutos</p>
+
+            <div style={{ marginTop: 10, ...styles.tableWrap }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Código</th>
+                    <th style={styles.th}>Origen</th>
+                    <th style={styles.th}>Módulo</th>
+                    <th style={styles.th}>Min</th>
+                    <th style={styles.th}>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topAt.map((x) => (
+                    <tr key={x.id}>
+                      <td style={styles.td}><strong>{x.codigo || x.id}</strong></td>
+                      <td style={styles.td}>{x.origen}</td>
+                      <td style={styles.td}>{x.modulo || "-"}</td>
+                      <td style={styles.td}><span style={styles.badge("#eaf2ff", "#0b3d91")}>{msToMin(x.atencionMs)}</span></td>
+                      <td style={styles.td}>
+                        <button style={styles.buttonSecondary} onClick={() => {
+                          const rec = filteredRecords.find((r) => r.id === x.id);
+                          openDetails(rec);
+                        }}>Ver</button>
+                      </td>
+                    </tr>
+                  ))}
+                  {topAt.length === 0 ? (
+                    <tr><td style={styles.td} colSpan={5}>Sin datos (se requiere fin de atención).</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            {showCharts && topAt.length > 0 ? (
+              <div style={{ marginTop: 14 }}>
+                <ReportChart title="Top mayor atención (min)" type="bar"
+                  labels={topAt.map((x) => x.codigo || x.id)}
+                  values={topAt.map((x) => msToMin(x.atencionMs))}
+                />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div style={styles.page}>
+      <div style={styles.header}>
+        <h1 style={styles.title}>Métricas & KPI</h1>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button style={styles.buttonSecondary} onClick={() => setControlOpen((v) => !v)}>
+            {controlOpen ? "Ocultar controles" : "Mostrar controles"}
+          </button>
+
+          <button
+            style={{
+              ...styles.buttonSecondary,
+              background: showCharts ? "#111" : "#fff",
+              color: showCharts ? "#fff" : "#111",
+            }}
+            onClick={() => setShowCharts((v) => !v)}
+            disabled={!stats}
+          >
+            {showCharts ? "Gráficos: ON" : "Gráficos: OFF"}
+          </button>
+        </div>
+      </div>
+
+      <RecordModal open={modalOpen} onClose={closeDetails} record={selectedRecord} agentsMap={agentsMap} />
+
+      {/* CONTROL CENTER (desplegable) */}
+      <div style={styles.card} className={`metrics-control ${controlOpen ? "open" : "closed"}`}>
+        <div className="metrics-control-head">
+          <div>
+            <div className="metrics-control-title">Panel de Control</div>
+            <p style={styles.small}>
+              Filtra, compara y exporta. Todo lo que ves se actualiza con estos filtros (incluye gráficos y exportaciones).
+            </p>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button style={styles.buttonSecondary} onClick={resetFilters} disabled={!stats}>
+              Reset filtros
+            </button>
+
+            <button style={styles.button} onClick={fetchMetrics} disabled={loading || !isAdmin}>
+              {loading ? "Cargando..." : "Actualizar datos"}
+            </button>
+
+            <button
+              onClick={exportExcel}
+              style={{
+                ...styles.button,
+                backgroundColor: canExport ? "#0f7a2a" : "#9ca3af",
+                cursor: canExport ? "pointer" : "not-allowed",
+              }}
+              disabled={!canExport}
+              title="Exporta todo a Excel (respeta filtros y búsqueda)"
+            >
+              Exportar Excel
+            </button>
+
+            <button
+              onClick={exportPDF}
+              style={{
+                ...styles.buttonSecondary,
+                borderColor: "#cfe0ff",
+                backgroundColor: "#eaf2ff",
+                color: "#0b3d91",
+                cursor: canExport ? "pointer" : "not-allowed",
+              }}
+              disabled={!canExport}
+              title="Abre documento imprimible para guardar como PDF"
+            >
+              Exportar Documento / PDF
+            </button>
+          </div>
+        </div>
+
+        {controlOpen ? (
+          <div className="metrics-control-body">
+            <div className="metrics-control-grid">
+              <div>
+                <div className="metrics-label">Desde</div>
+                <input type="date" value={startDateISO} onChange={(e) => setStartDateISO(e.target.value)} style={styles.input} />
+              </div>
+
+              <div>
+                <div className="metrics-label">Hasta</div>
+                <input type="date" value={endDateISO} onChange={(e) => setEndDateISO(e.target.value)} style={styles.input} />
+              </div>
+
+              <div>
+                <div className="metrics-label">Origen</div>
+                <select value={originFilter} onChange={(e) => setOriginFilter(e.target.value)} style={styles.select} disabled={!stats}>
+                  <option value="ALL">Todos</option>
+                  <option value="WEB">WEB</option>
+                  <option value="KIOSKO">KIOSKO</option>
+                </select>
+              </div>
+
+              <div>
+                <div className="metrics-label">Estado</div>
+                <select value={estadoFilter} onChange={(e) => setEstadoFilter(e.target.value)} style={styles.select} disabled={!stats}>
+                  {estadoOptions.map((x) => <option key={x} value={x}>{x}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <div className="metrics-label">Módulo</div>
+                <select value={moduloFilter} onChange={(e) => setModuloFilter(e.target.value)} style={styles.select} disabled={!stats}>
+                  {moduloOptions.map((x) => <option key={x} value={x}>{x}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <div className="metrics-label">Trámite</div>
+                <select value={tramiteFilter} onChange={(e) => setTramiteFilter(e.target.value)} style={styles.select} disabled={!stats}>
+                  {tramiteOptions.map((x) => <option key={x} value={x}>{x}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <div className="metrics-label">Agente</div>
+                <select value={agenteFilter} onChange={(e) => setAgenteFilter(e.target.value)} style={styles.select} disabled={!stats}>
+                  {agenteOptions.map((x) => <option key={x} value={x}>{getAgentLabel(x)}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <div className="metrics-label">Top N</div>
+                <select value={topN} onChange={(e) => setTopN(parseInt(e.target.value, 10))} style={styles.select} disabled={!stats}>
+                  {[5, 8, 10, 12, 15, 20].map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+
+              <div className="metrics-control-search">
+                <div className="metrics-label">Buscar (en detalle)</div>
+                <input
+                  type="text"
+                  value={searchText}
+                  onChange={(e) => setSearchText(e.target.value)}
+                  style={{ ...styles.input, width: "100%" }}
+                  placeholder="código, dni, trámite, agente, estado…"
+                  disabled={!stats}
+                />
+              </div>
+            </div>
+
+            {!isAdmin ? (
+              <p style={{ marginTop: 10 }}>
+                <span style={styles.badge("#f8d7da", "#721c24")}>No autorizado</span>{" "}
+                Solo administradores pueden ver métricas.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      {/* TABS */}
+      <div style={styles.card}>
+        <div style={styles.tabs}>
+          {[
+            ["resumen", "Resumen"],
+            ["agentes", "Agentes"],
+            ["modulos", "Módulos"],
+            ["tramites", "Trámites"],
+            ["tiempos", "Tiempos"],
+            ["usuarios", "Usuarios (DNI)"],
+            ["detalleWeb", "Detalle WEB"],
+            ["detalleKiosko", "Detalle KIOSKO"],
+          ].map(([k, label]) => (
+            <button
+              key={k}
+              style={{ ...styles.tab, ...(activeTab === k ? styles.tabActive : {}) }}
+              onClick={() => setActiveTab(k)}
+              disabled={!stats}
+              title={!stats ? "Carga métricas primero" : ""}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {!stats && !loading && <p style={styles.small}>Selecciona rango y presiona “Actualizar datos”.</p>}
+        {loading && <p style={styles.small}>Cargando métricas…</p>}
+
+        {stats && activeTab === "resumen" && (
+          <>
+            <div style={styles.kpiGrid}>
+              <div style={styles.kpi}>
+                <div style={styles.kpiLabel}>Total registros</div>
+                <div style={styles.kpiValue}>{overview.total}</div>
+                <div style={styles.kpiHint}>WEB: {overview.totalWeb} · KIOSKO: {overview.totalKiosko}</div>
+              </div>
+              <div style={styles.kpi}>
+                <div style={styles.kpiLabel}>Completadas</div>
+                <div style={styles.kpiValue}>{overview.atendidas}</div>
+                <div style={styles.kpiHint}>Estado = completado</div>
+              </div>
+              <div style={styles.kpi}>
+                <div style={styles.kpiLabel}>No se presentó</div>
+                <div style={styles.kpiValue}>{overview.noPresento}</div>
+                <div style={styles.kpiHint}>Clasificación = NO_SE_PRESENTO</div>
+              </div>
+              <div style={styles.kpi}>
+                <div style={styles.kpiLabel}>Espera promedio</div>
+                <div style={styles.kpiValue}>{msToMin(tiempos.espera.avgMs)} min</div>
+                <div style={styles.kpiHint}>Min {msToMin(tiempos.espera.minMs)} · Max {msToMin(tiempos.espera.maxMs)}</div>
+              </div>
+            </div>
+
+            {renderCountTable({ title: "Por Estado", rows: overview.porEstado, keyLabel: "Estado" })}
+            {renderCountTable({ title: "Por Trámite (Top)", rows: byTramite, keyLabel: "Trámite" })}
+            {renderCountTable({ title: "Por Módulo (Top)", rows: byModulo, keyLabel: "Módulo" })}
+          </>
+        )}
+
+        {stats && activeTab === "agentes" && (
+          renderCountTable({
+            title: "Atenciones por Agente",
+            rows: byAgente,
+            keyLabel: "Agente",
+            keyToLabel: (uid) => getAgentLabel(uid),
+          })
+        )}
+
+        {stats && activeTab === "modulos" && (
+          renderCountTable({ title: "Atenciones por Módulo", rows: byModulo, keyLabel: "Módulo" })
+        )}
+
+        {stats && activeTab === "tramites" && (
+          renderCountTable({ title: "Atenciones por Trámite", rows: byTramite, keyLabel: "Trámite" })
+        )}
+
+        {stats && activeTab === "tiempos" && renderTiempos()}
+
+        {stats && activeTab === "usuarios" && (
+          <>
+            <p style={styles.small}>
+              Mostrando {byDni.length} usuarios (DNI). Con filtros aplicados.
+            </p>
+
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>DNI</th>
+                    <th style={styles.th}>Total</th>
+                    <th style={styles.th}>WEB</th>
+                    <th style={styles.th}>KIOSKO</th>
+                    <th style={styles.th}>Espera prom (min)</th>
+                    <th style={styles.th}>Atención prom (min)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {byDni.slice(0, 50).map((r) => (
+                    <tr key={r.dni}>
+                      <td style={styles.td}><strong>{r.dni}</strong></td>
+                      <td style={styles.td}><span style={styles.badge("#eaf2ff", "#0b3d91")}>{r.total}</span></td>
+                      <td style={styles.td}>{r.web}</td>
+                      <td style={styles.td}>{r.kiosko}</td>
+                      <td style={styles.td}>{r.esperaAvgMin}</td>
+                      <td style={styles.td}>{r.atencionAvgMin}</td>
+                    </tr>
+                  ))}
+                  {byDni.length === 0 ? (
+                    <tr><td style={styles.td} colSpan={6}>Sin datos.</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            {showCharts && byDni.length > 0 ? (
+              <div style={{ marginTop: 14 }}>
+                <ReportChart
+                  title={`Usuarios (DNI) por cantidad (Top ${topN})`}
+                  type="bar"
+                  labels={byDni.slice(0, topN).map((x) => x.dni)}
+                  values={byDni.slice(0, topN).map((x) => x.total)}
+                />
+              </div>
+            ) : null}
+          </>
+        )}
+
+        {stats && activeTab === "detalleWeb" && (
+          <>
+            <p style={styles.small}>Mostrando {filteredCitas.length} registros (WEB) con filtros.</p>
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Código</th>
+                    <th style={styles.th}>DNI</th>
+                    <th style={styles.th}>Trámite</th>
+                    <th style={styles.th}>Estado</th>
+                    <th style={styles.th}>Agente</th>
+                    <th style={styles.th}>Módulo</th>
+                    <th style={styles.th}>Espera</th>
+                    <th style={styles.th}>Atención</th>
+                    <th style={styles.th}>Acción</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredCitas.map((r) => (
+                    <tr key={r.id}>
+                      <td style={styles.td}><strong>{r.codigo || r.id}</strong></td>
+                      <td style={styles.td}>{r.dniKey}</td>
+                      <td style={styles.td}>{r.tramiteKey}</td>
+                      <td style={styles.td}>
+                        <span style={styles.badge("#f3f4f6", "#111")}>{r.estadoKey}</span>{" "}
+                        {r.clasificacion ? <span style={styles.badge("#eaf2ff", "#0b3d91")}>{r.clasificacion}</span> : null}
+                      </td>
+                      <td style={styles.td}>{getAgentLabel(r.agenteKey)}</td>
+                      <td style={styles.td}>{r.moduloKey}</td>
+                      <td style={styles.td}>{msToMin(r.esperaMs)} min</td>
+                      <td style={styles.td}>{msToMin(r.atencionMs)} min</td>
+                      <td style={styles.td}><button style={styles.buttonSecondary} onClick={() => openDetails(r)}>Ver</button></td>
+                    </tr>
+                  ))}
+                  {filteredCitas.length === 0 ? (
+                    <tr><td style={styles.td} colSpan={9}>Sin resultados.</td></tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>
           </>
         )}
 
-        {stats && activeTab === "detalleTurnos" && (
+        {stats && activeTab === "detalleKiosko" && (
           <>
-            <p style={styles.small}>Mostrando {detalleTurnos.length} registros (Presencial).</p>
+            <p style={styles.small}>Mostrando {filteredTurnos.length} registros (KIOSKO) con filtros.</p>
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    <th style={styles.th}>Origen</th>
                     <th style={styles.th}>Código</th>
-                    <th style={styles.th}>DNI Ciudadano</th>
                     <th style={styles.th}>Trámite</th>
                     <th style={styles.th}>Estado</th>
-                    <th style={styles.th}>Agente (email)</th>
+                    <th style={styles.th}>Agente</th>
+                    <th style={styles.th}>Módulo</th>
+                    <th style={styles.th}>Espera</th>
+                    <th style={styles.th}>Atención</th>
                     <th style={styles.th}>Acción</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {detalleTurnos.map((r) => {
-                    const ag = agentsMap[r.agenteID] || {};
-                    return (
-                      <tr key={r.id}>
-                        <td style={styles.td}>KIOSKO</td>
-                        <td style={styles.td}>
-                          <button style={styles.linkBtn} onClick={() => openDetails(r, "KIOSKO")}>
-                            {r.codigo || r.id}
-                          </button>
-                        </td>
-                        <td style={styles.td}>{r.dni || "-"}</td>
-                        <td style={styles.td}>{r.tramiteID || "-"}</td>
-                        <td style={styles.td}>{r.estado || "-"}</td>
-                        <td style={styles.td}>{ag.email || "-"}</td>
-                        <td style={styles.td}>
-                          <button style={styles.linkBtn} onClick={() => openDetails(r, "KIOSKO")}>
-                            Ver
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-
-                  {detalleTurnos.length === 0 && (
-                    <tr>
-                      <td colSpan={7} style={{ ...styles.td, textAlign: "center", color: "#666" }}>
-                        Sin resultados.
+                  {filteredTurnos.map((r) => (
+                    <tr key={r.id}>
+                      <td style={styles.td}><strong>{r.codigo || r.id}</strong></td>
+                      <td style={styles.td}>{r.tramiteKey}</td>
+                      <td style={styles.td}>
+                        <span style={styles.badge("#f3f4f6", "#111")}>{r.estadoKey}</span>{" "}
+                        {r.clasificacion ? <span style={styles.badge("#eaf2ff", "#0b3d91")}>{r.clasificacion}</span> : null}
                       </td>
+                      <td style={styles.td}>{getAgentLabel(r.agenteKey)}</td>
+                      <td style={styles.td}>{r.moduloKey}</td>
+                      <td style={styles.td}>{msToMin(r.esperaMs)} min</td>
+                      <td style={styles.td}>{msToMin(r.atencionMs)} min</td>
+                      <td style={styles.td}><button style={styles.buttonSecondary} onClick={() => openDetails(r)}>Ver</button></td>
                     </tr>
-                  )}
+                  ))}
+                  {filteredTurnos.length === 0 ? (
+                    <tr><td style={styles.td} colSpan={8}>Sin resultados.</td></tr>
+                  ) : null}
                 </tbody>
               </table>
             </div>

@@ -12,24 +12,32 @@ import { db } from '../../firebase';
 import { format } from 'date-fns';
 
 const styles = {
-  title: { fontSize: 22, color: '#C8102E', marginBottom: 10, fontWeight: 800 },
-  subtitle: { margin: '0 0 16px', fontSize: 12, color: '#666', fontWeight: 700 },
+  header: { marginBottom: 10 },
+  titleRow: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' },
+  title: { fontSize: 16, color: '#111', margin: 0, fontWeight: 900 },
+  subtitle: { margin: '6px 0 0', fontSize: 12, color: '#666', fontWeight: 700, lineHeight: 1.35 },
 
-  empty: { padding: 14, border: '1px solid #ddd', borderRadius: 10, background: '#fff' },
+  empty: { padding: 14, border: '1px solid #e5e7eb', borderRadius: 12, background: '#fff' },
 
-  table: { width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 10, overflow: 'hidden' },
-  th: { textAlign: 'left', padding: 12, background: '#f3f3f3', borderBottom: '1px solid #ddd', fontSize: 12 },
-  td: { padding: 12, borderBottom: '1px solid #eee', verticalAlign: 'top', fontSize: 12 },
+  table: { width: '100%', borderCollapse: 'collapse', background: '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb' },
+  th: { textAlign: 'left', padding: 10, background: '#f8fafc', borderBottom: '1px solid #e5e7eb', fontSize: 12, fontWeight: 900, color: '#111' },
+  td: { padding: 10, borderBottom: '1px solid #f1f5f9', verticalAlign: 'top', fontSize: 12 },
 
-  badge: (bg) => ({
-    display: 'inline-block',
-    padding: '4px 8px',
-    borderRadius: 999,
-    fontSize: 11,
-    fontWeight: 900,
-    background: bg,
-    color: '#111'
-  })
+  badge: (variant) => {
+    const base = {
+      display: 'inline-block',
+      padding: '4px 8px',
+      borderRadius: 999,
+      fontSize: 11,
+      fontWeight: 900,
+      border: '1px solid #e5e7eb',
+      background: '#fff',
+      color: '#111'
+    };
+    if (variant === 'web') return { ...base, background: '#eaf2ff', border: '1px solid #cfe0ff', color: '#0b3d91' };
+    if (variant === 'state') return { ...base, background: '#f3f4f6' };
+    return base;
+  }
 };
 
 export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
@@ -41,7 +49,7 @@ export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
     const qT = query(collection(db, 'tramites'));
     const unsub = onSnapshot(qT, (snap) => {
       const map = {};
-      snap.docs.forEach(d => {
+      snap.docs.forEach((d) => {
         const data = d.data();
         map[d.id] = data.nombre || d.id;
       });
@@ -67,7 +75,7 @@ export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
     );
 
     const unsub = onSnapshot(qC, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setCitas(list);
     });
 
@@ -75,7 +83,7 @@ export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
   }, []);
 
   const rows = useMemo(() => {
-    return citas.map(c => {
+    return citas.map((c) => {
       const tramiteNombre = tramitesMap[c.tramiteID] || c.tramiteID || 'Trámite';
       const fecha = c.fechaHora?.toDate ? format(c.fechaHora.toDate(), 'dd/MM/yyyy HH:mm') : '—';
 
@@ -88,27 +96,31 @@ export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
 
   return (
     <div>
-      <h2 style={styles.title}>Citas Web (Agendadas)</h2>
+      <div style={styles.header}>
+        <div style={styles.titleRow}>
+          <h2 style={styles.title}>Citas Web (Agendadas) — Hoy</h2>
+          <span style={styles.badge('web')}>WEB</span>
+        </div>
 
-      <p style={styles.subtitle}>
-        Vista informativa. El llamado se realiza únicamente con <strong>“Llamar siguiente”</strong> (Llamado simple).
-        {moduloEfectivo ? (
-          <> Módulo efectivo: <strong>{moduloEfectivo}</strong>.</>
-        ) : (
-          <> Asigna un módulo para poder llamar.</>
-        )}
-        {atencionActual ? (
-          <> Atención en curso: <strong>{atencionActual.codigo}</strong>.</>
-        ) : null}
-      </p>
+        <p style={styles.subtitle}>
+          Vista informativa (no se llama desde aquí). El llamado se realiza únicamente con <strong>“Llamar siguiente”</strong>.
+          {moduloEfectivo ? (
+            <> Módulo efectivo: <strong>{moduloEfectivo}</strong>.</>
+          ) : (
+            <> <span style={{ color: '#7a0000' }}>Asigna un módulo para poder llamar.</span></>
+          )}
+          {atencionActual ? (
+            <> Atención en curso: <strong>{atencionActual.codigo}</strong>.</>
+          ) : null}
+        </p>
+      </div>
 
       {rows.length === 0 ? (
-        <div style={styles.empty}>No hay citas agendadas activas para atender en este momento.</div>
+        <div style={styles.empty}>No hay citas web activas para hoy.</div>
       ) : (
         <table style={styles.table}>
           <thead>
             <tr>
-              <th style={styles.th}>Tipo</th>
               <th style={styles.th}>Código</th>
               <th style={styles.th}>Trámite</th>
               <th style={styles.th}>Fecha</th>
@@ -119,13 +131,12 @@ export default function AgentAppointments({ atencionActual, moduloEfectivo }) {
           <tbody>
             {rows.map((c) => (
               <tr key={c.id}>
-                <td style={styles.td}>
-                  <span style={styles.badge('#E5F0FF')}>WEB</span>
-                </td>
                 <td style={styles.td}><strong>{c.codigo || c.id}</strong></td>
                 <td style={styles.td}>{c.tramiteNombre}</td>
                 <td style={styles.td}>{c.fecha}</td>
-                <td style={styles.td}>{c.estado}</td>
+                <td style={styles.td}>
+                  <span style={styles.badge('state')}>{c.estado}</span>
+                </td>
                 <td style={styles.td}>{c.modulo}</td>
               </tr>
             ))}

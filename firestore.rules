@@ -2,6 +2,9 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // -----------------------------
+    // Helpers
+    // -----------------------------
     function isSignedIn() {
       return request.auth != null;
     }
@@ -14,79 +17,184 @@ service cloud.firestore {
       return isSignedIn() && exists(userDocPath(request.auth.uid));
     }
 
-    function authRole() {
-      return authUserExists() ? get(userDocPath(request.auth.uid)).data.rol : null;
+    function authUser() {
+      return authUserExists() ? get(userDocPath(request.auth.uid)).data : null;
     }
 
-    function isAgente() {
-      return authRole() == 'agente' || authRole() == 'admin';
+    function authRole() {
+      return authUserExists()
+        ? (authUser().rol != null ? authUser().rol : authUser().role)
+        : null;
     }
 
     function isAdmin() {
       return authRole() == 'admin';
     }
 
+    function isAgente() {
+      return authRole() == 'agente' || isAdmin();
+    }
+
     function isPantalla() {
       return authRole() == 'pantalla';
     }
 
+    // Sólo permitir que un usuario se edite a sí mismo campos NO sensibles.
+    // (evita que se auto-asigne admin, cambie módulo/habilidades, etc.)
+    function isSafeSelfUserUpdate() {
+      let forbidden = [
+        'rol', 'role',
+        'activo',
+        'modulo', 'moduloAsignado',
+        'habilidades', 'skills',
+        'isAdmin'
+      ];
+      return !(request.resource.data.diff(resource.data).changedKeys().hasAny(forbidden));
+    }
+
+    // Para citas: staff puede actualizar, pero bloquea cambios peligrosos desde cliente.
+    function isSafeCitaUpdateByStaff() {
+      let forbidden = [
+        'userID', 'uid', 'ownerUid',
+        'createdAt', 'fechaCreacion',
+        'codigo', 'codigoCorrelativo',
+        'origen', 'source',
+        'slotLockId'
+      ];
+      return isAgente() && !(request.resource.data.diff(resource.data).changedKeys().hasAny(forbidden));
+    }
+
+    // Para turnos: staff puede actualizar estado; no permitir que cambie codigo/createdAt desde cliente.
+    function isSafeTurnoUpdateByStaff() {
+      let forbidden = ['codigo', 'createdAt'];
+      return isAgente() && !(request.resource.data.diff(resource.data).changedKeys().hasAny(forbidden));
+    }
+
+    // -----------------------------
+    // usuarios
+    // -----------------------------
     match /usuarios/{userId} {
-      allow create, get, update: if isSignedIn() && request.auth.uid == userId;
-      allow list, get, update: if isAdmin();
+      allow create: if isSignedIn() && request.auth.uid == userId;
+
+      // el propio usuario o admin
+      allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+      allow list: if isAdmin();
+
+      // admin puede editar todo, usuario solo su doc sin campos sensibles
+      allow update: if isAdmin()
+        || (isSignedIn() && request.auth.uid == userId && isSafeSelfUserUpdate());
+
       allow delete: if false;
     }
 
+    // -----------------------------
+    // tramites
+    // -----------------------------
     match /tramites/{tramiteId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
+    // -----------------------------
+    // feriados
+    // -----------------------------
     match /feriados/{feriadoId} {
       allow get, list: if isSignedIn();
       allow create, update, delete: if isAdmin();
     }
 
+    // -----------------------------
+    // slotLocks (solo CF)
+    // -----------------------------
     match /slotLocks/{lockId} {
       allow read, write: if false;
     }
 
-    match /citas/{citaId} {
-      allow create: if false; // Se agenda solo por Cloud Function (agendarCitaWebLock)
-      allow delete: if isSignedIn() && resource.data.userID == request.auth.uid;
-      allow update: if isAgente();
-      allow read: if isAgente() || (isSignedIn() && resource.data.userID == request.auth.uid);
-    }
-
-    match /turnos/{turnoId} {
-      allow create: if true;
-      allow get: if true;
-      allow list: if isAgente();
-      allow update: if isAgente();
-      allow delete: if false;
-    }
-
-    match /estadoSistema/{docId} {
-      allow read: if true;
-      // Escritura SOLO desde Cloud Functions (cliente no escribe estadoSistema)
+    // -----------------------------
+    // contadores (solo CF)
+    // -----------------------------
+    match /contadores/{docId} {
+      allow read: if isAdmin();
       allow write: if false;
     }
 
-    // Configuración Pantalla TV (publicidad)
+    match /contadoresWeb/{docId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // -----------------------------
+    // citas (web + gestión)
+    // -----------------------------
+    match /citas/{citaId} {
+      // se agenda solo por Cloud Function (agendarCitaWebLock)
+      allow create: if false;
+
+      // lectura: staff o dueño
+      allow read: if isAgente() || (isSignedIn() && resource.data.userID == request.auth.uid);
+
+      // update: solo staff (protegido)
+      allow update: if isSafeCitaUpdateByStaff();
+
+      // delete: admin o dueño (solo si activa y FUTURA)
+      allow delete: if isAdmin()
+        || (
+          isSignedIn()
+          && resource.data.userID == request.auth.uid
+          && resource.data.estado == 'activa'
+          && resource.data.fechaHora > request.time
+        );
+    }
+
+    // -----------------------------
+    // turnos (kiosko)
+    // -----------------------------
+    match /turnos/{turnoId} {
+      // kiosko puede crear turnos
+      allow create: if true;
+
+      // pantalla tv necesita leer
+      allow get: if true;
+
+      // list: solo staff
+      allow list: if isAgente();
+
+      // update: solo staff (protegido)
+      allow update: if isSafeTurnoUpdateByStaff();
+
+      allow delete: if false;
+    }
+
+    // -----------------------------
+    // estadoSistema (solo CF escribe)
+    // -----------------------------
+    match /estadoSistema/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // -----------------------------
+    // config (Pantalla TV + sistema)
+    // -----------------------------
     match /config/{docId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
+    // -----------------------------
+    // ciudadanos (CRUD staff)
+    // -----------------------------
     match /ciudadanos/{docId} {
       allow read: if isAgente() || isPantalla() || isAdmin();
       allow create, update, delete: if isAgente();
     }
 
-    // Bitácora / auditoría de atenciones (solo lectura desde clientes autorizados)
+    // -----------------------------
+    // serviceAudit (solo CF escribe)
+    // -----------------------------
     match /serviceAudit/{docId} {
       allow read: if isAgente() || isAdmin();
       allow create, update, delete: if false;
     }
-
   }
 }

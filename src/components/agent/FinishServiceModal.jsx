@@ -8,50 +8,52 @@ import { CLASSIFICATION_OPTIONS } from '../../constants/classifications';
 const styles = {
   modalOverlay: {
     position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    inset: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1000
+    zIndex: 1000,
+    padding: 14
   },
   modalContent: {
     backgroundColor: 'white',
-    padding: '30px',
-    borderRadius: '8px',
-    width: '90%',
-    maxWidth: '500px',
-    boxShadow: '0 5px 15px rgba(0, 0, 0, 0.5)'
+    padding: 18,
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 520,
+    border: '1px solid #e5e7eb',
+    boxShadow: '0 18px 40px rgba(0, 0, 0, 0.35)'
   },
+  title: { margin: 0, fontSize: 16, fontWeight: 900, color: '#111' },
+  code: { margin: '8px 0 0', fontSize: 28, fontWeight: 900, color: '#0b3d91' },
+  label: { fontWeight: 900, display: 'block', marginBottom: 6, fontSize: 12, color: '#111' },
   input: {
     width: '100%',
-    padding: '10px',
-    margin: '8px 0 15px 0',
-    borderRadius: '4px',
-    border: '1px solid #ccc',
-    boxSizing: 'border-box'
+    padding: '10px 12px',
+    margin: '0 0 14px 0',
+    borderRadius: 12,
+    border: '1px solid #e5e7eb',
+    boxSizing: 'border-box',
+    fontWeight: 800,
+    fontSize: 13,
+    outline: 'none'
   },
-  label: { fontWeight: 'bold', display: 'block', marginBottom: '5px' },
-  buttonGroup: { display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' },
-  saveButton: {
-    padding: '10px 15px',
-    backgroundColor: 'green',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    cursor: 'pointer'
+  hint: { margin: '-6px 0 12px', fontSize: 12, fontWeight: 700, color: '#666' },
+  error: { margin: '8px 0 0', color: '#b00020', fontWeight: 800, fontSize: 12 },
+
+  buttonGroup: { display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10, flexWrap: 'wrap' },
+  btn: {
+    padding: '10px 14px',
+    borderRadius: 12,
+    border: '1px solid #e5e7eb',
+    cursor: 'pointer',
+    fontWeight: 900,
+    fontSize: 12
   },
-  cancelButton: {
-    padding: '10px 15px',
-    backgroundColor: 'gray',
-    color: 'white',
-    border: 'none',
-    borderRadius: '5px',
-    cursor: 'pointer'
-  }
+  cancelButton: { background: '#fff', color: '#111' },
+  saveButton: { background: '#16a34a', border: '1px solid #16a34a', color: '#fff' },
+  disabled: { opacity: 0.7, cursor: 'not-allowed' }
 };
 
 export default function FinishServiceModal({ turnoEnAtencion, onClose, onFinalizarExito }) {
@@ -112,8 +114,8 @@ export default function FinishServiceModal({ turnoEnAtencion, onClose, onFinaliz
   return (
     <div style={styles.modalOverlay}>
       <div style={styles.modalContent}>
-        <h2>Finalizar Atención de {tipo}</h2>
-        <p style={{ fontSize: '24px', fontWeight: 'bold' }}>{codigo}</p>
+        <h2 style={styles.title}>Finalizar atención — {tipo}</h2>
+        <p style={styles.code}>{codigo}</p>
 
         <div>
           <label style={styles.label}>Clasificación *</label>
@@ -135,23 +137,37 @@ export default function FinishServiceModal({ turnoEnAtencion, onClose, onFinaliz
         </div>
 
         <div>
-          <label style={styles.label}>Comentarios Adicionales (Opcional)</label>
+          <label style={styles.label}>Comentarios adicionales (opcional)</label>
           <textarea
-            style={{ ...styles.input, resize: 'vertical', height: '100px' }}
+            style={{ ...styles.input, resize: 'vertical', height: 110 }}
             value={comentarios}
             onChange={(e) => setComentarios(e.target.value)}
             disabled={loading}
+            placeholder="Escribe una observación breve si aplica…"
           />
+          <p style={styles.hint}>Esto quedará registrado en la atención (auditoría).</p>
         </div>
 
-        {error && <p style={{ color: 'red' }}>{error}</p>}
+        {error && <p style={styles.error}>{error}</p>}
 
         <div style={styles.buttonGroup}>
-          <button style={styles.cancelButton} onClick={onClose} disabled={loading}>
+          <button
+            style={{ ...styles.btn, ...styles.cancelButton, ...(loading ? styles.disabled : {}) }}
+            onClick={onClose}
+            disabled={loading}
+          >
             Cancelar
           </button>
-          <button style={styles.saveButton} onClick={handleFinalizar} disabled={loading || !clasificacion}>
-            {loading ? 'Guardando...' : 'Guardar y Finalizar'}
+          <button
+            style={{
+              ...styles.btn,
+              ...styles.saveButton,
+              ...((loading || !clasificacion) ? styles.disabled : {})
+            }}
+            onClick={handleFinalizar}
+            disabled={loading || !clasificacion}
+          >
+            {loading ? 'Guardando…' : 'Guardar y finalizar'}
           </button>
         </div>
       </div>
