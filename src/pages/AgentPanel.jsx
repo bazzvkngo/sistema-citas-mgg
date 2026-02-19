@@ -5,7 +5,7 @@ import AgentAppointments from '../components/agent/AgentAppointments';
 import AgentQueue from '../components/agent/AgentQueue';
 import FinishServiceModal from '../components/agent/FinishServiceModal';
 import AdminClosedAppointments from '../components/admin/AdminClosedAppointments';
-import CitizenProfile from './CitizenProfile';
+import CitizenProfile from '../components/agent/CitizenProfile';
 
 import { getFunctions, httpsCallable } from 'firebase/functions';
 import { app, db } from '../firebase';

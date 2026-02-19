@@ -1,170 +1,365 @@
-/* Barra general */
-.navbar {
-  background-color: #c8102e; /* rojo bandera Perú */
-  color: #ffffff;
-  padding: 0 32px;
+/* ===== NAVBAR PRO (Consulado) ===== */
+
+.cp-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 2000;
+  background: #c8102e;
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.cp-navbar-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 18px;
   height: 64px;
   display: flex;
   align-items: center;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
-}
-
-.navbar-content {
-  width: 100%;
-  max-width: 1400px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
   justify-content: space-between;
+  gap: 14px;
 }
 
-/* Lado izquierdo */
-.navbar-left {
+/* Left */
+.cp-navbar-left {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 18px;
+  min-width: 0;
 }
 
-.navbar-logo {
-  font-size: 22px;
-  font-weight: 700;
-  color: #ffffff;
+.cp-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   text-decoration: none;
+  color: #fff;
+  font-weight: 900;
+  letter-spacing: 0.2px;
+  min-width: 0;
+}
+
+.cp-brand-logo {
+  width: 54px;
+  height: 54px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.22);
+  object-fit: cover;
+}
+
+
+.cp-brand-title {
+  font-size: 18px;
   white-space: nowrap;
 }
 
-.navbar-links {
-  display: flex;
-  list-style: none;
-  gap: 24px;
-  padding: 0;
-  margin: 0;
-}
-
-/* Links */
-.navbar-link {
-  color: #ffffff;
-  text-decoration: none;
-  font-size: 15px;
-  font-weight: 500;
-  padding-bottom: 4px;
-  transition: opacity 0.2s ease, border-color 0.2s ease;
-  border-bottom: 3px solid transparent;
-}
-
-.navbar-link:hover {
-  opacity: 0.9;
-}
-
-.navbar-link.active {
-  border-bottom-color: #ffffff; /* subrayado blanco como pestaña activa */
-}
-
-/* Lado derecho */
-.navbar-right {
+/* Links (desktop) */
+.cp-links {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 6px;
+  flex-wrap: nowrap;
 }
 
-/* Usuario */
-.navbar-user {
+.cp-link {
+  color: #fff;
+  text-decoration: none;
+  font-weight: 800;
+  font-size: 13.5px;
+  padding: 10px 10px;
+  border-radius: 999px;
+  transition: background 0.18s ease, transform 0.06s ease;
+  white-space: nowrap;
+}
+
+.cp-link:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.cp-link:active {
+  transform: translateY(1px);
+}
+
+.cp-link.active {
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+/* Dropdown */
+.cp-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.cp-link-btn {
+  border: none;
+  outline: none;
+  cursor: pointer;
+  background: transparent;
+}
+
+.cp-caret {
+  margin-left: 6px;
+  font-size: 12px;
+  opacity: 0.95;
+  display: inline-block;
+  transform: translateY(-1px);
+  transition: transform 0.15s ease;
+}
+.cp-caret.open {
+  transform: rotate(180deg) translateY(1px);
+}
+
+.cp-dropdown-menu {
+  position: absolute;
+  top: 48px;
+  left: 0;
+  min-width: 240px;
+  background: #ffffff;
+  color: #111;
+  border-radius: 14px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 8px;
+}
+
+.cp-dd-item {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-weight: 900;
+  font-size: 13px;
+  color: #222;
+  transition: background 0.15s ease;
+}
+.cp-dd-item:hover {
+  background: rgba(200, 16, 46, 0.09);
+}
+
+/* Right */
+.cp-navbar-right {
   display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* User chip */
+.cp-userchip {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  background-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 7px 10px;
   border-radius: 999px;
-  padding: 6px 14px;
-  font-size: 13px;
+  min-width: 0;
 }
 
-.navbar-user-email {
-  font-weight: 500;
+.cp-userchip-email {
+  font-weight: 800;
+  font-size: 12px;
+  opacity: 0.95;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.navbar-user-role {
-  background-color: #ffffff;
+.cp-userchip-role {
+  background: #fff;
   color: #c8102e;
+  font-weight: 950;
+  padding: 3px 10px;
   border-radius: 999px;
-  padding: 2px 8px;
   font-size: 11px;
-  font-weight: 600;
+  white-space: nowrap;
 }
 
-/* Botones */
-.navbar-button {
-  border-radius: 999px;
+/* Buttons */
+.cp-btn {
   border: none;
-  padding: 8px 18px;
-  font-size: 14px;
-  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.1s ease;
+  border-radius: 999px;
+  padding: 9px 14px;
+  font-weight: 950;
+  font-size: 13px;
+  transition: transform 0.06s ease, background 0.18s ease;
+  white-space: nowrap;
 }
 
-.navbar-button:hover {
-  transform: translateY(-1px);
+.cp-btn:active {
+  transform: translateY(1px);
 }
 
-/* Botón secundario (Pantalla Completa) */
-.navbar-button-secondary {
-  background-color: #ffffff;
+.cp-btn-ghost {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.cp-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.cp-btn-danger {
+  background: #fff;
   color: #c8102e;
 }
-
-/* Botón cerrar sesión */
-.navbar-button-danger {
-  background-color: #ffffff;
-  color: #c8102e;
+.cp-btn-danger:hover {
+  background: rgba(255, 255, 255, 0.92);
 }
 
-/* Si quieres un rojo más fuerte para cerrar sesión:
-.navbar-button-danger {
-  background-color: #f8d7da;
-  color: #8a1020;
+/* Hamburger (mobile) */
+.cp-hamburger {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0;
 }
-*/
-/* 📱 Ajustes responsive para pantallas pequeñas */
-@media (max-width: 768px) {
-  .navbar {
-    padding: 0 12px;
-    height: auto;                 /* que pueda crecer en altura */
+.cp-hamburger span {
+  width: 18px;
+  height: 2px;
+  background: #fff;
+  display: block;
+  border-radius: 99px;
+  opacity: 0.95;
+}
+
+/* Drawer (mobile menu) */
+.cp-drawer {
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  background: #b90f2a;
+  padding: 12px 14px 14px;
+}
+
+.cp-drawer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.cp-drawer-links {
+  display: grid;
+  gap: 6px;
+}
+
+.cp-drawer-link {
+  display: block;
+  color: #fff;
+  text-decoration: none;
+  font-weight: 900;
+  font-size: 13.5px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+.cp-drawer-link:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+.cp-drawer-link.active {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.cp-drawer-group {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.22);
+}
+.cp-drawer-group-title {
+  font-weight: 950;
+  font-size: 12px;
+  opacity: 0.9;
+  margin-bottom: 8px;
+}
+
+.cp-drawer-bottom {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* Helpers */
+.cp-desktop {
+  display: inline-flex;
+}
+.cp-mobile {
+  display: none;
+}
+
+/* Responsive */
+@media (max-width: 980px) {
+  .cp-brand-title {
+    font-size: 16px;
   }
 
-  .navbar-content {
-    flex-direction: column;       /* logo + links + usuario en columnas */
-    align-items: flex-start;
-    gap: 6px;
+  .cp-userchip-email {
+    max-width: 160px;
   }
 
-  .navbar-left {
-    width: 100%;
-    justify-content: flex-start;
-    gap: 16px;
-  }
-
-  .navbar-links {
-    flex-wrap: wrap;              /* que los links hagan salto de línea */
-    gap: 12px;
-    font-size: 13px;
-  }
-
-  .navbar-right {
-    width: 100%;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 6px;
-    flex-wrap: wrap;              /* permite que user+botones bajen de fila si hace falta */
-  }
-
-  .navbar-user {
-    font-size: 11px;
-    padding: 4px 10px;
-  }
-
-  .navbar-button {
-    padding: 6px 10px;
-    font-size: 12px;
+  .cp-links {
+    gap: 4px;
   }
 }
- 
+
+@media (max-width: 820px) {
+  .cp-desktop {
+    display: none;
+  }
+  .cp-mobile {
+    display: inline-flex;
+  }
+
+  .cp-navbar-inner {
+    height: 62px;
+  }
+}
+
+/* --- Brand title responsive --- */
+.cp-brand-title {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Desktop: muestra completo */
+.cp-brand-title-full { display: inline; }
+.cp-brand-title-short { display: none; }
+
+/* Evita que el título empuje el menú */
+.cp-brand {
+  min-width: 0;
+  max-width: 420px; /* ajusta si quieres */
+}
+
+.cp-brand-title-full {
+  max-width: 420px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* En pantallas más chicas: muestra corto */
+@media (max-width: 1100px) {
+  .cp-brand { max-width: 240px; }
+  .cp-brand-title-full { max-width: 240px; }
+}
+
+@media (max-width: 900px) {
+  .cp-brand-title-full { display: none; }
+  .cp-brand-title-short { display: inline; }
+}

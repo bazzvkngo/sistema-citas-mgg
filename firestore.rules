@@ -70,22 +70,31 @@ service cloud.firestore {
       return isAgente() && !(request.resource.data.diff(resource.data).changedKeys().hasAny(forbidden));
     }
 
-    // -----------------------------
-    // usuarios
-    // -----------------------------
-    match /usuarios/{userId} {
-      allow create: if isSignedIn() && request.auth.uid == userId;
+// -----------------------------
+// usuarios
+// -----------------------------
+match /usuarios/{userId} {
+  // El ciudadano crea su propio doc al registrarse
+  allow create: if isSignedIn() && request.auth.uid == userId;
 
-      // el propio usuario o admin
-      allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
-      allow list: if isAdmin();
+  // ✅ Lectura:
+  // - El propio usuario puede leer su doc
+  // - Admin puede leer cualquiera
+  // - Agente puede leer cualquiera (para autocompletar perfil ciudadano)
+  allow get: if (isSignedIn() && request.auth.uid == userId) || isAdmin() || isAgente();
 
-      // admin puede editar todo, usuario solo su doc sin campos sensibles
-      allow update: if isAdmin()
-        || (isSignedIn() && request.auth.uid == userId && isSafeSelfUserUpdate());
+  // ✅ Listado:
+  // Solo admin puede listar (evita que el agente descargue toda la base)
+  allow list: if isAdmin();
 
-      allow delete: if false;
-    }
+  // Escritura:
+  // - Admin puede editar todo
+  // - Usuario solo su doc sin campos sensibles
+  allow update: if isAdmin()
+    || (isSignedIn() && request.auth.uid == userId && isSafeSelfUserUpdate());
+
+  allow delete: if false;
+}
 
     // -----------------------------
     // tramites

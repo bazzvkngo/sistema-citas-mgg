@@ -10,7 +10,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
-  setDoc
+  setDoc,
+  where
 } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
@@ -110,9 +111,6 @@ const styles = {
 };
 
 function normalizeDocId(v) {
-  // Normaliza DNI/RUT: quita puntos, guiones, espacios, deja 0-9 y K
-  // Ej: 13.214.213-0 -> 132142130
-  // Ej: 12.345.678-K -> 12345678K
   return (v || '')
     .toString()
     .trim()
@@ -121,8 +119,6 @@ function normalizeDocId(v) {
 }
 
 function formatRutLikeCL(norm) {
-  // Solo para mostrar si quieres (no obligatorio). Mantengo simple: retorno norm.
-  // Si después quieres formato 12.345.678-9 lo hacemos.
   return norm || '';
 }
 
@@ -130,6 +126,34 @@ function buildNombreCompleto(nombres, apellidos) {
   const a = (nombres || '').toString().trim();
   const b = (apellidos || '').toString().trim();
   return [a, b].filter(Boolean).join(' ').trim();
+}
+
+function splitNombreCompleto(full) {
+  const t = (full || '').toString().trim();
+  if (!t) return { nombres: '', apellidos: '' };
+  const parts = t.split(/\s+/);
+  if (parts.length === 1) return { nombres: parts[0], apellidos: '' };
+  return { nombres: parts.slice(0, -1).join(' '), apellidos: parts.slice(-1).join(' ') };
+}
+
+// ✅ intenta encontrar el usuario ciudadano por dni (y fallback por rut si tu data lo usa así)
+async function findCitizenUserByDoc(docNorm) {
+  // 1) usuarios donde dni == docNorm
+  let q = query(collection(db, 'usuarios'), where('dni', '==', docNorm), limit(1));
+  let snap = await getDocs(q);
+  if (!snap.empty) return snap.docs[0];
+
+  // 2) algunos proyectos guardan rut en otro campo:
+  q = query(collection(db, 'usuarios'), where('rut', '==', docNorm), limit(1));
+  snap = await getDocs(q);
+  if (!snap.empty) return snap.docs[0];
+
+  // 3) si guardan docNorm explícito:
+  q = query(collection(db, 'usuarios'), where('docNorm', '==', docNorm), limit(1));
+  snap = await getDocs(q);
+  if (!snap.empty) return snap.docs[0];
+
+  return null;
 }
 
 export default function CitizenProfile() {
@@ -171,7 +195,6 @@ export default function CitizenProfile() {
 
     async function loadRecent() {
       try {
-        // Nota: si tienes ciudadanos antiguos sin updatedAt, no aparecerán aquí.
         const q = query(collection(db, 'ciudadanos'), orderBy('updatedAt', 'desc'), limit(8));
         const snap = await getDocs(q);
         if (cancelled) return;
@@ -201,6 +224,7 @@ export default function CitizenProfile() {
     setStatusMsg('');
   };
 
+  // ✅ NUEVO: busca en ciudadanos, y si no existe, autocompleta desde usuarios
   const loadCitizen = async (docIdRaw) => {
     setStatusMsg('');
     const idNorm = normalizeDocId(docIdRaw || docIdInput);
@@ -212,29 +236,60 @@ export default function CitizenProfile() {
 
     setLoading(true);
     try {
+      // 1) ciudadanos/{idNorm}
       const ref = doc(db, 'ciudadanos', idNorm);
       const snap = await getDoc(ref);
 
-      if (!snap.exists()) {
-        resetForm();
-        setDocIdInput(docIdRaw || docIdInput);
-        setExists(false);
+      if (snap.exists()) {
+        const data = snap.data() || {};
+        setDocIdInput(data.docDisplay || formatRutLikeCL(idNorm));
+        setTipoDoc(data.tipoDoc || 'DNI');
+        setNombres(data.nombres || '');
+        setApellidos(data.apellidos || '');
+        setNombreCompleto(data.nombreCompleto || '');
+        setTelefono(data.telefono || '');
+        setEmail(data.email || '');
+        setExists(true);
         setLastLoadedId(idNorm);
-        setStatusMsg('No existe. Puedes crear el perfil y guardar.');
+
+        const nombreFinal = (data.nombreCompleto || buildNombreCompleto(data.nombres, data.apellidos) || '').trim();
+        if (!nombreFinal && !data.telefono && !data.email) {
+          setStatusMsg('⚠️ Existe la ficha, pero está incompleta. Completa y presiona Guardar.');
+        } else {
+          setStatusMsg('✅ Perfil cargado. Puedes editar y Guardar.');
+        }
         return;
       }
 
-      const data = snap.data() || {};
-      setDocIdInput(data.docDisplay || formatRutLikeCL(idNorm));
-      setTipoDoc(data.tipoDoc || 'DNI');
-      setNombres(data.nombres || '');
-      setApellidos(data.apellidos || '');
-      setNombreCompleto(data.nombreCompleto || '');
-      setTelefono(data.telefono || '');
-      setEmail(data.email || '');
-      setExists(true);
+      // 2) fallback a usuarios (registro)
+      const userDoc = await findCitizenUserByDoc(idNorm);
+      if (userDoc) {
+        const u = userDoc.data() || {};
+
+        // nombres/apellidos pueden venir separados o en nombre/nombreCompleto
+        const full = (u.nombreCompleto || u.nombre || '').toString().trim();
+        const parts = splitNombreCompleto(full);
+
+        setDocIdInput(formatRutLikeCL(idNorm));
+        setTipoDoc(u.tipoDoc || 'DNI');
+        setNombres((u.nombres || parts.nombres || '').toString());
+        setApellidos((u.apellidos || parts.apellidos || '').toString());
+        setNombreCompleto(full || '');
+        setTelefono((u.telefono || '').toString());
+        setEmail((u.email || '').toString());
+
+        setExists(false);
+        setLastLoadedId(idNorm);
+        setStatusMsg('✅ Datos cargados desde REGISTRO. Presiona Guardar para crear la ficha del ciudadano.');
+        return;
+      }
+
+      // 3) no existe en ningún lado
+      resetForm();
+      setDocIdInput(docIdRaw || docIdInput);
+      setExists(false);
       setLastLoadedId(idNorm);
-      setStatusMsg('Perfil cargado.');
+      setStatusMsg('No existe. Puedes crear el perfil y guardar.');
     } catch (e) {
       console.error('Error cargando ciudadano:', e);
       setStatusMsg('Error al cargar. Revisa consola.');
@@ -272,7 +327,7 @@ export default function CitizenProfile() {
 
       const payload = {
         docNorm: idNorm,
-        docDisplay: (docIdInput || '').toString().trim(), // conserva lo que el operador escribió
+        docDisplay: (docIdInput || '').toString().trim(),
         tipoDoc: (tipoDoc || 'DNI').toString().trim(),
         nombres: nombresV,
         apellidos: apellidosV,
@@ -342,7 +397,6 @@ export default function CitizenProfile() {
   };
 
   const onPickRecent = (id) => {
-    // id ya viene normalizado porque es el docId
     setDocIdInput(id);
     loadCitizen(id);
   };
@@ -377,6 +431,9 @@ export default function CitizenProfile() {
                 onChange={(e) => setDocIdInput(e.target.value)}
                 placeholder="Ej: 13.214.213-0"
                 disabled={loading}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') loadCitizen();
+                }}
               />
               <div style={{ fontSize: '12px', color: '#666', fontWeight: 800 }}>
                 Normalizado: {normalizeDocId(docIdInput) || '--'}
@@ -502,10 +559,14 @@ export default function CitizenProfile() {
           </div>
 
           <div style={styles.helper}>
-            <div><strong>Estado:</strong> {exists ? 'Existe' : 'No existe'}</div>
+            <div><strong>Estado:</strong> {exists ? 'Existe' : 'No existe en ciudadanos'}</div>
             <div><strong>Último cargado (ID norm):</strong> {lastLoadedId || '--'}</div>
             <div><strong>Nombre final:</strong> {computedNombreCompleto || '--'}</div>
-            {statusMsg && <div style={{ marginTop: '8px' }}><strong>Mensaje:</strong> {statusMsg}</div>}
+            {statusMsg && (
+              <div style={{ marginTop: '8px' }}>
+                <strong>Mensaje:</strong> {statusMsg}
+              </div>
+            )}
           </div>
         </div>
 
@@ -527,11 +588,7 @@ export default function CitizenProfile() {
                       <button
                         onClick={() => onPickRecent(c.id)}
                         disabled={loading}
-                        style={{
-                          ...styles.btn,
-                          ...styles.btnMuted,
-                          ...(loading ? styles.btnDisabled : {})
-                        }}
+                        style={{ ...styles.btn, ...styles.btnMuted, ...(loading ? styles.btnDisabled : {}) }}
                       >
                         Abrir
                       </button>

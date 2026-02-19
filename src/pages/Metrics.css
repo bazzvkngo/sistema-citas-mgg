@@ -1,46 +1,259 @@
 /* src/pages/Metrics.css */
 
-/* Panel control */
-.metrics-control-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
-  flex-wrap: wrap;
+.metrics-page{
+  padding: 20px;
+  max-width: 1250px;
+  margin: 0 auto;
+  font-family: Arial, sans-serif;
 }
 
-.metrics-control-title {
-  font-size: 16px;
-  font-weight: 900;
-  color: #111;
-  margin-bottom: 6px;
+.metrics-header{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:14px;
 }
 
-.metrics-control-body {
-  margin-top: 12px;
-  border-top: 1px solid #f1f5f9;
-  padding-top: 12px;
+.metrics-title{
+  margin:0;
+  font-size:24px;
+  font-weight:900;
+  color:#C8102E;
 }
 
-.metrics-control-grid {
-  display: grid;
+.metrics-sub{
+  margin:6px 0 0;
+  font-size:12px;
+  color:#666;
+  font-weight:800;
+  line-height:1.35;
+}
+
+.metrics-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:center;
+}
+
+.metrics-card{
+  background:#fff;
+  border-radius:14px;
+  border:1px solid #eee;
+  box-shadow:0 6px 16px rgba(0,0,0,0.06);
+  padding:16px;
+  margin-bottom:14px;
+}
+
+.metrics-btn{
+  border:none;
+  border-radius:12px;
+  padding:10px 14px;
+  font-size:13px;
+  font-weight:900;
+  background:#C8102E;
+  color:#fff;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.metrics-btn.secondary{
+  border:1px solid #e5e7eb;
+  background:#fff;
+  color:#111;
+}
+.metrics-btn.ghost{
+  border:1px solid #e5e7eb;
+  background:#f8fafc;
+  color:#111;
+}
+.metrics-btn.tiny{
+  padding:6px 10px;
+  border-radius:10px;
+  font-size:12px;
+}
+
+.metrics-pill{
+  display:inline-block;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid #e5e7eb;
+  background:#f8fafc;
+  font-size:12px;
+  font-weight:900;
+  color:#111;
+  white-space:nowrap;
+}
+
+.metrics-mini{
+  margin-top:12px;
+  font-size:12px;
+  color:#444;
+  font-weight:800;
+}
+
+/* filtros */
+.metrics-filters{
+  display:grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap:10px;
+  align-items:end;
+}
+.metrics-field{ display:flex; flex-direction:column; gap:6px; }
+.metrics-label{ font-size:12px; font-weight:900; color:#666; }
+.metrics-input{
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  padding:10px 12px;
+  font-size:13px;
+  font-weight:800;
+  background:#fff;
+}
+.metrics-search{ grid-column: span 2; }
+
+/* KPIs */
+.metrics-kpiGrid{
+  display:grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap:10px;
+  margin-bottom:14px;
+}
+.metrics-kpi{
+  background:#fff;
+  border:1px solid #eee;
+  border-radius:14px;
+  padding:12px;
+  box-shadow:0 6px 16px rgba(0,0,0,0.04);
+}
+.metrics-kpiLabel{
+  font-size:12px;
+  font-weight:900;
+  color:#666;
+}
+.metrics-kpiValue{
+  font-size:22px;
+  font-weight:900;
+  margin-top:8px;
+  color:#111;
+}
+.metrics-kpiHint{
+  margin-top:8px;
+  font-size:12px;
+  font-weight:800;
+  color:#777;
+  line-height:1.25;
 }
 
-.metrics-control-search {
-  grid-column: span 4;
+/* Ranking por trámite */
+.metrics-sectionHead{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-start;
+  gap:12px;
+  flex-wrap:wrap;
+  margin-bottom:12px;
+}
+.metrics-sectionTitle{
+  font-size:16px;
+  font-weight:900;
+  color:#111;
 }
 
-.metrics-label {
-  font-size: 12px;
-  font-weight: 900;
-  color: #666;
-  margin-bottom: 6px;
+.metrics-tramiteGrid{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap:10px;
+}
+.metrics-tramiteCard{
+  border:1px solid #eee;
+  border-radius:14px;
+  padding:12px;
+  background:#fff;
+}
+.metrics-tramiteTop{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+}
+.metrics-tramiteName{
+  font-weight:900;
+  color:#111;
+}
+.metrics-tramiteTime{
+  font-size:22px;
+  font-weight:900;
+  margin-top:10px;
+  color:#111;
+}
+.metrics-tramiteSub{
+  margin-top:8px;
+  font-size:12px;
+  font-weight:800;
+  color:#666;
+  line-height:1.25;
 }
 
-/* Modal detalle */
-.metrics-modal-overlay {
+/* Advanced */
+.metrics-toggle{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  font-size:12px;
+  font-weight:900;
+  color:#111;
+  user-select:none;
+}
+.metrics-toggle input{ transform: translateY(1px); }
+
+.metrics-chartBox{
+  border:1px solid #eee;
+  border-radius:14px;
+  padding:12px;
+  background:#fff;
+  margin-bottom:12px;
+}
+
+.metrics-tableWrap{ overflow-x:auto; }
+.metrics-table{
+  width:100%;
+  border-collapse:collapse;
+}
+.metrics-table th{
+  text-align:left;
+  border-bottom:2px solid #eee;
+  padding:10px 8px;
+  font-size:12px;
+  color:#444;
+  font-weight:900;
+  white-space:nowrap;
+}
+.metrics-table td{
+  border-bottom:1px solid #eee;
+  padding:10px 8px;
+  font-size:13px;
+  vertical-align:top;
+  white-space:nowrap;
+}
+
+/* Badges modal */
+.metrics-badge{
+  display:inline-block;
+  padding:4px 9px;
+  border-radius:999px;
+  border:1px solid rgba(0,0,0,0.06);
+  font-weight:900;
+  font-size:12px;
+  white-space:nowrap;
+}
+.metrics-badge.neutral{ background:#f3f4f6; color:#111; }
+.metrics-badge.ok{ background:#d4edda; color:#155724; }
+.metrics-badge.bad{ background:#f8d7da; color:#721c24; }
+.metrics-badge.warn{ background:#fff3cd; color:#856404; }
+
+/* Modal detalle (se mantiene tu base) */
+.metrics-modal-overlay{
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.55);
@@ -50,8 +263,7 @@
   justify-content: center;
   padding: 14px;
 }
-
-.metrics-modal {
+.metrics-modal{
   background: #fff;
   border-radius: 14px;
   padding: 16px;
@@ -60,42 +272,36 @@
   box-shadow: 0 18px 45px rgba(0,0,0,0.30);
   border: 1px solid #eee;
 }
-
-.metrics-modal-head {
+.metrics-modal-head{
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
   flex-wrap: wrap;
 }
-
-.metrics-modal-grid {
+.metrics-modal-grid{
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-top: 12px;
 }
-
-.metrics-modal-box {
+.metrics-modal-box{
   border: 1px solid #eee;
   border-radius: 12px;
   padding: 12px;
 }
-
-.metrics-modal-label {
+.metrics-modal-label{
   font-size: 12px;
   font-weight: 900;
   color: #666;
 }
-
-.metrics-modal-value {
+.metrics-modal-value{
   font-size: 13px;
   font-weight: 900;
   margin-top: 6px;
   color: #111;
 }
-
-.metrics-modal-row {
+.metrics-modal-row{
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
@@ -103,14 +309,23 @@
 }
 
 /* Responsive */
-@media (max-width: 980px) {
-  .metrics-control-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .metrics-control-search {
-    grid-column: span 2;
-  }
-  .metrics-modal-grid {
-    grid-template-columns: 1fr;
-  }
+@media (max-width: 1100px){
+  .metrics-kpiGrid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metrics-tramiteGrid{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metrics-filters{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .metrics-search{ grid-column: span 3; }
+}
+@media (max-width: 780px){
+  .metrics-tramiteGrid{ grid-template-columns: 1fr; }
+  .metrics-filters{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .metrics-search{ grid-column: span 2; }
+  .metrics-modal-grid{ grid-template-columns: 1fr; }
+}
+
+/* Controles de gráficos */
+.metrics-chartControls{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  align-items:end;
 }
