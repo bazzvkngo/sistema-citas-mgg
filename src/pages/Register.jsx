@@ -11,26 +11,61 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 import { auth, db, app } from '../firebase';
 import { useNavigate, Link } from 'react-router-dom';
 
+// ✅ Fondo consulado (mismo que login)
+import bgConsulado from '../assets/bg-consulado.png';
+
 const styles = {
   container: {
     display: 'flex',
     justifyContent: 'center',
     alignItems: 'center',
-    minHeight: '100vh',
-    backgroundColor: '#F4F5F7',
-    padding: '20px'
+
+    // 👇 para no pelear con el navbar
+    // si tu navbar es más alto, cambia 72px -> 80px
+    minHeight: 'calc(100vh - 72px)',
+    padding: '28px 16px',
+
+    // ✅ overlay sobrio + imagen
+    backgroundImage: `linear-gradient(rgba(11,18,32,0.68), rgba(11,18,32,0.68)), url(${bgConsulado})`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center 35%',
+    backgroundRepeat: 'no-repeat'
   },
+
   formCard: {
     width: '100%',
-    maxWidth: '400px',
+    maxWidth: '460px',
     display: 'flex',
     flexDirection: 'column',
     gap: '18px',
-    backgroundColor: '#ffffff',
+
+    backgroundColor: 'rgba(255,255,255,0.96)',
     borderRadius: '16px',
     padding: '26px 24px',
-    boxShadow: '0 4px 12px rgba(15,23,42,0.12)'
+    boxShadow: '0 18px 55px rgba(0,0,0,0.22)',
+    border: '1px solid rgba(255,255,255,0.55)',
+    backdropFilter: 'blur(6px)'
   },
+
+  headerBlock: {
+    textAlign: 'center',
+    marginBottom: '4px'
+  },
+  title: {
+    textAlign: 'center',
+    color: '#111827',
+    margin: 0,
+    fontSize: '22px',
+    fontWeight: 900
+  },
+  subtitle: {
+    marginTop: '6px',
+    marginBottom: 0,
+    fontSize: '13px',
+    color: '#6B7280',
+    fontWeight: 600
+  },
+
   inputGroup: {
     position: 'relative',
     marginBottom: '5px'
@@ -38,9 +73,9 @@ const styles = {
   label: {
     fontSize: '14px',
     color: '#243447',
-    marginBottom: '5px',
+    marginBottom: '6px',
     display: 'block',
-    fontWeight: 600
+    fontWeight: 700
   },
   inputContainer: {
     display: 'flex',
@@ -49,7 +84,7 @@ const styles = {
     borderRadius: '12px',
     padding: '0 15px',
     backgroundColor: '#F9FAFB',
-    height: '48px',
+    height: '50px',
     boxSizing: 'border-box',
     position: 'relative',
     overflow: 'hidden'
@@ -78,46 +113,55 @@ const styles = {
     transform: 'translateY(-50%)',
     zIndex: 10
   },
+
+  // ✅ Disabled presentable (como login)
   submitButton: {
     width: '100%',
     padding: '15px',
     backgroundColor: '#E5E7EB',
-    color: '#9CA3AF',
-    border: 'none',
+    color: '#4B5563',
+    border: '1px solid #D1D5DB',
     borderRadius: '25px',
     fontSize: '18px',
-    fontWeight: 'bold',
+    fontWeight: 900,
     cursor: 'not-allowed',
-    marginTop: '10px',
-    transition: 'all 0.3s',
+    marginTop: '8px',
+    transition: 'all 0.25s',
     textAlign: 'center'
   },
   submitButtonActive: {
     backgroundColor: '#C8102E',
+    border: '1px solid #C8102E',
     color: '#ffffff',
     cursor: 'pointer',
-    boxShadow: '0 4px 14px rgba(200,16,46,0.35)'
+    boxShadow: '0 6px 18px rgba(200,16,46,0.35)'
   },
+
   errorText: {
     color: '#DC2626',
     fontSize: '12px',
-    marginTop: '4px',
-    marginLeft: '5px'
+    marginTop: '6px',
+    marginLeft: '5px',
+    fontWeight: 700
   },
+
   footerText: {
     textAlign: 'center',
-    marginTop: '18px',
+    marginTop: '14px',
     fontSize: '14px',
     color: '#4B5563'
   },
+
+  // ✅ Link “Iniciar sesión” en azul institucional (no verde)
   link: {
-    color: '#28A745',
+    color: '#C8102E',
     textDecoration: 'none',
-    fontWeight: 'bold'
+    fontWeight: 900
   },
+
   successTitle: {
     fontSize: '22px',
-    fontWeight: 700,
+    fontWeight: 900,
     color: '#16A34A',
     marginBottom: '8px'
   }
@@ -284,9 +328,9 @@ export default function Register() {
   if (successMessage) {
     return (
       <div style={styles.container}>
-        <div style={{ ...styles.formCard, maxWidth: 420, textAlign: 'center' }}>
+        <div style={{ ...styles.formCard, maxWidth: 460, textAlign: 'center' }}>
           <h2 style={styles.successTitle}>Registro exitoso</h2>
-          <p>{successMessage}</p>
+          <p style={{ color: '#374151', fontWeight: 600 }}>{successMessage}</p>
           <Link to="/ingreso" style={styles.link}>
             Ir a Iniciar sesión
           </Link>
@@ -298,7 +342,10 @@ export default function Register() {
   return (
     <div style={styles.container}>
       <form onSubmit={handleSubmit(onSubmit)} style={styles.formCard}>
-        <h2 style={{ textAlign: 'center', color: '#243447', marginBottom: '4px' }}>Crear cuenta</h2>
+        <div style={styles.headerBlock}>
+          <h2 style={styles.title}>Crear cuenta</h2>
+          <p style={styles.subtitle}>Registro de ciudadano para solicitar citas</p>
+        </div>
 
         <div style={styles.inputGroup}>
           <label style={styles.label}>Nombre completo</label>
@@ -395,7 +442,7 @@ export default function Register() {
         </div>
 
         {registroError && !hasFieldErrors && (
-          <p style={{ ...styles.errorText, textAlign: 'center', fontSize: '14px', fontWeight: 'bold' }}>
+          <p style={{ ...styles.errorText, textAlign: 'center', fontSize: '14px' }}>
             {registroError}
           </p>
         )}

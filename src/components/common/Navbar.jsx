@@ -32,7 +32,10 @@ export default function Navbar() {
   const adminDropRef = useRef(null);
   useClickOutside(adminDropRef, () => setAdminOpen(false), adminOpen);
 
-  const rol = useMemo(() => String(currentUser?.rol || "ciudadano").toLowerCase().trim(), [currentUser]);
+  const rol = useMemo(
+    () => String(currentUser?.rol || "ciudadano").toLowerCase().trim(),
+    [currentUser]
+  );
 
   const roleLabelMap = {
     ciudadano: "Ciudadano",
@@ -40,9 +43,22 @@ export default function Navbar() {
     agent: "Agente",
     admin: "Admin",
     pantalla: "Pantalla TV",
-    kiosko: "Kiosko"
+    kiosko: "Kiosko",
   };
   const roleLabel = roleLabelMap[rol] || rol;
+
+  // ✅ Rutas "públicas" (sin sesión): se muestra header centrado y limpio
+  const isPublicAuthRoute = useMemo(() => {
+    const p = location.pathname;
+    return (
+      p === "/ingreso" ||
+      p === "/registro" ||
+      p === "/recuperar-contrasena" ||
+      p === "/verificar-email"
+    );
+  }, [location.pathname]);
+
+  const isPublicHeader = !currentUser && isPublicAuthRoute;
 
   const handleLogout = async () => {
     try {
@@ -71,15 +87,17 @@ export default function Navbar() {
     }
   };
 
-  const isKioskView = (rol === "kiosko" || rol === "admin") && location.pathname === "/kiosko";
-  const isScreenView = (rol === "pantalla" || rol === "admin") && location.pathname === "/pantalla-tv";
+  const isKioskView =
+    (rol === "kiosko" || rol === "admin") && location.pathname === "/kiosko";
+  const isScreenView =
+    (rol === "pantalla" || rol === "admin") &&
+    location.pathname === "/pantalla-tv";
   const showFullscreenButton = isKioskView || isScreenView;
 
   const isActive = (path) => location.pathname === path;
 
   const closeMobile = () => setMobileOpen(false);
 
-  // Navegación segura: si AdminPanel aún no lee `state`, no pasa nada.
   const goAdminTab = (tabKey) => {
     setAdminOpen(false);
     setMobileOpen(false);
@@ -92,7 +110,7 @@ export default function Navbar() {
     if (rol === "ciudadano") {
       return [
         { label: "Mis Citas", to: "/citas" },
-        { label: "Mi Perfil", to: "/perfil" }
+        { label: "Mi Perfil", to: "/perfil" },
       ];
     }
 
@@ -100,21 +118,21 @@ export default function Navbar() {
       return [
         { label: "Panel Agente", to: "/panel-agente" },
         { label: "Agenda", to: "/agenda" },
-        { label: "Mi Perfil", to: "/perfil" }
+        { label: "Mi Perfil", to: "/perfil" },
       ];
     }
 
     if (rol === "pantalla") {
       return [
         { label: "Pantalla TV", to: "/pantalla-tv" },
-        { label: "Mi Perfil", to: "/perfil" }
+        { label: "Mi Perfil", to: "/perfil" },
       ];
     }
 
     if (rol === "kiosko") {
       return [
         { label: "Kiosko", to: "/kiosko" },
-        { label: "Mi Perfil", to: "/perfil" }
+        { label: "Mi Perfil", to: "/perfil" },
       ];
     }
 
@@ -126,11 +144,10 @@ export default function Navbar() {
       { label: "Métricas", to: "/metricas" },
       { label: "Pantalla TV", to: "/pantalla-tv" },
       { label: "Kiosko", to: "/kiosko" },
-      { label: "Mi Perfil", to: "/perfil" }
+      { label: "Mi Perfil", to: "/perfil" },
     ];
   }, [currentUser, rol]);
 
-  // Evita que el drawer quede abierto al navegar
   useEffect(() => {
     setMobileOpen(false);
     setAdminOpen(false);
@@ -139,22 +156,27 @@ export default function Navbar() {
 
   const email = currentUser?.email || "";
   const brandTitleFull = "Consulado General del Perú en Iquique";
-const brandTitleShort = "Consulado Perú";
+  const brandTitleShort = "Consulado Perú";
 
+  // ✅ link del logo: si no hay sesión, vuelve a ingreso
+  const brandTo = currentUser ? "/inicio" : "/ingreso";
 
   return (
-    <nav className="cp-navbar">
+    <nav className={`cp-navbar ${isPublicHeader ? "cp-navbar--public" : ""}`}>
       <div className="cp-navbar-inner">
         {/* LEFT */}
         <div className="cp-navbar-left">
-          <Link to="/inicio" className="cp-brand" onClick={closeMobile}>
-            <img className="cp-brand-logo" src={logoConsulado} alt="Logo Consulado" />
+          <Link to={brandTo} className="cp-brand" onClick={closeMobile}>
+            <img
+              className="cp-brand-logo"
+              src={logoConsulado}
+              alt="Logo Consulado"
+            />
 
             <span className="cp-brand-title">
-  <span className="cp-brand-title-full">{brandTitleFull}</span>
-  <span className="cp-brand-title-short">{brandTitleShort}</span>
-</span>
-
+              <span className="cp-brand-title-full">{brandTitleFull}</span>
+              <span className="cp-brand-title-short">{brandTitleShort}</span>
+            </span>
           </Link>
 
           {/* Desktop links */}
@@ -163,29 +185,50 @@ const brandTitleShort = "Consulado Perú";
               {baseItems.map((it) => {
                 if (it.dropdown && rol === "admin") {
                   return (
-                    <div key={it.label} className="cp-dropdown" ref={adminDropRef}>
+                    <div
+                      key={it.label}
+                      className="cp-dropdown"
+                      ref={adminDropRef}
+                    >
                       <button
                         type="button"
-                        className={`cp-link cp-link-btn ${isActive("/administrador") ? "active" : ""}`}
+                        className={`cp-link cp-link-btn ${
+                          isActive("/administrador") ? "active" : ""
+                        }`}
                         onClick={() => setAdminOpen((v) => !v)}
                         aria-haspopup="menu"
                         aria-expanded={adminOpen}
                       >
                         {it.label}
-                        <span className={`cp-caret ${adminOpen ? "open" : ""}`} aria-hidden="true">
+                        <span
+                          className={`cp-caret ${adminOpen ? "open" : ""}`}
+                          aria-hidden="true"
+                        >
                           ▾
                         </span>
                       </button>
 
                       {adminOpen ? (
                         <div className="cp-dropdown-menu" role="menu">
-                          <button className="cp-dd-item" onClick={() => goAdminTab("tramites")} role="menuitem">
+                          <button
+                            className="cp-dd-item"
+                            onClick={() => goAdminTab("tramites")}
+                            role="menuitem"
+                          >
                             Gestionar Trámites
                           </button>
-                          <button className="cp-dd-item" onClick={() => goAdminTab("agentes")} role="menuitem">
+                          <button
+                            className="cp-dd-item"
+                            onClick={() => goAdminTab("agentes")}
+                            role="menuitem"
+                          >
                             Gestionar Agentes
                           </button>
-                          <button className="cp-dd-item" onClick={() => goAdminTab("feriados")} role="menuitem">
+                          <button
+                            className="cp-dd-item"
+                            onClick={() => goAdminTab("feriados")}
+                            role="menuitem"
+                          >
                             Días Bloqueados / Feriados
                           </button>
                         </div>
@@ -214,8 +257,13 @@ const brandTitleShort = "Consulado Perú";
           {currentUser ? (
             <>
               {showFullscreenButton ? (
-                <button className="cp-btn cp-btn-ghost" onClick={handleToggleFullscreen}>
-                  {isFullscreen ? "Salir Pantalla Completa" : "Pantalla Completa"}
+                <button
+                  className="cp-btn cp-btn-ghost"
+                  onClick={handleToggleFullscreen}
+                >
+                  {isFullscreen
+                    ? "Salir Pantalla Completa"
+                    : "Pantalla Completa"}
                 </button>
               ) : null}
 
@@ -226,7 +274,10 @@ const brandTitleShort = "Consulado Perú";
                 <span className="cp-userchip-role">{roleLabel}</span>
               </div>
 
-              <button className="cp-btn cp-btn-danger cp-desktop" onClick={handleLogout}>
+              <button
+                className="cp-btn cp-btn-danger cp-desktop"
+                onClick={handleLogout}
+              >
                 Cerrar Sesión
               </button>
 
@@ -267,13 +318,22 @@ const brandTitleShort = "Consulado Perú";
                 return (
                   <div key={it.label} className="cp-drawer-group">
                     <div className="cp-drawer-group-title">Admin</div>
-                    <button className="cp-drawer-link" onClick={() => goAdminTab("tramites")}>
+                    <button
+                      className="cp-drawer-link"
+                      onClick={() => goAdminTab("tramites")}
+                    >
                       Gestionar Trámites
                     </button>
-                    <button className="cp-drawer-link" onClick={() => goAdminTab("agentes")}>
+                    <button
+                      className="cp-drawer-link"
+                      onClick={() => goAdminTab("agentes")}
+                    >
                       Gestionar Agentes
                     </button>
-                    <button className="cp-drawer-link" onClick={() => goAdminTab("feriados")}>
+                    <button
+                      className="cp-drawer-link"
+                      onClick={() => goAdminTab("feriados")}
+                    >
                       Días Bloqueados / Feriados
                     </button>
                   </div>

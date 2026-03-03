@@ -9,6 +9,8 @@ import KioskRoute from './components/common/KioskRoute';
 import ScreenRoute from './components/common/ScreenRoute';
 import StaffRoute from './components/common/StaffRoute';
 
+import { useAuth } from './context/AuthContext';
+
 import Login from './pages/Login';
 import Register from './pages/Register';
 import PasswordRecovery from './pages/PasswordRecovery';
@@ -26,6 +28,23 @@ import Agenda from './pages/Agenda';
 import CitizenProfile from './pages/CitizenProfile';
 
 import './App.css';
+
+function getHomeRouteByRole(rolRaw) {
+  const rol = String(rolRaw || '').toLowerCase().trim();
+  if (rol === 'ciudadano') return '/citas';
+  if (rol === 'agente' || rol === 'agent') return '/panel-agente';
+  if (rol === 'admin') return '/administrador';
+  if (rol === 'pantalla') return '/pantalla-tv';
+  if (rol === 'kiosko') return '/kiosko';
+  return '/citas';
+}
+
+function HomeRedirect() {
+  const { currentUser } = useAuth();
+  // ProtectedRoute ya asegura login, pero dejamos fallback por seguridad
+  if (!currentUser) return <Navigate to="/ingreso" replace />;
+  return <Navigate to={getHomeRouteByRole(currentUser.rol)} replace />;
+}
 
 export default function App() {
   return (
@@ -62,8 +81,19 @@ export default function App() {
         <Route path="/qr-seguimiento" element={<TicketTracking />} />
         <Route path="/verificar-correo" element={<VerifyEmail />} />
 
+        {/* ✅ /inicio ahora NO es una página, es un redirect inteligente */}
         <Route
           path="/inicio"
+          element={
+            <ProtectedRoute>
+              <HomeRedirect />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* ✅ Dashboard queda disponible (por si lo quieres para admin o futuro) */}
+        <Route
+          path="/dashboard"
           element={
             <ProtectedRoute>
               <Dashboard />
@@ -144,6 +174,7 @@ export default function App() {
           }
         />
 
+        {/* ✅ Mantén / como /inicio, ahora redirige bien */}
         <Route path="/" element={<Navigate to="/inicio" replace />} />
         <Route path="*" element={<Navigate to="/ingreso" replace />} />
       </Routes>

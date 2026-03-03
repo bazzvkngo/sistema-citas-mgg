@@ -363,3 +363,38 @@
   .cp-brand-title-full { display: none; }
   .cp-brand-title-short { display: inline; }
 }
+
+/* ===== MODO PÚBLICO (Login / Registro / Recuperación) ===== */
+.cp-navbar--public {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16);
+}
+
+.cp-navbar--public .cp-navbar-inner {
+  justify-content: center;
+}
+
+.cp-navbar--public .cp-navbar-left {
+  width: 100%;
+  justify-content: center;
+}
+
+.cp-navbar--public .cp-brand {
+  max-width: none;
+}
+
+.cp-navbar--public .cp-brand-logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+}
+
+.cp-navbar--public .cp-brand-title {
+  font-size: 18px;
+}
+
+/* En pantallas chicas: centra y reduce un poco */
+@media (max-width: 820px) {
+  .cp-navbar--public .cp-navbar-inner {
+    height: 64px;
+  }
+}
