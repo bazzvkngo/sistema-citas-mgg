@@ -16,6 +16,11 @@
 
 .appointments-page .appointments-header {
   margin-bottom: 18px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .appointments-page .appointments-title {
@@ -63,6 +68,74 @@
 .appointments-page .cp-small { font-size: 12.5px; }
 .appointments-page .cp-muted { color: var(--appt-muted); }
 .appointments-page .cp-strong { font-weight: 800; color: var(--appt-text); }
+
+/* Stepper */
+.appointments-page .cp-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 10px 0 12px;
+}
+
+.appointments-page .cp-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 14px;
+  padding: 10px 10px;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  background: #fff;
+}
+
+.appointments-page .cp-step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.20);
+}
+
+.appointments-page .cp-step-text {
+  font-weight: 900;
+  font-size: 12.5px;
+  color: var(--appt-text);
+  white-space: nowrap;
+}
+
+.appointments-page .cp-step--active {
+  border-color: rgba(200, 16, 46, 0.28);
+  box-shadow: 0 0 0 2px rgba(200, 16, 46, 0.10);
+}
+
+.appointments-page .cp-step--active .cp-step-dot {
+  background: var(--appt-red);
+}
+
+.appointments-page .cp-step--done {
+  background: rgba(22, 163, 74, 0.06);
+  border-color: rgba(22, 163, 74, 0.20);
+}
+
+.appointments-page .cp-step--done .cp-step-dot {
+  background: rgba(22, 163, 74, 0.75);
+}
+
+/* Summary */
+.appointments-page .cp-summary {
+  border: 1px solid rgba(15, 23, 42, 0.10);
+  border-radius: 16px;
+  padding: 12px 12px;
+  background: #fff;
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.appointments-page .cp-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
 
 /* Lista citas */
 .appointments-page .cp-citas-list {
@@ -191,6 +264,7 @@
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .appointments-page .cp-code-pill {
@@ -277,6 +351,37 @@
   color: var(--appt-muted);
 }
 
+/* Slots (buttons) */
+.appointments-page .cp-slots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.appointments-page .cp-slot {
+  border: 1px solid rgba(15, 23, 42, 0.14);
+  background: #fff;
+  border-radius: 999px;
+  padding: 9px 12px;
+  font-weight: 900;
+  font-size: 13px;
+  cursor: pointer;
+  transition: transform 0.06s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.appointments-page .cp-slot:hover {
+  background: rgba(200, 16, 46, 0.06);
+  border-color: rgba(200, 16, 46, 0.26);
+}
+
+.appointments-page .cp-slot:active { transform: translateY(1px); }
+
+.appointments-page .cp-slot--selected {
+  background: rgba(200, 16, 46, 0.12);
+  border-color: rgba(200, 16, 46, 0.36);
+  box-shadow: 0 0 0 2px rgba(200, 16, 46, 0.10);
+}
+
 /* Buttons (solo dentro de la página) */
 .appointments-page .cp-btn {
   border: none;
@@ -310,6 +415,16 @@
   background: rgba(239, 68, 68, 0.14);
 }
 
+.appointments-page .cp-btn-ghost {
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--appt-text);
+  border: 1px solid rgba(15, 23, 42, 0.10);
+}
+
+.appointments-page .cp-btn-ghost:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.10);
+}
+
 .appointments-page .cp-btn-full { width: 100%; margin-top: 8px; }
 
 .appointments-page .cp-btn:disabled {
@@ -320,7 +435,7 @@
   border: none;
 }
 
-/* DayPicker theming (solo en la página) */
+/* DayPicker theming */
 .appointments-page .rdp {
   --rdp-accent-color: var(--appt-red);
   --rdp-background-color: rgba(200, 16, 46, 0.10);
@@ -332,7 +447,6 @@
 
   .appointments-page .appointments-title { font-size: 24px; }
 
-  /* En móvil: AGENDAR arriba, luego MIS CITAS */
   .appointments-page .appointments-grid {
     display: flex;
     flex-direction: column;
@@ -345,4 +459,8 @@
   .appointments-page .appointments-card { padding: 16px 14px; }
 
   .appointments-page .cp-cita-grid { grid-template-columns: 1fr; }
+
+  .appointments-page .cp-stepper {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

@@ -28,6 +28,7 @@ const styles = {
     color: UI.ink,
     fontFamily: "Arial, sans-serif",
     overflow: "hidden",
+    position: "relative",
   },
 
   // ✅ Sin header global, solo contenido
@@ -235,6 +236,20 @@ const styles = {
     background: "rgba(0,0,0,0.55)",
     fontSize: 14,
   },
+
+  fsBtn: {
+    position: "fixed",
+    right: 14,
+    bottom: 14,
+    zIndex: 9999,
+    border: "1px solid rgba(0,0,0,0.12)",
+    background: "#fff",
+    borderRadius: 999,
+    padding: "10px 14px",
+    fontWeight: 900,
+    cursor: "pointer",
+    boxShadow: "0 10px 20px rgba(0,0,0,0.12)",
+  },
 };
 
 function cleanDoc(s) {
@@ -307,6 +322,9 @@ async function lookupNombreEnUsuariosPorDni(dniRaw) {
 }
 
 export default function MonitorScreen() {
+  const rootRef = useRef(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const [llamadaActual, setLlamadaActual] = useState(null);
 
   // ✅ este nombre es solo para el llamado actual
@@ -318,6 +336,51 @@ export default function MonitorScreen() {
 
   const [adConfig, setAdConfig] = useState(null);
   const [adError, setAdError] = useState("");
+
+  // Ocultar navbar SOLO mientras esta pantalla está montada y haya fullscreen
+  useEffect(() => {
+    const STYLE_ID = "cp-tv-fullscreen-style";
+    if (!document.getElementById(STYLE_ID)) {
+      const style = document.createElement("style");
+      style.id = STYLE_ID;
+      style.textContent = `
+        :fullscreen .cp-navbar{display:none!important;}
+        :-webkit-full-screen .cp-navbar{display:none!important;}
+        :-ms-fullscreen .cp-navbar{display:none!important;}
+
+        body.cp-tv-fullscreen .cp-navbar{display:none!important;}
+      `;
+      document.head.appendChild(style);
+    }
+
+    const onFs = () => {
+      const fs = !!document.fullscreenElement;
+      setIsFullscreen(fs);
+      if (fs) document.body.classList.add("cp-tv-fullscreen");
+      else document.body.classList.remove("cp-tv-fullscreen");
+    };
+
+    document.addEventListener("fullscreenchange", onFs);
+    onFs();
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      document.body.classList.remove("cp-tv-fullscreen");
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      const el = rootRef.current || document.documentElement;
+      if (el.requestFullscreen) await el.requestFullscreen();
+    } catch (e) {
+      console.error("Fullscreen error:", e);
+    }
+  };
 
   useEffect(() => {
     const mountedAt = Date.now();
@@ -362,7 +425,7 @@ export default function MonitorScreen() {
         ts: Date.now(),
       };
 
-      // ✅ aquí el “desplazamiento” real: insertamos al inicio y mantenemos nombres
+      // ✅ insertamos al inicio y mantenemos nombres
       setHistory((prev) => {
         const next = [item, ...prev];
         const seen = new Set();
@@ -379,7 +442,7 @@ export default function MonitorScreen() {
     return () => unsubscribe();
   }, []);
 
-  // ✅ resolver nombre del llamado actual y guardarlo en history[0] para que NO se pierda al bajar
+  // ✅ resolver nombre del llamado actual y guardarlo en history[0]
   useEffect(() => {
     let cancelled = false;
 
@@ -393,7 +456,6 @@ export default function MonitorScreen() {
       if (nombreDirecto) {
         setNombreCiudadano(nombreDirecto);
 
-        // persistir en historial
         const codigo = (llamadaActual.codigoLlamado || llamadaActual.codigo || "")
           .toString()
           .trim();
@@ -418,7 +480,6 @@ export default function MonitorScreen() {
 
       setNombreCiudadano(found || "");
 
-      // ✅ persistir nombre encontrado en el item del historial (para que se “desplace” con nombre)
       const codigo = (llamadaActual.codigoLlamado || llamadaActual.codigo || "")
         .toString()
         .trim();
@@ -452,12 +513,15 @@ export default function MonitorScreen() {
   const adEnabled = !!(adConfig?.enabled && adConfig?.url);
   const adType = (adConfig?.type || "video").toLowerCase();
 
-  // ✅ izquierda usa el historial, por eso ahora se desplaza con nombre
   const current4 = useMemo(() => history.slice(0, 4), [history]);
-  const previous = useMemo(() => history.slice(0, 8), [history]); // lista derecha: últimos 8
+  const previous = useMemo(() => history.slice(0, 8), [history]);
 
   return (
-    <div style={styles.root}>
+    <div ref={rootRef} style={styles.root}>
+      <button type="button" onClick={toggleFullscreen} style={styles.fsBtn}>
+        {isFullscreen ? "Salir pantalla completa" : "Pantalla completa"}
+      </button>
+
       <div style={styles.content}>
         <div style={styles.leftPanel}>
           <div style={styles.leftHeader}>

@@ -69,6 +69,8 @@ export default function Appointments() {
   const [successMessage, setSuccessMessage] = useState(null);
   const [successCode, setSuccessCode] = useState('');
 
+  const [copied, setCopied] = useState(false);
+
   const tomorrow = addDays(new Date(), 1);
 
   useEffect(() => {
@@ -107,10 +109,7 @@ export default function Appointments() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const citasList = snapshot.docs.map(d => ({
-          id: d.id,
-          ...d.data()
-        }));
+        const citasList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         setMyCitas(citasList);
         setLoadingMyCitas(false);
       },
@@ -122,6 +121,18 @@ export default function Appointments() {
 
     return () => unsubscribe();
   }, [currentUser]);
+
+  const selectedTramite = useMemo(() => {
+    if (!selectedTramiteId) return null;
+    return tramites.find(t => t.id === selectedTramiteId) || null;
+  }, [tramites, selectedTramiteId]);
+
+  const step = useMemo(() => {
+    if (!selectedTramiteId) return 1;
+    if (!selectedDate) return 2;
+    if (!selectedSlot) return 3;
+    return 4;
+  }, [selectedTramiteId, selectedDate, selectedSlot]);
 
   const userTakenSlotsOnSelectedDate = useMemo(() => {
     if (!selectedDate || !myCitas?.length) return new Set();
@@ -141,12 +152,14 @@ export default function Appointments() {
   useEffect(() => {
     if (!selectedTramiteId || !selectedDate) {
       setAvailableSlots([]);
+      setSelectedSlot('');
       return;
     }
 
     const day = getDay(selectedDate);
     if (day === 0 || day === 6) {
       setAvailableSlots([]);
+      setSelectedSlot('');
       return;
     }
 
@@ -194,6 +207,7 @@ export default function Appointments() {
     setAgendarError(null);
     setSuccessMessage(null);
     setSuccessCode('');
+    setCopied(false);
 
     if (!selectedSlot) {
       setAgendarError('Por favor, seleccione un horario.');
@@ -265,17 +279,41 @@ export default function Appointments() {
     }
   };
 
+  const handleCopyCode = async () => {
+    if (!successCode) return;
+    try {
+      await navigator.clipboard.writeText(successCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    } catch {
+      // fallback mínimo
+      const el = document.createElement('textarea');
+      el.value = successCode;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    }
+  };
+
   const renderSuccessMessage = () => {
     if (!successMessage) return null;
     return (
-      <div className="cp-alert cp-alert--success" role="status">
+      <div className="cp-alert cp-alert--success" role="status" aria-live="polite">
         <div className="cp-alert-title">Cita confirmada</div>
+
         {successCode ? (
           <div className="cp-code-row">
             <span className="cp-muted">Código:</span>
             <span className="cp-code-pill">{successCode}</span>
+            <button type="button" className="cp-btn cp-btn-ghost" onClick={handleCopyCode}>
+              {copied ? 'Copiado' : 'Copiar'}
+            </button>
           </div>
         ) : null}
+
         <div className="cp-alert-body">{successMessage}</div>
       </div>
     );
@@ -346,28 +384,35 @@ export default function Appointments() {
     );
   };
 
+  const summaryDate = selectedDate ? format(selectedDate, 'dd/MM/yyyy') : '—';
+  const summaryTramite = selectedTramite?.nombre || '—';
+  const summarySlot = selectedSlot || '—';
+
   return (
     <div className="appointments-page">
       <header className="appointments-header">
-        <h2 className="appointments-title">Mis citas</h2>
-        <p className="appointments-subtitle">
-          Revise sus citas y agende una nueva si lo necesita.
-        </p>
+        <div>
+          <h2 className="appointments-title">Citas Web</h2>
+          <p className="appointments-subtitle">
+            Agende una cita seleccionando trámite, fecha y horario disponible.
+          </p>
+        </div>
       </header>
 
       <div className="appointments-grid">
         <section className="appointments-card appointments-card--mine">
           <div className="cp-section-head">
-            <h3 className="cp-section-title">Mis citas agendadas</h3>
+            <h3 className="cp-section-title">Mis citas activas</h3>
+            <div className="cp-muted cp-small">Aquí verás tus citas en espera o llamadas.</div>
           </div>
 
           {loadingMyCitas ? (
             <p className="cp-muted">Cargando citas...</p>
           ) : myCitas.length === 0 ? (
             <div className="cp-empty">
-              <div className="cp-empty-title">No tienes citas agendadas</div>
+              <div className="cp-empty-title">No tienes citas activas</div>
               <div className="cp-empty-body">
-                Puedes agendar una cita en el formulario de la derecha.
+                Puedes agendar una cita en el panel de la derecha.
               </div>
             </div>
           ) : (
@@ -381,7 +426,41 @@ export default function Appointments() {
           <div className="cp-section-head" id="agendar-cita">
             <h3 className="cp-section-title">Agendar nueva cita</h3>
             <div className="cp-muted cp-small">
-              Selecciona un trámite, elige una fecha desde mañana y luego un horario disponible.
+              Solo días hábiles desde mañana. Un horario por turno.
+            </div>
+          </div>
+
+          <div className="cp-stepper" aria-label="Pasos para agendar">
+            <div className={`cp-step ${step > 1 ? 'cp-step--done' : ''} ${step === 1 ? 'cp-step--active' : ''}`}>
+              <span className="cp-step-dot" />
+              <span className="cp-step-text">Trámite</span>
+            </div>
+            <div className={`cp-step ${step > 2 ? 'cp-step--done' : ''} ${step === 2 ? 'cp-step--active' : ''}`}>
+              <span className="cp-step-dot" />
+              <span className="cp-step-text">Fecha</span>
+            </div>
+            <div className={`cp-step ${step > 3 ? 'cp-step--done' : ''} ${step === 3 ? 'cp-step--active' : ''}`}>
+              <span className="cp-step-dot" />
+              <span className="cp-step-text">Horario</span>
+            </div>
+            <div className={`cp-step ${step === 4 ? 'cp-step--active' : ''}`}>
+              <span className="cp-step-dot" />
+              <span className="cp-step-text">Confirmar</span>
+            </div>
+          </div>
+
+          <div className="cp-summary" aria-label="Resumen de selección">
+            <div className="cp-summary-row">
+              <span className="cp-muted">Trámite</span>
+              <span className="cp-strong">{summaryTramite}</span>
+            </div>
+            <div className="cp-summary-row">
+              <span className="cp-muted">Fecha</span>
+              <span className="cp-strong">{summaryDate}</span>
+            </div>
+            <div className="cp-summary-row">
+              <span className="cp-muted">Horario</span>
+              <span className="cp-strong">{summarySlot}</span>
             </div>
           </div>
 
@@ -404,9 +483,13 @@ export default function Appointments() {
                   value={selectedTramiteId}
                   onChange={(e) => {
                     setSelectedTramiteId(e.target.value);
+                    setSelectedDate(undefined);
+                    setAvailableSlots([]);
+                    setSelectedSlot('');
                     setAgendarError(null);
                     setSuccessMessage(null);
                     setSuccessCode('');
+                    setCopied(false);
                   }}
                   required
                   className="cp-select"
@@ -429,7 +512,13 @@ export default function Appointments() {
                     <DayPicker
                       mode="single"
                       selected={selectedDate}
-                      onSelect={setSelectedDate}
+                      onSelect={(d) => {
+                        setSelectedDate(d);
+                        setAgendarError(null);
+                        setSuccessMessage(null);
+                        setSuccessCode('');
+                        setCopied(false);
+                      }}
                       locale={es}
                       disabled={[finesDeSemana, { before: tomorrow }]}
                       hidden={day => getDay(day) === 0 || getDay(day) === 6}
@@ -443,42 +532,54 @@ export default function Appointments() {
                   </div>
                 </div>
 
+                {selectedDate && userTakenSlotsOnSelectedDate.size > 0 ? (
+                  <div className="cp-alert cp-alert--info" role="status">
+                    <div className="cp-alert-title">Atención</div>
+                    <div className="cp-alert-body">
+                      Ya tienes un horario reservado ese día. Los horarios tomados se ocultan automáticamente.
+                    </div>
+                  </div>
+                ) : null}
+
                 {loadingSlots ? (
                   <div className="cp-inline-loading">Buscando horarios disponibles...</div>
                 ) : null}
 
-                {filteredSlots.length > 0 && selectedDate && (
+                {selectedDate && !loadingSlots && filteredSlots.length > 0 ? (
                   <div className="cp-form-row">
                     <label className="cp-label">3. Horario</label>
-                    <select
-                      value={selectedSlot}
-                      onChange={(e) => setSelectedSlot(e.target.value)}
-                      required
-                      className="cp-select"
-                    >
-                      <option value="">-- Seleccione un horario --</option>
-                      {filteredSlots.map((slotString, index) => (
-                        <option key={index} value={slotString}>
-                          {slotString}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="cp-slots" role="list">
+                      {filteredSlots.map((slotString) => {
+                        const isSelected = selectedSlot === slotString;
+                        return (
+                          <button
+                            key={slotString}
+                            type="button"
+                            className={`cp-slot ${isSelected ? 'cp-slot--selected' : ''}`}
+                            onClick={() => setSelectedSlot(slotString)}
+                            aria-pressed={isSelected}
+                          >
+                            {slotString}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
+                ) : null}
 
-                {filteredSlots.length === 0 && !loadingSlots && selectedTramiteId && selectedDate && (
+                {filteredSlots.length === 0 && !loadingSlots && selectedDate ? (
                   <div className="cp-alert cp-alert--info" role="status">
                     <div className="cp-alert-title">Sin horarios disponibles</div>
                     <div className="cp-alert-body">Prueba con otra fecha o vuelve más tarde.</div>
                   </div>
-                )}
+                ) : null}
 
                 <button
                   type="submit"
                   className="cp-btn cp-btn-primary cp-btn-full"
                   disabled={!selectedSlot || loadingSlots || loadingMyCitas || !currentUser || loading}
                 >
-                  {loading || loadingSlots ? 'Cargando...' : 'Agendar Cita'}
+                  {loading || loadingSlots ? 'Cargando...' : 'Confirmar cita'}
                 </button>
 
                 <div className="cp-footnote">

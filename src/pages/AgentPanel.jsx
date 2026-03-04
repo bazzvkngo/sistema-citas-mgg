@@ -17,12 +17,10 @@ const FUNCTIONS_REGION = 'southamerica-west1';
 const styles = {
   page: {
     padding: 18,
-    fontFamily: 'Arial, sans-serif',
     maxWidth: 1240,
     margin: '0 auto'
   },
 
-  // Top bar (compact)
   topbar: {
     display: 'flex',
     alignItems: 'center',
@@ -78,13 +76,11 @@ const styles = {
     fontSize: 12
   },
 
-  // Main grid
   grid: {
     display: 'grid',
     gridTemplateColumns: '1.05fr 0.95fr',
     gap: 14
   },
-  gridSingle: { gridTemplateColumns: '1fr' },
 
   card: {
     border: '1px solid #e5e7eb',
@@ -105,7 +101,6 @@ const styles = {
   cardTitle: { margin: 0, fontSize: 14, fontWeight: 900, color: '#111' },
   cardHint: { margin: '6px 0 0', fontSize: 12, fontWeight: 700, color: '#666', maxWidth: 640 },
 
-  // Current attention
   currentCode: { margin: '8px 0 0', fontSize: 28, fontWeight: 900, color: '#0b3d91', letterSpacing: 0.4 },
   currentMetaRow: { display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 10 },
   metaItem: { fontSize: 12, fontWeight: 800, color: '#111', background: '#f8fafc', border: '1px solid #e5e7eb', padding: '8px 10px', borderRadius: 12 },
@@ -122,9 +117,7 @@ const styles = {
     color: '#fff',
     boxShadow: '0 10px 18px rgba(22, 163, 74, 0.22)'
   },
-  primaryBtnDisabled: { background: '#d9d9d9', color: '#666', cursor: 'not-allowed', boxShadow: 'none' },
 
-  // Tabs (right column)
   tabs: {
     display: 'flex',
     gap: 8,
@@ -158,9 +151,7 @@ function getFriendlyFirebaseError(err) {
 
   if (code.includes('permission-denied')) return 'No tienes permisos para cerrar la jornada.';
   if (code.includes('unauthenticated')) return 'Sesión no válida. Vuelve a iniciar sesión.';
-  if (code.includes('failed-precondition')) {
-    return 'Faltan índices en Firestore para ejecutar el cierre masivo. Revisa Firestore > Indexes.';
-  }
+  if (code.includes('failed-precondition')) return 'Faltan índices en Firestore. Revisa Firestore > Indexes.';
   if (code.includes('internal')) return 'Error interno en la función. Revisa los logs de Cloud Functions.';
 
   return msg;
@@ -173,6 +164,30 @@ function normalizeModuloValue(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function useIsNarrow(breakpointPx = 980) {
+  const [isNarrow, setIsNarrow] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia(`(max-width: ${breakpointPx}px)`).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mql = window.matchMedia(`(max-width: ${breakpointPx}px)`);
+    const onChange = () => setIsNarrow(mql.matches);
+
+    onChange();
+    if (mql.addEventListener) mql.addEventListener('change', onChange);
+    else mql.addListener(onChange);
+
+    return () => {
+      if (mql.removeEventListener) mql.removeEventListener('change', onChange);
+      else mql.removeListener(onChange);
+    };
+  }, [breakpointPx]);
+
+  return isNarrow;
+}
+
 export default function AgentPanel() {
   const { currentUser } = useAuth();
   const [closingDay, setClosingDay] = useState(false);
@@ -181,11 +196,7 @@ export default function AgentPanel() {
   const [calledCita, setCalledCita] = useState(null);
 
   const [showFinishModal, setShowFinishModal] = useState(false);
-
-  // Tabs: right column content
   const [activeTab, setActiveTab] = useState('cola'); // 'cola' | 'web' | 'cerradas' | 'citizens'
-
-  // filtro por módulo (solo admin). si el usuario tiene módulo asignado, manda ese.
   const [moduloFiltro, setModuloFiltro] = useState(null);
 
   const isAdmin = useMemo(() => {
@@ -204,7 +215,6 @@ export default function AgentPanel() {
   );
   const moduloSeleccionado = useMemo(() => normalizeModuloValue(moduloFiltro), [moduloFiltro]);
 
-  // modulo efectivo: si el usuario tiene módulo asignado, se usa ese. si no, usa el filtro (admin).
   const moduloEfectivo = useMemo(() => {
     return moduloAsignado || moduloSeleccionado || null;
   }, [moduloAsignado, moduloSeleccionado]);
@@ -213,11 +223,7 @@ export default function AgentPanel() {
     if (!currentUser) return;
     if (!isAdmin) return;
 
-    if (moduloAsignado) {
-      setModuloFiltro(moduloAsignado);
-    } else if (moduloFiltro === null) {
-      setModuloFiltro(null);
-    }
+    if (moduloAsignado) setModuloFiltro(moduloAsignado);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, isAdmin, moduloAsignado]);
 
@@ -228,25 +234,14 @@ export default function AgentPanel() {
       return;
     }
 
-    // Para el “filtro por módulo”, filtramos SOLO la atención “llamado”
     const filtroModulo = isAdmin ? moduloSeleccionado : moduloAsignado;
 
     const qTurnos = filtroModulo
-      ? query(
-          collection(db, 'turnos'),
-          where('estado', '==', 'llamado'),
-          where('modulo', '==', filtroModulo),
-          limit(1)
-        )
+      ? query(collection(db, 'turnos'), where('estado', '==', 'llamado'), where('modulo', '==', filtroModulo), limit(1))
       : query(collection(db, 'turnos'), where('estado', '==', 'llamado'), limit(1));
 
     const qCitas = filtroModulo
-      ? query(
-          collection(db, 'citas'),
-          where('estado', '==', 'llamado'),
-          where('moduloAsignado', '==', filtroModulo),
-          limit(1)
-        )
+      ? query(collection(db, 'citas'), where('estado', '==', 'llamado'), where('moduloAsignado', '==', filtroModulo), limit(1))
       : query(collection(db, 'citas'), where('estado', '==', 'llamado'), limit(1));
 
     const unsubTurnos = onSnapshot(qTurnos, (snap) => {
@@ -258,7 +253,6 @@ export default function AgentPanel() {
         tipo: 'Turno',
         codigo: data.codigo,
         tramiteID: data.tramiteID,
-        // ✅ IMPORTANTE: traer módulo para que al finalizar quede registrado
         modulo: data.modulo ?? null
       });
     });
@@ -272,7 +266,6 @@ export default function AgentPanel() {
         tipo: 'Cita',
         codigo: data.codigo,
         tramiteID: data.tramiteID,
-        // ✅ IMPORTANTE: traer móduloAsignado para que al finalizar quede registrado
         moduloAsignado: data.moduloAsignado ?? null
       });
     });
@@ -326,14 +319,13 @@ export default function AgentPanel() {
   const moduloLabel = moduloEfectivo ? `Módulo ${moduloEfectivo}` : 'Sin módulo';
   const rolLabel = (currentUser?.rol || currentUser?.role || currentUser?.tipoUsuario || currentUser?.perfil || 'usuario').toString();
 
+  const isNarrow = useIsNarrow(980);
   const gridStyle = useMemo(() => {
-    const isMobile = typeof window !== 'undefined' ? window.innerWidth < 980 : false;
-    return isMobile ? { ...styles.grid, ...styles.gridSingle } : styles.grid;
-  }, []);
+    return isNarrow ? { ...styles.grid, gridTemplateColumns: '1fr' } : styles.grid;
+  }, [isNarrow]);
 
   return (
     <div style={styles.page} className="page-container">
-      {/* TOP BAR */}
       <div style={styles.topbar}>
         <div style={styles.titleWrap}>
           <h1 style={styles.title}>Panel de Atención</h1>
@@ -343,7 +335,7 @@ export default function AgentPanel() {
         </div>
 
         <div style={styles.rightWrap}>
-          <span style={styles.pill('primary')}>
+          <span style={styles.pill(moduloAsignado ? 'primary' : 'danger')}>
             {moduloAsignado ? `Módulo asignado: ${moduloAsignado}` : 'Módulo asignado: —'}
           </span>
 
@@ -370,6 +362,7 @@ export default function AgentPanel() {
               </select>
 
               <button
+                type="button"
                 onClick={cerrarJornada}
                 disabled={!currentUser || closingDay}
                 style={{
@@ -386,9 +379,7 @@ export default function AgentPanel() {
         </div>
       </div>
 
-      {/* MAIN GRID */}
       <div style={gridStyle}>
-        {/* LEFT: Atención actual */}
         <div style={styles.card}>
           <div style={styles.cardHead}>
             <div>
@@ -440,7 +431,7 @@ export default function AgentPanel() {
                 </div>
 
                 <div style={{ marginTop: 12 }}>
-                  <button style={styles.primaryBtn} onClick={() => setShowFinishModal(true)}>
+                  <button type="button" style={styles.primaryBtn} onClick={() => setShowFinishModal(true)}>
                     Finalizar atención
                   </button>
                 </div>
@@ -449,10 +440,10 @@ export default function AgentPanel() {
           </div>
         </div>
 
-        {/* RIGHT: Cola / Web / Cerradas / Ciudadanos */}
         <div style={styles.card}>
           <div style={styles.tabs}>
             <button
+              type="button"
               style={{ ...styles.tabBtn, ...(activeTab === 'cola' ? styles.tabActive : {}) }}
               onClick={() => setActiveTab('cola')}
             >
@@ -460,6 +451,7 @@ export default function AgentPanel() {
             </button>
 
             <button
+              type="button"
               style={{ ...styles.tabBtn, ...(activeTab === 'web' ? styles.tabActive : {}) }}
               onClick={() => setActiveTab('web')}
             >
@@ -467,6 +459,7 @@ export default function AgentPanel() {
             </button>
 
             <button
+              type="button"
               style={{
                 ...styles.tabBtn,
                 ...(activeTab === 'cerradas' ? styles.tabActive : {}),
@@ -480,6 +473,7 @@ export default function AgentPanel() {
             </button>
 
             <button
+              type="button"
               style={{
                 ...styles.tabBtn,
                 ...(activeTab === 'citizens' ? styles.tabActive : {}),
@@ -502,13 +496,9 @@ export default function AgentPanel() {
               <AgentAppointments atencionActual={atencionActual} moduloEfectivo={moduloEfectivo} />
             )}
 
-            {activeTab === 'cerradas' && (
-              <AdminClosedAppointments />
-            )}
+            {activeTab === 'cerradas' && <AdminClosedAppointments />}
 
-            {activeTab === 'citizens' && (
-              <CitizenProfile />
-            )}
+            {activeTab === 'citizens' && <CitizenProfile />}
           </div>
         </div>
       </div>

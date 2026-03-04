@@ -1618,9 +1618,11 @@ if (rol === "agente") {
       const d = llamadaSnap.data() || {};
       const ts = d.timestamp?.toMillis ? d.timestamp.toMillis() : 0;
       const ageMs = Date.now() - ts;
-      // Si hay una llamada en los últimos 20 segundos, bloquear (evita doble click)
-      if (d.codigoLlamado && ageMs >= 0 && ageMs < 20000) {
-        return { called: false, message: "Ya hay una llamada reciente. Finaliza o espera unos segundos." };
+
+      // Anti doble-click: SOLO si el mismo agente llama demasiado rápido (1.5s)
+      const sameAgent = d.agenteID && d.agenteID === auth.uid;
+      if (sameAgent && d.codigoLlamado && ageMs >= 0 && ageMs < 1500) {
+        return { called: false, message: "Acción muy rápida. Intenta nuevamente." };
       }
     }
 

@@ -1,17 +1,9 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { db, functions } from '../../firebase';
-import {
-  collection,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  limit,
-} from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 
 function getLocalDateISOChile() {
-  // Formato YYYY-MM-DD en hora local del navegador (Chile si el PC está en Chile)
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, '0');
@@ -20,7 +12,6 @@ function getLocalDateISOChile() {
 }
 
 function buildDayRangeISO(dateISO) {
-  // dateISO = YYYY-MM-DD
   const [y, m, d] = dateISO.split('-').map(Number);
   const start = new Date(y, m - 1, d, 0, 0, 0, 0);
   const end = new Date(y, m - 1, d, 23, 59, 59, 999);
@@ -28,46 +19,28 @@ function buildDayRangeISO(dateISO) {
 }
 
 export default function AgentQueue({ atencionActual, moduloEfectivo }) {
-  const [pendingTurnos, setPendingTurnos] = useState(0);
-  const [pendingCitas, setPendingCitas] = useState(0);
-
-  // Citas WEB de HOY (sin filtrar por hora). Derivamos "elegibles" con un tick.
-  const [citasHoy, setCitasHoy] = useState([]);
-
-  // "Now" dinámico (evita bug: query congelado cuando la cita pasa a ser elegible).
-  const nowRef = useRef(Date.now());
   const [nowMs, setNowMs] = useState(Date.now());
 
+  const [pendingTurnos, setPendingTurnos] = useState(0);
+  const [citasHoy, setCitasHoy] = useState([]);
+
+  const [turnosList, setTurnosList] = useState([]);
+  const [citasList, setCitasList] = useState([]);
+
   const [loadingCall, setLoadingCall] = useState(false);
-  const [list, setList] = useState([]);
   const [showDetail, setShowDetail] = useState(false);
 
-  const totalPendientes = pendingTurnos + pendingCitas;
-
   useEffect(() => {
-    const id = setInterval(() => {
-      const v = Date.now();
-      nowRef.current = v;
-      setNowMs(v);
-    }, 1000);
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
-  // Turnos kiosko pendientes (estado = pendiente)
   useEffect(() => {
-    const qTurnos = query(
-      collection(db, 'turnos'),
-      where('estado', '==', 'pendiente')
-    );
-
-    const unsub = onSnapshot(qTurnos, (snap) => {
-      setPendingTurnos(snap.size);
-    });
-
+    const qTurnos = query(collection(db, 'turnos'), where('estado', '==', 'pendiente'));
+    const unsub = onSnapshot(qTurnos, (snap) => setPendingTurnos(snap.size));
     return () => unsub();
   }, []);
 
-  // Citas WEB de hoy (activa). NOTA: no filtramos "<= now" aquí, para no dejar el query congelado.
   useEffect(() => {
     const todayISO = getLocalDateISOChile();
     const { start, end } = buildDayRangeISO(todayISO);
@@ -80,24 +53,12 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
     );
 
     const unsub = onSnapshot(qCitas, (snap) => {
-      const items = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setCitasHoy(items);
+      setCitasHoy(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
 
     return () => unsub();
   }, []);
 
-  // Derivamos pendientes WEB elegibles (fechaHora <= ahora)
-  useEffect(() => {
-    const eligible = (citasHoy || []).filter((c) => {
-      const ms = c?.fechaHora?.toDate ? c.fechaHora.toDate().getTime() : null;
-      if (!ms) return false;
-      return ms <= nowMs;
-    });
-    setPendingCitas(eligible.length);
-  }, [citasHoy, nowMs]);
-
-  // Lista unificada informativa (máximo 120, ordenada por prioridad)
   useEffect(() => {
     const todayISO = getLocalDateISOChile();
     const { start, end } = buildDayRangeISO(todayISO);
@@ -118,88 +79,75 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
       limit(80)
     );
 
-    let turnosCache = [];
-    let citasCache = [];
-
-    const recompute = () => {
-      const turnosRows = turnosCache.map((t) => ({
-        id: t.id,
-        tipo: 'KIOSKO',
-        codigo: t.codigo || '',
-        dni: t.dni || '',
-        tramiteID: t.tramiteID || '',
-        tramiteNombre: t.tramiteNombre || '',
-        effectiveMs: t.fechaHoraGenerado?.toDate ? t.fechaHoraGenerado.toDate().getTime() : 0
-      }));
-
-      // Solo mostramos en el detalle las WEB dentro de hora (coincide con el llamado real)
-      const now = nowRef.current;
-      const citasRows = citasCache
-        .map((c) => ({
-          id: c.id,
-          tipo: 'WEB',
-          codigo: c.codigo || '',
-          dni: c.dni || '',
-          tramiteID: c.tramiteID || '',
-          tramiteNombre: c.tramiteNombre || '',
-          effectiveMs: c.fechaHora?.toDate ? c.fechaHora.toDate().getTime() : 0
-        }))
-        .filter((c) => c.effectiveMs && c.effectiveMs <= now);
-
-      // Prioridad: WEB primero (si elegible), luego KIOSKO
-      const merged = [...citasRows, ...turnosRows]
-        .sort((a, b) => {
-          if (a.tipo !== b.tipo) return a.tipo === 'WEB' ? -1 : 1;
-          return a.effectiveMs - b.effectiveMs;
-        })
-        .slice(0, 120);
-
-      setList(merged);
-    };
-
-    const unsubTurnos = onSnapshot(qTurnosList, (snap) => {
-      turnosCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      recompute();
-    });
-
-    const unsubCitas = onSnapshot(qCitasList, (snap) => {
-      citasCache = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      recompute();
-    });
-
-    // Recompute cada 1s para que una WEB pase a la lista sin recargar
-    const interval = setInterval(recompute, 1000);
+    const unsubTurnos = onSnapshot(qTurnosList, (snap) => setTurnosList(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const unsubCitas = onSnapshot(qCitasList, (snap) => setCitasList(snap.docs.map((d) => ({ id: d.id, ...d.data() }))));
 
     return () => {
       unsubTurnos();
       unsubCitas();
-      clearInterval(interval);
     };
   }, []);
 
+  const pendingCitas = useMemo(() => {
+    return (citasHoy || []).filter((c) => {
+      const ms = c?.fechaHora?.toDate ? c.fechaHora.toDate().getTime() : null;
+      return !!ms && ms <= nowMs;
+    }).length;
+  }, [citasHoy, nowMs]);
+
+  const totalPendientes = pendingTurnos + pendingCitas;
+
+  const unifiedList = useMemo(() => {
+    const turnosRows = (turnosList || []).map((t) => ({
+      id: t.id,
+      tipo: 'KIOSKO',
+      codigo: t.codigo || '',
+      dni: t.dni || '',
+      tramiteID: t.tramiteID || '',
+      tramiteNombre: t.tramiteNombre || '',
+      effectiveMs: t.fechaHoraGenerado?.toDate ? t.fechaHoraGenerado.toDate().getTime() : 0
+    }));
+
+    const citasRows = (citasList || [])
+      .map((c) => ({
+        id: c.id,
+        tipo: 'WEB',
+        codigo: c.codigo || '',
+        dni: c.dni || '',
+        tramiteID: c.tramiteID || '',
+        tramiteNombre: c.tramiteNombre || '',
+        effectiveMs: c.fechaHora?.toDate ? c.fechaHora.toDate().getTime() : 0
+      }))
+      .filter((c) => c.effectiveMs && c.effectiveMs <= nowMs);
+
+    return [...citasRows, ...turnosRows]
+      .sort((a, b) => {
+        if (a.tipo !== b.tipo) return a.tipo === 'WEB' ? -1 : 1;
+        return a.effectiveMs - b.effectiveMs;
+      })
+      .slice(0, 120);
+  }, [turnosList, citasList, nowMs]);
+
   const callNext = async () => {
     if (loadingCall) return;
-    if (atencionActual) {
-      alert('Ya hay una atención activa. Finaliza primero.');
-      return;
-    }
+
+    if (!moduloEfectivo) return alert('Asigna un módulo para poder llamar.');
+    if (atencionActual) return alert('Ya hay una atención activa. Finaliza primero.');
 
     setLoadingCall(true);
     try {
       const fn = httpsCallable(functions, 'agentCallNext');
       const res = await fn({ modulo: moduloEfectivo || null });
 
-      if (res?.data?.ok) {
-        // ok, llamado creado
-      } else {
-        alert(res?.data?.message || 'No se pudo llamar el siguiente.');
-      }
+      if (!res?.data?.called) alert(res?.data?.message || 'No se pudo llamar el siguiente.');
     } catch (e) {
       alert(e?.message || 'Error llamando siguiente.');
     } finally {
       setLoadingCall(false);
     }
   };
+
+  const callDisabled = loadingCall || !moduloEfectivo || !!atencionActual;
 
   return (
     <div style={styles.card}>
@@ -238,18 +186,20 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
         </div>
 
         <button
+          type="button"
           onClick={callNext}
-          disabled={loadingCall}
+          disabled={callDisabled}
+          title={!moduloEfectivo ? 'Asigna un módulo para poder llamar.' : (atencionActual ? 'Finaliza la atención actual.' : '')}
           style={{
             ...styles.callBtn,
-            opacity: loadingCall ? 0.6 : 1,
-            cursor: loadingCall ? 'not-allowed' : 'pointer',
+            opacity: callDisabled ? 0.6 : 1,
+            cursor: callDisabled ? 'not-allowed' : 'pointer',
           }}
         >
           {loadingCall ? 'Llamando...' : 'Llamar siguiente'}
         </button>
 
-        <button onClick={() => setShowDetail((v) => !v)} style={styles.detailBtn}>
+        <button type="button" onClick={() => setShowDetail((v) => !v)} style={styles.detailBtn}>
           {showDetail ? 'Ocultar detalle' : 'Ver detalle'}
         </button>
 
@@ -269,12 +219,12 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {list.length === 0 ? (
+                  {unifiedList.length === 0 ? (
                     <tr>
                       <td style={styles.td} colSpan={4}>Sin pendientes.</td>
                     </tr>
                   ) : (
-                    list.map((r) => (
+                    unifiedList.map((r) => (
                       <tr key={`${r.tipo}-${r.id}`}>
                         <td style={styles.td}><b>{r.tipo}</b></td>
                         <td style={styles.td}>{r.tramiteNombre || r.tramiteID}</td>
@@ -359,10 +309,11 @@ const styles = {
     border: '1px solid rgba(0,0,0,0.08)',
     padding: 12
   },
-  detailTitle: { fontSize: 14, fontWeight: 900 },
-  detailHint: { fontSize: 12, color: '#666', marginTop: 2, marginBottom: 10 },
-  tableWrap: { overflowX: 'auto' },
-  table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th: { textAlign: 'left', padding: 10, borderBottom: '1px solid rgba(0,0,0,0.08)' },
-  td: { padding: 10, borderBottom: '1px solid rgba(0,0,0,0.06)' },
+  detailTitle: { fontWeight: 900, fontSize: 13 },
+  detailHint: { marginTop: 4, fontSize: 12, color: '#666', fontWeight: 700 },
+
+  tableWrap: { marginTop: 10, overflowX: 'auto' },
+  table: { width: '100%', borderCollapse: 'collapse' },
+  th: { textAlign: 'left', padding: 10, borderBottom: '1px solid rgba(0,0,0,0.08)', fontSize: 12 },
+  td: { padding: 10, borderBottom: '1px solid rgba(0,0,0,0.05)', fontSize: 12 }
 };

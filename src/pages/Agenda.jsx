@@ -23,31 +23,37 @@ function fmtTs(ts) {
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     })
     .replace(',', '');
 }
 
-function statusClass(estado) {
+function normalize(v) {
+  return String(v || '').toLowerCase().trim();
+}
+
+function badgeClass(estado) {
   const e = String(estado || '').toLowerCase().trim();
-  if (e === 'activa') return 'st st--activa';
-  if (e === 'llamado') return 'st st--llamado';
-  if (e === 'atendido') return 'st st--atendido';
-  if (e === 'cerrado') return 'st st--cerrado';
-  if (e === 'cancelado') return 'st st--cancelado';
-  return 'st';
+  if (e === 'activa') return 'badge badge--activa';
+  if (e === 'en-espera') return 'badge badge--espera';
+  if (e === 'llamado') return 'badge badge--llamado';
+  if (e === 'atendido') return 'badge badge--atendido';
+  if (e === 'cerrado') return 'badge badge--cerrado';
+  if (e === 'cancelado') return 'badge badge--cancelado';
+  if (e === 'completado') return 'badge badge--completado';
+  return 'badge';
 }
 
 export default function Agenda() {
   const { currentUser } = useAuth();
-
   const rol = String(currentUser?.rol || '').toLowerCase().trim();
+
   const isAgent = rol === 'agente' || rol === 'agent';
   const isAdmin = rol === 'admin';
 
   const moduloAsignado = currentUser?.moduloAsignado ?? null;
   const habilidades = Array.isArray(currentUser?.habilidades)
-    ? currentUser.habilidades.map((x) => String(x))
+    ? currentUser.habilidades.map((x) => String(x || '').trim()).filter(Boolean)
     : [];
 
   const [tab, setTab] = useState('citas'); // 'citas' | 'turnos'
@@ -57,12 +63,12 @@ export default function Agenda() {
   const [search, setSearch] = useState('');
 
   const [tramitesMap, setTramitesMap] = useState({});
+
   const [citasRaw, setCitasRaw] = useState([]);
   const [turnosRaw, setTurnosRaw] = useState([]);
 
-  const [loadingTramites, setLoadingTramites] = useState(true);
-  const [loadingCitas, setLoadingCitas] = useState(true);
-  const [loadingTurnos, setLoadingTurnos] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const range = useMemo(() => {
     const start = startOfDay(new Date());
@@ -70,8 +76,8 @@ export default function Agenda() {
     return { start, end };
   }, [monthsAhead]);
 
+  // Tramites (solo para mapear IDs -> nombre)
   useEffect(() => {
-    setLoadingTramites(true);
     const qT = query(collection(db, 'tramites'));
     const unsub = onSnapshot(
       qT,
@@ -79,169 +85,171 @@ export default function Agenda() {
         const map = {};
         snap.docs.forEach((d) => {
           const data = d.data();
-          map[d.id] = data.nombre || d.id;
+          map[d.id] = data?.nombre || d.id;
         });
         setTramitesMap(map);
-        setLoadingTramites(false);
       },
-      (err) => {
-        console.error('Agenda: error tramites', err);
-        setLoadingTramites(false);
+      () => {
+        // silencioso: no bloquea agenda si falla el mapa
       }
     );
+
     return () => unsub();
   }, []);
 
+  // Importante para costos: escuchar solo la pestaña activa.
   useEffect(() => {
-    setLoadingCitas(true);
-    const qC = query(
-      collection(db, 'citas'),
-      where('fechaHora', '>=', Timestamp.fromDate(range.start)),
-      where('fechaHora', '<', Timestamp.fromDate(range.end)),
-      orderBy('fechaHora', 'asc')
-    );
+    setLoadError('');
+    setLoading(true);
 
-    const unsub = onSnapshot(
-      qC,
-      (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setCitasRaw(list);
-        setLoadingCitas(false);
-      },
-      (err) => {
-        console.error('Agenda: error citas', err);
-        setLoadingCitas(false);
-      }
-    );
+    if (tab === 'citas') {
+      const qC = query(
+        collection(db, 'citas'),
+        where('fechaHora', '>=', Timestamp.fromDate(range.start)),
+        where('fechaHora', '<', Timestamp.fromDate(range.end)),
+        orderBy('fechaHora', 'asc')
+      );
 
-    return () => unsub();
-  }, [range.start, range.end]);
+      const unsub = onSnapshot(
+        qC,
+        (snap) => {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setCitasRaw(list);
+          setLoading(false);
+        },
+        (err) => {
+          setLoadError('No se pudieron cargar las citas web.');
+          console.error('Agenda citas onSnapshot error:', err);
+          setLoading(false);
+        }
+      );
 
-  useEffect(() => {
-    setLoadingTurnos(true);
-    const qT = query(
-      collection(db, 'turnos'),
-      where('fechaHoraGenerado', '>=', Timestamp.fromDate(range.start)),
-      where('fechaHoraGenerado', '<', Timestamp.fromDate(range.end)),
-      orderBy('fechaHoraGenerado', 'asc')
-    );
+      return () => unsub();
+    }
 
-    const unsub = onSnapshot(
-      qT,
-      (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setTurnosRaw(list);
-        setLoadingTurnos(false);
-      },
-      (err) => {
-        console.error('Agenda: error turnos', err);
-        setLoadingTurnos(false);
-      }
-    );
+    if (tab === 'turnos') {
+      const qT = query(
+        collection(db, 'turnos'),
+        where('fechaHoraGenerado', '>=', Timestamp.fromDate(range.start)),
+        where('fechaHoraGenerado', '<', Timestamp.fromDate(range.end)),
+        orderBy('fechaHoraGenerado', 'asc')
+      );
 
-    return () => unsub();
-  }, [range.start, range.end]);
+      const unsub = onSnapshot(
+        qT,
+        (snap) => {
+          const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          setTurnosRaw(list);
+          setLoading(false);
+        },
+        (err) => {
+          setLoadError('No se pudieron cargar los turnos de kiosko.');
+          console.error('Agenda turnos onSnapshot error:', err);
+          setLoading(false);
+        }
+      );
+
+      return () => unsub();
+    }
+
+    setLoading(false);
+    return undefined;
+  }, [tab, range.start, range.end]);
+
+  const currentRows = tab === 'citas' ? citasRaw : turnosRaw;
 
   const uniqueModules = useMemo(() => {
     const set = new Set();
-    [...citasRaw, ...turnosRaw].forEach((x) => {
+    currentRows.forEach((x) => {
       if (x.moduloAsignado != null && x.moduloAsignado !== '') set.add(String(x.moduloAsignado));
+      if (x.modulo != null && x.modulo !== '') set.add(String(x.modulo));
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [citasRaw, turnosRaw]);
-
-  const normalize = (v) => String(v || '').toLowerCase().trim();
+  }, [currentRows]);
 
   const passesFilters = (item) => {
+    // Restricciones por agente (módulo + habilidades)
     if (isAgent) {
       if (habilidades.length > 0) {
-        if (!habilidades.includes(String(item.tramiteID))) return false;
+        if (!habilidades.includes(String(item.tramiteID || item.tramiteId || ''))) return false;
       }
-      const mod = item.moduloAsignado;
+      const mod = item.moduloAsignado ?? item.modulo;
       if (mod != null && mod !== '' && moduloAsignado != null) {
         if (String(mod) !== String(moduloAsignado)) return false;
       }
     }
 
+    // Admin: filtro por módulo
     if (isAdmin && moduleFilter !== 'all') {
-      if (String(item.moduloAsignado ?? '') !== String(moduleFilter)) return false;
+      const mod = item.moduloAsignado ?? item.modulo ?? '';
+      if (String(mod) !== String(moduleFilter)) return false;
     }
 
+    // Estado
     if (statusFilter !== 'all') {
       if (String(item.estado ?? '') !== statusFilter) return false;
     }
 
+    // Búsqueda: codigo / dni / tramite
     if (search) {
       const s = normalize(search);
       const codigo = normalize(item.codigo || item.id);
       const dni = normalize(item.dni);
-      const tramite = normalize(tramitesMap[item.tramiteID] || item.tramiteID);
+      const tramite = normalize(tramitesMap[item.tramiteID] || item.tramiteID || item.tramiteId);
       if (!codigo.includes(s) && !dni.includes(s) && !tramite.includes(s)) return false;
     }
 
     return true;
   };
 
-  const citas = useMemo(
-    () => citasRaw.filter(passesFilters),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [citasRaw, statusFilter, moduleFilter, search, rol, moduloAsignado, tramitesMap, habilidades]
-  );
+  const rows = useMemo(() => currentRows.filter(passesFilters), [
+    currentRows,
+    tab,
+    statusFilter,
+    moduleFilter,
+    search,
+    rol,
+    moduloAsignado,
+    tramitesMap,
+    habilidades,
+  ]);
 
-  const turnos = useMemo(
-    () => turnosRaw.filter(passesFilters),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [turnosRaw, statusFilter, moduleFilter, search, rol, moduloAsignado, tramitesMap, habilidades]
-  );
-
-  const activeList = tab === 'citas' ? citas : turnos;
-  const activeLoading = tab === 'citas' ? loadingCitas : loadingTurnos;
-
-  const rangeLabel = useMemo(() => {
-    const from = range.start.toLocaleDateString('es-CL');
-    const to = range.end.toLocaleDateString('es-CL');
-    return `${from} → ${to}`;
+  const subtitle = useMemo(() => {
+    const start = range.start.toLocaleDateString('es-CL');
+    const end = range.end.toLocaleDateString('es-CL');
+    return `Rango: ${start} → ${end}`;
   }, [range.start, range.end]);
 
-  const totalCitas = citas.length;
-  const totalTurnos = turnos.length;
-
-  const counts = useMemo(() => {
-    const c = { activa: 0, llamado: 0, atendido: 0, cerrado: 0, cancelado: 0, other: 0 };
-    for (const x of activeList) {
-      const e = String(x.estado || '').toLowerCase().trim();
-      if (c[e] != null) c[e] += 1;
-      else c.other += 1;
-    }
-    return c;
-  }, [activeList]);
-
-  const clearSearch = () => setSearch('');
+  const clearFilters = () => {
+    setStatusFilter('all');
+    setModuleFilter('all');
+    setSearch('');
+  };
 
   return (
     <div className="agenda-page">
       <div className="agenda-header">
         <div>
-          <h1 className="agenda-title">Agenda</h1>
-          <p className="agenda-subtitle">
-            Consulta citas web y turnos kiosko por rango, estado y búsqueda.
-          </p>
+          <h2 className="agenda-title">Agenda</h2>
+          <p className="agenda-subtitle">{subtitle}</p>
+
+          {isAgent && (
+            <p className="agenda-hint">
+              Vista restringida por agente{moduloAsignado ? ` (módulo ${moduloAsignado})` : ''}.
+            </p>
+          )}
         </div>
 
-        <div className="agenda-headerMeta">
-          <span className="chip chip--soft">Rango: {rangeLabel}</span>
-          {isAgent && moduloAsignado != null ? (
-            <span className="chip chip--soft">Módulo: {String(moduloAsignado)}</span>
-          ) : null}
-          {isAgent && habilidades.length > 0 ? (
-            <span className="chip chip--soft">Habilidades: {habilidades.length}</span>
-          ) : null}
+        <div className="agenda-headerActions">
+          <button type="button" className="btn btn-ghost" onClick={clearFilters}>
+            Limpiar filtros
+          </button>
         </div>
       </div>
 
       <div className="agenda-card">
-        <div className="agenda-filters">
-          <div className="f">
+        <div className="agenda-controls">
+          <div className="agenda-field">
             <label>Rango</label>
             <select value={monthsAhead} onChange={(e) => setMonthsAhead(Number(e.target.value))}>
               <option value={1}>1 mes</option>
@@ -251,20 +259,22 @@ export default function Agenda() {
             </select>
           </div>
 
-          <div className="f">
+          <div className="agenda-field">
             <label>Estado</label>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="all">Todos</option>
               <option value="activa">activa</option>
+              <option value="en-espera">en-espera</option>
               <option value="llamado">llamado</option>
               <option value="atendido">atendido</option>
+              <option value="completado">completado</option>
               <option value="cerrado">cerrado</option>
               <option value="cancelado">cancelado</option>
             </select>
           </div>
 
-          {isAdmin ? (
-            <div className="f">
+          {isAdmin && (
+            <div className="agenda-field">
               <label>Módulo</label>
               <select value={moduleFilter} onChange={(e) => setModuleFilter(e.target.value)}>
                 <option value="all">Todos</option>
@@ -275,156 +285,90 @@ export default function Agenda() {
                 ))}
               </select>
             </div>
-          ) : null}
+          )}
 
-          <div className="f f--search">
+          <div className="agenda-field agenda-field--search">
             <label>Buscar</label>
-            <div className="searchWrap">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Código, DNI o trámite"
-                aria-label="Buscar por código, DNI o trámite"
-              />
-              {search ? (
-                <button type="button" className="clearBtn" onClick={clearSearch} aria-label="Limpiar búsqueda">
-                  ×
-                </button>
-              ) : null}
-            </div>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Código, DNI o trámite"
+              inputMode="search"
+            />
           </div>
         </div>
 
-        <div className="agenda-tabs" role="tablist" aria-label="Agenda tabs">
+        <div className="agenda-tabs" role="tablist" aria-label="Tipo de atención">
           <button
             type="button"
-            className={`tab ${tab === 'citas' ? 'tab--active' : ''}`}
-            onClick={() => setTab('citas')}
             role="tab"
             aria-selected={tab === 'citas'}
+            className={`agenda-tab ${tab === 'citas' ? 'agenda-tab--active' : ''}`}
+            onClick={() => setTab('citas')}
           >
-            Citas Web <span className="tabCount">{loadingCitas ? '…' : totalCitas}</span>
+            Citas Web
           </button>
 
           <button
             type="button"
-            className={`tab ${tab === 'turnos' ? 'tab--active' : ''}`}
-            onClick={() => setTab('turnos')}
             role="tab"
             aria-selected={tab === 'turnos'}
+            className={`agenda-tab ${tab === 'turnos' ? 'agenda-tab--active' : ''}`}
+            onClick={() => setTab('turnos')}
           >
-            Turnos Kiosko <span className="tabCount">{loadingTurnos ? '…' : totalTurnos}</span>
+            Turnos Kiosko
           </button>
         </div>
 
-        <div className="agenda-stats">
-          <div className="statsLeft">
-            <span className="chip">Resultados: {activeLoading ? '…' : activeList.length}</span>
-            {loadingTramites ? <span className="chip chip--soft">Cargando trámites…</span> : null}
-          </div>
+        {loadError ? <div className="agenda-empty">{loadError}</div> : null}
 
-          <div className="statsRight">
-            {counts.activa ? <span className="st st--activa">activa {counts.activa}</span> : null}
-            {counts.llamado ? <span className="st st--llamado">llamado {counts.llamado}</span> : null}
-            {counts.atendido ? <span className="st st--atendido">atendido {counts.atendido}</span> : null}
-            {counts.cerrado ? <span className="st st--cerrado">cerrado {counts.cerrado}</span> : null}
-            {counts.cancelado ? <span className="st st--cancelado">cancelado {counts.cancelado}</span> : null}
-          </div>
-        </div>
+        {!loadError && loading ? <div className="agenda-empty">Cargando…</div> : null}
 
-        {activeLoading ? (
-          <div className="empty">Cargando…</div>
-        ) : activeList.length === 0 ? (
-          <div className="empty">Sin resultados. Ajusta rango, estado o búsqueda.</div>
-        ) : (
-          <>
-            {/* Desktop table */}
-            <div className="tableWrap desktopOnly">
-              {tab === 'citas' ? (
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Código</th>
-                      <th>Trámite</th>
-                      <th>Fecha</th>
-                      <th>Estado</th>
-                      <th>Módulo</th>
-                      <th>DNI</th>
+        {!loadError && !loading && rows.length === 0 ? (
+          <div className="agenda-empty">Sin resultados para los filtros actuales.</div>
+        ) : null}
+
+        {!loadError && !loading && rows.length > 0 ? (
+          <div className="agenda-tableWrap">
+            <table className="agenda-table">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Trámite</th>
+                  <th>{tab === 'citas' ? 'Fecha' : 'Generado'}</th>
+                  <th>Estado</th>
+                  <th>Módulo</th>
+                  <th>DNI</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {rows.map((x) => {
+                  const codigo = x.codigo || x.id;
+                  const tramiteId = x.tramiteID || x.tramiteId;
+                  const tramiteNombre = tramitesMap[tramiteId] || tramiteId || '—';
+                  const mod = x.moduloAsignado ?? x.modulo ?? '—';
+                  const fecha = tab === 'citas' ? fmtTs(x.fechaHora) : fmtTs(x.fechaHoraGenerado);
+
+                  return (
+                    <tr key={x.id}>
+                      <td>
+                        <strong>{codigo}</strong>
+                      </td>
+                      <td>{tramiteNombre}</td>
+                      <td>{fecha}</td>
+                      <td>
+                        <span className={badgeClass(x.estado)}>{x.estado || '—'}</span>
+                      </td>
+                      <td>{mod}</td>
+                      <td>{x.dni || '—'}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {citas.map((c) => (
-                      <tr key={c.id}>
-                        <td className="mono strong">{c.codigo || c.id}</td>
-                        <td>{tramitesMap[c.tramiteID] || c.tramiteID || '—'}</td>
-                        <td className="mono">{fmtTs(c.fechaHora)}</td>
-                        <td>
-                          <span className={statusClass(c.estado)}>{c.estado || '—'}</span>
-                        </td>
-                        <td className="mono">{c.moduloAsignado ?? '—'}</td>
-                        <td className="mono">{c.dni || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              ) : (
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Código</th>
-                      <th>Trámite</th>
-                      <th>Generado</th>
-                      <th>Estado</th>
-                      <th>Módulo</th>
-                      <th>DNI</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {turnos.map((t) => (
-                      <tr key={t.id}>
-                        <td className="mono strong">{t.codigo || t.id}</td>
-                        <td>{tramitesMap[t.tramiteID] || t.tramiteID || '—'}</td>
-                        <td className="mono">{fmtTs(t.fechaHoraGenerado)}</td>
-                        <td>
-                          <span className={statusClass(t.estado)}>{t.estado || '—'}</span>
-                        </td>
-                        <td className="mono">{t.moduloAsignado ?? '—'}</td>
-                        <td className="mono">{t.dni || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-
-            {/* Mobile cards */}
-            <div className="cards mobileOnly">
-              {activeList.map((x) => {
-                const isCita = tab === 'citas';
-                const codigo = x.codigo || x.id;
-                const tramite = tramitesMap[x.tramiteID] || x.tramiteID || '—';
-                const fecha = isCita ? fmtTs(x.fechaHora) : fmtTs(x.fechaHoraGenerado);
-                const mod = x.moduloAsignado ?? '—';
-                const dni = x.dni || '—';
-
-                return (
-                  <div key={x.id} className="cardRow">
-                    <div className="cardTop">
-                      <div className="mono strong">{codigo}</div>
-                      <span className={statusClass(x.estado)}>{x.estado || '—'}</span>
-                    </div>
-                    <div className="cardMain">{tramite}</div>
-                    <div className="cardMeta">
-                      <div><span className="muted">{isCita ? 'Fecha' : 'Generado'}:</span> <span className="mono">{fecha}</span></div>
-                      <div><span className="muted">Módulo:</span> <span className="mono">{mod}</span></div>
-                      <div><span className="muted">DNI:</span> <span className="mono">{dni}</span></div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </div>
     </div>
   );
