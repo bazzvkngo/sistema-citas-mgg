@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   collection,
@@ -51,17 +51,24 @@ function getChileHHmm(dateObj) {
 export default function Appointments() {
   const { currentUser } = useAuth();
   const [loading, setLoading] = useState(false);
+
   const [tramites, setTramites] = useState([]);
   const [myCitas, setMyCitas] = useState([]);
+
   const [loadingTramites, setLoadingTramites] = useState(true);
   const [loadingMyCitas, setLoadingMyCitas] = useState(true);
   const [loadingSlots, setLoadingSlots] = useState(false);
-  const [selectedTramiteId, setSelectedTramiteId] = useState("");
+
+  const [selectedTramiteId, setSelectedTramiteId] = useState('');
   const [selectedDate, setSelectedDate] = useState(undefined);
+
   const [availableSlots, setAvailableSlots] = useState([]);
-  const [selectedSlot, setSelectedSlot] = useState("");
+  const [selectedSlot, setSelectedSlot] = useState('');
+
   const [agendarError, setAgendarError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
+  const [successCode, setSuccessCode] = useState('');
+
   const tomorrow = addDays(new Date(), 1);
 
   useEffect(() => {
@@ -72,7 +79,7 @@ export default function Appointments() {
         const tramitesList = tramitesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
         setTramites(tramitesList);
       } catch (error) {
-        console.error("Error al cargar trámites: ", error);
+        console.error('Error al cargar trámites: ', error);
       }
       setLoadingTramites(false);
     };
@@ -108,7 +115,7 @@ export default function Appointments() {
         setLoadingMyCitas(false);
       },
       (error) => {
-        console.error("Error al escuchar mis citas: ", error);
+        console.error('Error al escuchar mis citas: ', error);
         setLoadingMyCitas(false);
       }
     );
@@ -116,7 +123,6 @@ export default function Appointments() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Slots ocupados por el propio usuario en la fecha seleccionada (para ocultarlos en el select)
   const userTakenSlotsOnSelectedDate = useMemo(() => {
     if (!selectedDate || !myCitas?.length) return new Set();
     const selectedKey = getChileDateISO(selectedDate);
@@ -147,7 +153,7 @@ export default function Appointments() {
     const fetchAvailableSlots = async () => {
       setLoadingSlots(true);
       setAvailableSlots([]);
-      setSelectedSlot("");
+      setSelectedSlot('');
       setAgendarError(null);
 
       try {
@@ -159,8 +165,8 @@ export default function Appointments() {
         const slots = Array.isArray(result?.data?.slots) ? result.data.slots : [];
         setAvailableSlots(slots);
       } catch (error) {
-        console.error("Error al buscar horarios (Cloud Function):", error);
-        setAgendarError("Error al buscar horarios. Intente de nuevo.");
+        console.error('Error al buscar horarios (Cloud Function):', error);
+        setAgendarError('Error al buscar horarios. Intente de nuevo.');
       } finally {
         setLoadingSlots(false);
       }
@@ -174,18 +180,28 @@ export default function Appointments() {
     return availableSlots.filter(s => !userTakenSlotsOnSelectedDate.has(s));
   }, [availableSlots, userTakenSlotsOnSelectedDate]);
 
+  const myCitasSorted = useMemo(() => {
+    if (!Array.isArray(myCitas)) return [];
+    return [...myCitas].sort((a, b) => {
+      const ta = a?.fechaHora?.toDate ? a.fechaHora.toDate().getTime() : 0;
+      const tb = b?.fechaHora?.toDate ? b.fechaHora.toDate().getTime() : 0;
+      return ta - tb;
+    });
+  }, [myCitas]);
+
   const handleAgendarCita = async (e) => {
     e.preventDefault();
     setAgendarError(null);
     setSuccessMessage(null);
+    setSuccessCode('');
 
     if (!selectedSlot) {
-      setAgendarError("Por favor, seleccione un horario.");
+      setAgendarError('Por favor, seleccione un horario.');
       return;
     }
 
     if (!currentUser || !currentUser.dni) {
-      setAgendarError("Error: No se pudieron cargar sus datos de usuario (DNI).");
+      setAgendarError('Error: No se pudieron cargar sus datos de usuario (DNI).');
       return;
     }
 
@@ -193,7 +209,7 @@ export default function Appointments() {
     const uid = auth.currentUser?.uid || currentUser?.uid;
 
     if (!uid) {
-      setAgendarError("Sesión no válida.");
+      setAgendarError('Sesión no válida.');
       return;
     }
 
@@ -215,20 +231,21 @@ export default function Appointments() {
       });
 
       const codigo = resp?.data?.codigo || '';
-      const mensajeFinal = `Cita agendada con éxito. Su código es: ${codigo}.\nRecuerde estar 10 minutos antes.`;
+      const mensajeFinal = `Cita agendada con éxito.\nRecuerde estar 10 minutos antes.`;
       setSuccessMessage(mensajeFinal);
+      setSuccessCode(codigo);
 
-      setSelectedTramiteId("");
+      setSelectedTramiteId('');
       setSelectedDate(undefined);
       setAvailableSlots([]);
-      setSelectedSlot("");
+      setSelectedSlot('');
     } catch (error) {
-      console.error("Error al agendar la cita: ", error);
+      console.error('Error al agendar la cita: ', error);
 
       const msg =
         error?.message ||
         error?.details ||
-        "No se pudo agendar. Intente nuevamente.";
+        'No se pudo agendar. Intente nuevamente.';
 
       setAgendarError(msg);
     }
@@ -237,23 +254,29 @@ export default function Appointments() {
   };
 
   const handleCancelCita = async (citaId) => {
-    if (!window.confirm("¿Está seguro de que desea cancelar esta cita?")) {
-      return;
-    }
+    if (!window.confirm('¿Está seguro de que desea cancelar esta cita?')) return;
+
     try {
       const citaDocRef = doc(db, 'citas', citaId);
       await deleteDoc(citaDocRef);
     } catch (error) {
-      console.error("Error al cancelar la cita: ", error);
-      alert("Hubo un error al cancelar la cita.");
+      console.error('Error al cancelar la cita: ', error);
+      alert('Hubo un error al cancelar la cita.');
     }
   };
 
   const renderSuccessMessage = () => {
     if (!successMessage) return null;
     return (
-      <div style={styles.successCard}>
-        <p style={{ whiteSpace: 'pre-wrap' }}>{successMessage}</p>
+      <div className="cp-alert cp-alert--success" role="status">
+        <div className="cp-alert-title">Cita confirmada</div>
+        {successCode ? (
+          <div className="cp-code-row">
+            <span className="cp-muted">Código:</span>
+            <span className="cp-code-pill">{successCode}</span>
+          </div>
+        ) : null}
+        <div className="cp-alert-body">{successMessage}</div>
       </div>
     );
   };
@@ -264,109 +287,129 @@ export default function Appointments() {
     const nombreTramite = tramite?.nombre || cita.tramiteID;
 
     const esLlamada = cita.estado === 'llamado';
-
-    let estadoTexto = 'Activa (aún en espera)';
-    if (esLlamada) {
-      estadoTexto = 'Llamada (el consulado está listo para atenderle)';
-    }
+    const estadoTexto = esLlamada
+      ? 'Llamada (el consulado está listo para atenderle)'
+      : 'Activa (aún en espera)';
 
     const qrUrl = `${window.location.origin}/qr-seguimiento?turnoId=${cita.id}`;
+    const fechaTexto = cita.fechaHora
+      ? format(cita.fechaHora.toDate(), 'dd/MM/yyyy HH:mm')
+      : 'Fecha no disponible';
+
+    const badgeClass = esLlamada ? 'cp-badge cp-badge--green' : 'cp-badge cp-badge--amber';
+    const badgeText = esLlamada ? 'Llamado' : 'En espera';
 
     return (
-      <li key={cita.id} style={styles.citaListItem}>
-        <strong>Trámite:</strong> {nombreTramite}
-        <br />
-        <strong>Código:</strong> {cita.codigo}
-        <br />
-        <strong>Fecha:</strong>{" "}
-        {cita.fechaHora
-          ? format(cita.fechaHora.toDate(), 'dd/MM/yyyy HH:mm')
-          : 'Fecha no disponible'}
-        <br />
+      <li key={cita.id} className="cp-cita-item">
+        <div className="cp-cita-top">
+          <div className="cp-cita-title">{nombreTramite}</div>
+          <span className={badgeClass}>{badgeText}</span>
+        </div>
 
-        <p style={{ marginTop: 8, marginBottom: 4 }}>
-          <strong>Estado:</strong> {estadoTexto}
-        </p>
+        <div className="cp-cita-grid">
+          <div>
+            <div className="cp-muted">Código</div>
+            <div className="cp-strong">{cita.codigo || '---'}</div>
+          </div>
+          <div>
+            <div className="cp-muted">Fecha y hora</div>
+            <div className="cp-strong">{fechaTexto}</div>
+          </div>
+        </div>
 
-        {link && (
-          <p style={{ marginTop: '5px', fontSize: '13px', color: '#666' }}>
-            Importante: Verifique la documentación requerida.
-            <a
-              href={link}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={styles.link}
-            >
-              {' '}
-              (Ver requisitos)
+        <div className="cp-cita-note">{estadoTexto}</div>
+
+        <div className="cp-cita-links">
+          {link ? (
+            <a className="cp-link" href={link} target="_blank" rel="noopener noreferrer">
+              Ver requisitos del trámite
             </a>
-          </p>
-        )}
+          ) : null}
 
-        <p style={{ marginTop: '8px', fontSize: '13px' }}>
-          Puede seguir el estado de su cita aquí:{' '}
-          <a
-            href={qrUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={styles.link}
-          >
+          <a className="cp-link" href={qrUrl} target="_blank" rel="noopener noreferrer">
             Ver mi turno en tiempo real
           </a>
-        </p>
+        </div>
 
-        {cita.estado === 'activa' && (
-          <button
-            onClick={() => handleCancelCita(cita.id)}
-            style={styles.cancelButton}
-          >
-            Cancelar Cita
-          </button>
-        )}
+        {cita.estado === 'activa' ? (
+          <div className="cp-cita-actions">
+            <button
+              type="button"
+              className="cp-btn cp-btn-danger"
+              onClick={() => handleCancelCita(cita.id)}
+            >
+              Cancelar cita
+            </button>
+          </div>
+        ) : null}
       </li>
     );
   };
 
   return (
     <div className="appointments-page">
-      <h2 className="appointments-title">Mis Citas en el Consulado</h2>
+      <header className="appointments-header">
+        <h2 className="appointments-title">Mis citas</h2>
+        <p className="appointments-subtitle">
+          Revise sus citas y agende una nueva si lo necesita.
+        </p>
+      </header>
 
       <div className="appointments-grid">
-        <section className="appointments-card">
-          <h3>Mis Citas Agendadas</h3>
+        <section className="appointments-card appointments-card--mine">
+          <div className="cp-section-head">
+            <h3 className="cp-section-title">Mis citas agendadas</h3>
+          </div>
 
           {loadingMyCitas ? (
-            <p>Cargando mis citas...</p>
+            <p className="cp-muted">Cargando citas...</p>
           ) : myCitas.length === 0 ? (
-            <p>No tienes citas agendadas.</p>
+            <div className="cp-empty">
+              <div className="cp-empty-title">No tienes citas agendadas</div>
+              <div className="cp-empty-body">
+                Puedes agendar una cita en el formulario de la derecha.
+              </div>
+            </div>
           ) : (
-            <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
-              {myCitas.map(renderCitaItem)}
+            <ul className="cp-citas-list">
+              {myCitasSorted.map(renderCitaItem)}
             </ul>
           )}
         </section>
 
-        <section className="appointments-card">
-          <h3>Agendar Nueva Cita</h3>
+        <section className="appointments-card appointments-card--agendar">
+          <div className="cp-section-head" id="agendar-cita">
+            <h3 className="cp-section-title">Agendar nueva cita</h3>
+            <div className="cp-muted cp-small">
+              Selecciona un trámite, elige una fecha desde mañana y luego un horario disponible.
+            </div>
+          </div>
 
           {renderSuccessMessage()}
 
+          {agendarError ? (
+            <div className="cp-alert cp-alert--error" role="alert">
+              <div className="cp-alert-title">No se pudo agendar</div>
+              <div className="cp-alert-body">{agendarError}</div>
+            </div>
+          ) : null}
+
           <form onSubmit={handleAgendarCita}>
             {loadingTramites ? (
-              <p>Cargando trámites...</p>
+              <p className="cp-muted">Cargando trámites...</p>
             ) : (
-              <div>
-                <label>1. Seleccione un trámite:</label>
-                <br />
+              <div className="cp-form-row">
+                <label className="cp-label">1. Trámite</label>
                 <select
                   value={selectedTramiteId}
                   onChange={(e) => {
                     setSelectedTramiteId(e.target.value);
                     setAgendarError(null);
                     setSuccessMessage(null);
+                    setSuccessCode('');
                   }}
                   required
-                  style={styles.select}
+                  className="cp-select"
                 >
                   <option value="">-- Por favor seleccione --</option>
                   {tramites.map(tramite => (
@@ -380,43 +423,38 @@ export default function Appointments() {
 
             {selectedTramiteId && (
               <>
-                <div style={{ marginTop: '15px' }}>
-                  <label>2. Seleccione una fecha:</label>
-                  <br />
-                  <div style={styles.calendarContainer}>
+                <div className="cp-form-row">
+                  <label className="cp-label">2. Fecha</label>
+                  <div className="cp-calendar">
                     <DayPicker
                       mode="single"
                       selected={selectedDate}
                       onSelect={setSelectedDate}
                       locale={es}
-                      disabled={[
-                        finesDeSemana,
-                        { before: tomorrow }
-                      ]}
-                      hidden={day => {
-                        const esFinDeSemana = getDay(day) === 0 || getDay(day) === 6;
-                        return esFinDeSemana;
-                      }}
+                      disabled={[finesDeSemana, { before: tomorrow }]}
+                      hidden={day => getDay(day) === 0 || getDay(day) === 6}
                       initialFocus
-                      footer={selectedDate ?
-                        <p style={styles.calendarFooter}>Has seleccionado: {format(selectedDate, 'dd/MM/yyyy')}</p> :
-                        <p style={styles.calendarFooter}>Por favor seleccione un día.</p>
+                      footer={
+                        selectedDate
+                          ? <div className="cp-calendar-footer">Has seleccionado: {format(selectedDate, 'dd/MM/yyyy')}</div>
+                          : <div className="cp-calendar-footer">Selecciona un día hábil.</div>
                       }
                     />
                   </div>
                 </div>
 
-                {loadingSlots && <p>Buscando horarios disponibles...</p>}
+                {loadingSlots ? (
+                  <div className="cp-inline-loading">Buscando horarios disponibles...</div>
+                ) : null}
 
                 {filteredSlots.length > 0 && selectedDate && (
-                  <div style={{ marginTop: '15px' }}>
-                    <label>3. Seleccione un horario:</label>
-                    <br />
+                  <div className="cp-form-row">
+                    <label className="cp-label">3. Horario</label>
                     <select
                       value={selectedSlot}
                       onChange={(e) => setSelectedSlot(e.target.value)}
                       required
-                      style={styles.select}
+                      className="cp-select"
                     >
                       <option value="">-- Seleccione un horario --</option>
                       {filteredSlots.map((slotString, index) => (
@@ -429,24 +467,23 @@ export default function Appointments() {
                 )}
 
                 {filteredSlots.length === 0 && !loadingSlots && selectedTramiteId && selectedDate && (
-                  <p style={styles.errorText}>No hay horarios disponibles para esta fecha.</p>
+                  <div className="cp-alert cp-alert--info" role="status">
+                    <div className="cp-alert-title">Sin horarios disponibles</div>
+                    <div className="cp-alert-body">Prueba con otra fecha o vuelve más tarde.</div>
+                  </div>
                 )}
-
-                {agendarError && <p style={styles.errorText}>{agendarError}</p>}
 
                 <button
                   type="submit"
-                  style={styles.submitButton}
-                  disabled={
-                    !selectedSlot ||
-                    loadingSlots ||
-                    loadingMyCitas ||
-                    !currentUser ||
-                    loading
-                  }
+                  className="cp-btn cp-btn-primary cp-btn-full"
+                  disabled={!selectedSlot || loadingSlots || loadingMyCitas || !currentUser || loading}
                 >
                   {loading || loadingSlots ? 'Cargando...' : 'Agendar Cita'}
                 </button>
+
+                <div className="cp-footnote">
+                  Recomendación: llegue con 10 minutos de anticipación.
+                </div>
               </>
             )}
           </form>
@@ -455,58 +492,3 @@ export default function Appointments() {
     </div>
   );
 }
-
-const styles = {
-  citaListItem: {
-    border: '1px solid #ccc',
-    padding: '10px',
-    marginBottom: '10px',
-    borderRadius: '5px'
-  },
-  cancelButton: {
-    backgroundColor: 'red',
-    color: 'white',
-    marginTop: '10px',
-    border: 'none',
-    padding: '8px 12px',
-    borderRadius: '3px',
-    cursor: 'pointer'
-  },
-  select: {
-    padding: '8px',
-    width: '100%',
-    maxWidth: '320px',
-    boxSizing: 'border-box'
-  },
-  calendarContainer: {
-    border: '1px solid #ccc',
-    borderRadius: '5px',
-    padding: '5px',
-    display: 'inline-block',
-    background: 'white'
-  },
-  calendarFooter: { fontSize: '14px', textAlign: 'center' },
-  errorText: { color: 'red', fontWeight: 'bold', marginTop: '10px' },
-  submitButton: {
-    marginTop: '20px',
-    padding: '10px 20px',
-    fontSize: '16px',
-    backgroundColor: '#007bff',
-    color: '#ffffff',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontWeight: '600',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.15)',
-  },
-  link: { color: '#007bff', fontWeight: 'bold', textDecoration: 'none' },
-  successCard: {
-    padding: '15px',
-    backgroundColor: '#e8f5e9',
-    border: '1px solid #c8e6c9',
-    borderRadius: '8px',
-    marginBottom: '20px',
-    whiteSpace: 'pre-wrap',
-    color: '#2e7d32'
-  }
-};
