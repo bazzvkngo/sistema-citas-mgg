@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   collection,
   doc,
@@ -236,20 +236,6 @@ const styles = {
     background: "rgba(0,0,0,0.55)",
     fontSize: 14,
   },
-
-  fsBtn: {
-    position: "fixed",
-    right: 14,
-    bottom: 14,
-    zIndex: 9999,
-    border: "1px solid rgba(0,0,0,0.12)",
-    background: "#fff",
-    borderRadius: 999,
-    padding: "10px 14px",
-    fontWeight: 900,
-    cursor: "pointer",
-    boxShadow: "0 10px 20px rgba(0,0,0,0.12)",
-  },
 };
 
 function cleanDoc(s) {
@@ -323,7 +309,6 @@ async function lookupNombreEnUsuariosPorDni(dniRaw) {
 
 export default function MonitorScreen() {
   const rootRef = useRef(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const [llamadaActual, setLlamadaActual] = useState(null);
 
@@ -344,10 +329,6 @@ export default function MonitorScreen() {
       const style = document.createElement("style");
       style.id = STYLE_ID;
       style.textContent = `
-        :fullscreen .cp-navbar{display:none!important;}
-        :-webkit-full-screen .cp-navbar{display:none!important;}
-        :-ms-fullscreen .cp-navbar{display:none!important;}
-
         body.cp-tv-fullscreen .cp-navbar{display:none!important;}
       `;
       document.head.appendChild(style);
@@ -355,7 +336,6 @@ export default function MonitorScreen() {
 
     const onFs = () => {
       const fs = !!document.fullscreenElement;
-      setIsFullscreen(fs);
       if (fs) document.body.classList.add("cp-tv-fullscreen");
       else document.body.classList.remove("cp-tv-fullscreen");
     };
@@ -369,7 +349,7 @@ export default function MonitorScreen() {
     };
   }, []);
 
-  const toggleFullscreen = async () => {
+  const toggleFullscreen = useCallback(async () => {
     try {
       if (document.fullscreenElement) {
         await document.exitFullscreen();
@@ -380,7 +360,25 @@ export default function MonitorScreen() {
     } catch (e) {
       console.error("Fullscreen error:", e);
     }
-  };
+  }, []);
+
+  // Toggle por tecla F
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const tag = (e.target?.tagName || "").toLowerCase();
+      const isTypingTarget =
+        tag === "input" || tag === "textarea" || e.target?.isContentEditable;
+      if (isTypingTarget) return;
+
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleFullscreen]);
 
   useEffect(() => {
     const mountedAt = Date.now();
@@ -485,7 +483,9 @@ export default function MonitorScreen() {
         .trim();
       if (codigo && found) {
         setHistory((prev) =>
-          prev.map((h) => (h.codigo === codigo ? { ...h, displayName: found } : h))
+          prev.map((h) =>
+            h.codigo === codigo ? { ...h, displayName: found } : h
+          )
         );
       }
     }
@@ -517,11 +517,7 @@ export default function MonitorScreen() {
   const previous = useMemo(() => history.slice(0, 8), [history]);
 
   return (
-    <div ref={rootRef} style={styles.root}>
-      <button type="button" onClick={toggleFullscreen} style={styles.fsBtn}>
-        {isFullscreen ? "Salir pantalla completa" : "Pantalla completa"}
-      </button>
-
+    <div ref={rootRef} style={styles.root} onDoubleClick={toggleFullscreen}>
       <div style={styles.content}>
         <div style={styles.leftPanel}>
           <div style={styles.leftHeader}>

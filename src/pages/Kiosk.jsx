@@ -1,9 +1,9 @@
 // src/pages/Kiosk.jsx
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, query } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
-import { db, app } from "../firebase";
 import { QRCodeSVG } from "qrcode.react";
+import { db, app } from "../firebase";
 
 // Functions
 const functions = getFunctions(app, "southamerica-west1");
@@ -11,10 +11,9 @@ const generarTurnoKiosko = httpsCallable(functions, "generarTurnoKiosko");
 
 /**
  * Kiosk – estilo “Sodimac”
- * - Título: Selecciona un servicio para obtener tu turno
- * - Botones grandes por trámite
- * - Footer: “Turno preferencial…”
- * - Mantiene tu flujo: trámites -> dni -> ticket
+ * - Flujo: trámites -> dni -> ticket
+ * - Fullscreen: doble click / tecla F
+ * - En fullscreen se oculta navbar global (.cp-navbar)
  */
 
 const UI = {
@@ -55,6 +54,7 @@ const styles = {
   },
   topTitle: { fontWeight: 900, fontSize: 18 },
   topSub: { fontWeight: 800, fontSize: 12, color: UI.muted, marginTop: 2 },
+  topRight: { fontWeight: 900, fontSize: 13, color: UI.muted },
 
   center: {
     flex: 1,
@@ -71,7 +71,6 @@ const styles = {
     boxShadow: UI.shadow,
     padding: "28px 26px",
   },
-
   h1: { margin: 0, fontSize: 30, fontWeight: 900, color: UI.ink },
   h2: { margin: "10px 0 0 0", fontSize: 18, fontWeight: 800, color: UI.muted },
 
@@ -130,8 +129,19 @@ const styles = {
     textAlign: "center",
   },
   ticketLabel: { margin: 0, fontSize: 16, fontWeight: 900, color: UI.muted },
-  ticketService: { margin: "8px 0 0 0", fontSize: 24, fontWeight: 900, color: UI.ink },
-  ticketCode: { margin: "10px 0 0 0", fontSize: 74, fontWeight: 900, color: "#C8102E", lineHeight: 1 },
+  ticketService: {
+    margin: "8px 0 0 0",
+    fontSize: 24,
+    fontWeight: 900,
+    color: UI.ink,
+  },
+  ticketCode: {
+    margin: "10px 0 0 0",
+    fontSize: 74,
+    fontWeight: 900,
+    color: "#C8102E",
+    lineHeight: 1,
+  },
   hr: { margin: "16px 0", border: "none", borderTop: `1px solid ${UI.border}` },
 
   error: {
@@ -143,37 +153,16 @@ const styles = {
     padding: "10px 12px",
     fontWeight: 900,
   },
-
-  footer: {
-    background: UI.panel,
-    borderTop: `1px solid ${UI.border}`,
-    padding: "12px 18px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    flexWrap: "wrap",
-  },
-  footerLeft: { display: "flex", alignItems: "center", gap: 10 },
-  icon: (size = 22) => ({
-    width: size,
-    height: size,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontWeight: 900,
-    color: UI.muted,
-  }),
-  footerTitle: { fontSize: 14, fontWeight: 900, color: UI.ink },
-  footerText: { fontSize: 12, fontWeight: 800, color: UI.muted },
 };
 
 export default function Kiosk() {
+  const rootRef = useRef(null);
+
   const [tramites, setTramites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [view, setView] = useState("tramites");
+  const [view, setView] = useState("tramites"); // "tramites" | "dni" | "ticket"
   const [selectedTramite, setSelectedTramite] = useState(null);
 
   const [dniVisual, setDniVisual] = useState("");
@@ -181,20 +170,79 @@ export default function Kiosk() {
 
   const [generatedTicket, setGeneratedTicket] = useState(null);
 
+  // Oculta navbar global SOLO cuando el kiosko está montado y hay fullscreen
+  useEffect(() => {
+    const STYLE_ID = "cp-kiosk-fullscreen-style";
+    if (!document.getElementById(STYLE_ID)) {
+      const style = document.createElement("style");
+      style.id = STYLE_ID;
+      style.textContent = `
+        body.cp-kiosk-fullscreen .cp-navbar{display:none!important;}
+      `;
+      document.head.appendChild(style);
+    }
+
+    const onFs = () => {
+      const fs = !!document.fullscreenElement;
+      if (fs) document.body.classList.add("cp-kiosk-fullscreen");
+      else document.body.classList.remove("cp-kiosk-fullscreen");
+    };
+
+    document.addEventListener("fullscreenchange", onFs);
+    onFs();
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFs);
+      document.body.classList.remove("cp-kiosk-fullscreen");
+    };
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+      const el = rootRef.current || document.documentElement;
+      if (el.requestFullscreen) await el.requestFullscreen();
+    } catch (e) {
+      console.error("Fullscreen error:", e);
+    }
+  }, []);
+
+  // Tecla F para fullscreen (no interfiere con input)
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const tag = (e.target?.tagName || "").toLowerCase();
+      const isTypingTarget =
+        tag === "input" || tag === "textarea" || e.target?.isContentEditable;
+      if (isTypingTarget) return;
+
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [toggleFullscreen]);
+
   useEffect(() => {
     const fetchTramites = async () => {
       setLoading(true);
       try {
-        const tramitesSnapshot = await getDocs(query(collection(db, "tramites")));
-        const tramitesList = tramitesSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        setTramites(tramitesList);
+        const snap = await getDocs(query(collection(db, "tramites")));
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setTramites(list);
         setError(null);
       } catch (e) {
         console.error("Error al cargar trámites:", e);
-        setError("Error al cargar servicios. Intente más tarde.");
+        setError("Error al cargar servicios.\nIntente más tarde.");
       }
       setLoading(false);
     };
+
     fetchTramites();
   }, []);
 
@@ -223,10 +271,12 @@ export default function Kiosk() {
 
   const handleGenerarTurno = async (e) => {
     e.preventDefault();
+
     if (dniLimpio.trim().length < 7) {
       setError("Por favor, ingrese un DNI/RUT válido.");
       return;
     }
+
     setLoading(true);
     setError(null);
 
@@ -237,6 +287,7 @@ export default function Kiosk() {
       });
 
       const { id, codigo, nombre } = result.data;
+
       const qrUrl = `${window.location.origin}/qr-seguimiento?turnoId=${id}`;
 
       setGeneratedTicket({
@@ -244,18 +295,23 @@ export default function Kiosk() {
         nombre,
         qrValue: qrUrl,
       });
+
       setView("ticket");
     } catch (err) {
       console.error("Error al generar turno:", err);
 
-      let userMessage = "Error al generar su turno. Intente de nuevo.";
+      let userMessage = "Error al generar su turno.\nIntente de nuevo.";
       if (err.message && err.message.includes("FirebaseError: ")) {
-        userMessage = err.message.replace("FirebaseError: ", "").replace(":", "");
+        userMessage = err.message
+          .replace("FirebaseError: ", "")
+          .replace(":", "");
       } else if (err.code) {
         userMessage = `Error de servidor (${err.code}). Por favor, intente más tarde.`;
       }
+
       setError(userMessage);
     }
+
     setLoading(false);
   };
 
@@ -268,9 +324,12 @@ export default function Kiosk() {
     setGeneratedTicket(null);
   };
 
+  const stepLabel =
+    view === "tramites" ? "Seleccione servicio" : view === "dni" ? "Identificación" : "Ticket";
+
   return (
-    <div style={styles.page}>
-      {/* TOP BAR */}
+    <div ref={rootRef} style={styles.page} onDoubleClick={toggleFullscreen}>
+      {/* TOP BAR (propio del kiosko) */}
       <div style={styles.top}>
         <div style={styles.topLeft}>
           <div style={styles.logoBox} />
@@ -279,9 +338,7 @@ export default function Kiosk() {
             <div style={styles.topSub}>Kiosko de turnos</div>
           </div>
         </div>
-        <div style={{ fontSize: 12, fontWeight: 900, color: UI.muted }}>
-          {view === "tramites" ? "Seleccione servicio" : view === "dni" ? "Identificación" : "Ticket"}
-        </div>
+        <div style={styles.topRight}>{stepLabel}</div>
       </div>
 
       <div style={styles.center}>
@@ -293,7 +350,12 @@ export default function Kiosk() {
               <h2 style={styles.h2}>para obtener tu turno:</h2>
 
               <div style={styles.gridBtns}>
-                {loading && <div style={{ fontWeight: 900, color: UI.muted }}>Cargando servicios…</div>}
+                {loading && (
+                  <div style={{ fontWeight: 900, color: UI.muted }}>
+                    Cargando servicios…
+                  </div>
+                )}
+
                 {error && <div style={styles.error}>{error}</div>}
 
                 {!loading &&
@@ -313,34 +375,34 @@ export default function Kiosk() {
           {/* VISTA 2: DNI */}
           {view === "dni" && selectedTramite && (
             <>
-              <h1 style={styles.h1}>{selectedTramite.nombre}</h1>
+              <h1 style={styles.h1}>{selectedTramite.nombre || "Servicio"}</h1>
               <h2 style={styles.h2}>Ingresa tu DNI o RUT para continuar</h2>
 
-              <form onSubmit={handleGenerarTurno} style={styles.dniWrap}>
+              <div style={styles.dniWrap}>
                 <input
-                  type="text"
                   style={styles.input}
-                  placeholder="12.345.678-K"
                   value={dniVisual}
-                  maxLength={12}
                   onChange={handleDniChange}
+                  placeholder="12.345.678-9"
                   autoFocus
+                  inputMode="text"
+                  autoComplete="off"
                 />
 
                 {error && <div style={styles.error}>{error}</div>}
 
                 <button
-                  type="submit"
                   style={{ ...styles.btn, ...styles.btnPrimary }}
+                  onClick={handleGenerarTurno}
                   disabled={loading}
                 >
                   {loading ? "Generando…" : "Generar Turno"}
                 </button>
-              </form>
 
-              <button style={styles.btnGhost} onClick={resetKiosk} disabled={loading}>
-                ← Volver
-              </button>
+                <button style={styles.btnGhost} onClick={resetKiosk} disabled={loading}>
+                  ← Volver
+                </button>
+              </div>
             </>
           )}
 
@@ -353,45 +415,28 @@ export default function Kiosk() {
               <div style={styles.ticketBox}>
                 <p style={styles.ticketLabel}>Servicio:</p>
                 <p style={styles.ticketService}>{generatedTicket.nombre}</p>
+
                 <p style={styles.ticketCode}>{generatedTicket.codigo}</p>
 
-                <div style={styles.hr} />
+                <hr style={styles.hr} />
 
-                <p style={{ margin: 0, fontWeight: 900, color: UI.muted }}>
+                <p style={styles.ticketLabel}>
                   Escanea este QR para ver el estado de tu turno:
                 </p>
-                <div style={{ marginTop: 12 }}>
-                  <QRCodeSVG value={generatedTicket.qrValue} size={220} />
-                </div>
-              </div>
 
-              <button
-                style={{ ...styles.btn, ...styles.btnPrimary, marginTop: 16 }}
-                onClick={resetKiosk}
-              >
-                Aceptar
-              </button>
+                <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                  <QRCodeSVG value={generatedTicket.qrValue} size={170} />
+                </div>
+
+                <button
+                  style={{ ...styles.btn, ...styles.btnPrimary, marginTop: 18 }}
+                  onClick={resetKiosk}
+                >
+                  Aceptar
+                </button>
+              </div>
             </>
           )}
-        </div>
-      </div>
-
-      {/* FOOTER “TURNO PREFERENCIAL” */}
-      <div style={styles.footer}>
-        <div style={styles.footerLeft}>
-          <span style={styles.icon(22)}>♿</span>
-          <span style={styles.icon(22)}>🧓</span>
-          <span style={styles.icon(22)}>🤰</span>
-          <div>
-            <div style={styles.footerTitle}>Turno preferencial</div>
-            <div style={styles.footerText}>
-              No es necesario sacar turno, acérquese directamente a un módulo para ser atendido.
-            </div>
-          </div>
-        </div>
-
-        <div style={{ fontSize: 12, fontWeight: 900, color: UI.muted }}>
-          Sistema de Citas
         </div>
       </div>
     </div>

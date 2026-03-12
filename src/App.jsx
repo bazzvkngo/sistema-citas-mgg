@@ -2,6 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 
 import Navbar from './components/common/Navbar';
+import Footer from './components/common/Footer';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import AgentRoute from './components/common/AgentRoute';
 import AdminRoute from './components/common/AdminRoute';
@@ -178,6 +179,8 @@ export default function App() {
         <Route path="/" element={<Navigate to="/inicio" replace />} />
         <Route path="*" element={<Navigate to="/ingreso" replace />} />
       </Routes>
+
+      <Footer />
     </>
   );
 }
