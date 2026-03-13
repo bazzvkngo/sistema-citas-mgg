@@ -590,17 +590,16 @@ export default function Metrics() {
   const [endDateISO, setEndDateISO] = useState(isoToday());
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
-
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
-  const [originFilter, setOriginFilter] = useState("ALL"); // ALL | WEB | KIOSKO
+  const [originFilter, setOriginFilter] = useState("ALL");
   const [tramiteFilter, setTramiteFilter] = useState("ALL");
   const [moduloFilter, setModuloFilter] = useState("ALL");
   const [agenteFilter, setAgenteFilter] = useState("ALL");
   const [searchText, setSearchText] = useState("");
 
-  const [chartGroup, setChartGroup] = useState("TRAMITE"); // TRAMITE | AGENTE | MODULO | DIA
-  const [chartType, setChartType] = useState("ATENCION_PROM"); // ATENCION_PROM | ESPERA_PROM | VOLUMEN | MIX
+  const [mainMetric, setMainMetric] = useState("VOLUMEN");
+  const [breakdownMode, setBreakdownMode] = useState("ESTADO");
 
   const [agentsMap, setAgentsMap] = useState({});
   const [modalOpen, setModalOpen] = useState(false);
@@ -615,7 +614,6 @@ export default function Metrics() {
     return r === "admin" || currentUser?.isAdmin === true;
   }, [currentUser]);
 
-  // ✅ Calcula espera/atención si no vienen desde backend
   const calcDurations = ({ baseTs, llamadoTs, finTs }) => {
     const base = safeToDate(baseTs);
     const llamado = safeToDate(llamadoTs);
@@ -630,6 +628,7 @@ export default function Metrics() {
     if (fin && llamado) {
       atencionMs = Math.max(0, fin.getTime() - llamado.getTime());
     }
+
     return { esperaMs, atencionMs };
   };
 
@@ -640,9 +639,9 @@ export default function Metrics() {
       const finAt = r.finAt || r.fechaHoraAtencionFin || null;
 
       const computed = calcDurations({
-        baseTs: r.fechaHora, // en WEB, base = hora de cita
+        baseTs: r.fechaHora,
         llamadoTs: llamadoAt,
-        finTs: finAt
+        finTs: finAt,
       });
 
       return {
@@ -650,17 +649,15 @@ export default function Metrics() {
         __origen: "WEB",
         llamadoAt,
         finAt,
-        // si ya venían, los respetamos; si no, calculamos
         esperaMs: Number.isFinite(Number(r.esperaMs)) ? Number(r.esperaMs) : computed.esperaMs,
         atencionMs: Number.isFinite(Number(r.atencionMs)) ? Number(r.atencionMs) : computed.atencionMs,
         moduloKey: r.moduloAsignado || "SIN_MODULO",
         estadoKey: r.estado || "SIN_ESTADO",
         tramiteKey: r.tramiteID || "SIN_TRAMITE",
         agenteKey: r.agenteID || "SIN_AGENTE",
-        dniKey: r.dni || r.dniCiudadano || "SIN_DNI"
+        dniKey: r.dni || r.dniCiudadano || "SIN_DNI",
       };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stats]);
 
   const detalleTurnos = useMemo(() => {
@@ -668,13 +665,12 @@ export default function Metrics() {
     return list.map((r) => {
       const llamadoAt = r.llamadoAt || r.fechaHoraLlamado || null;
       const finAt = r.finAt || r.fechaHoraAtencionFin || null;
-
       const base = r.fechaHoraGenerado || r.createdAt || r.fechaHora || null;
 
       const computed = calcDurations({
-        baseTs: base, // en KIOSKO, base = generado/createdAt
+        baseTs: base,
         llamadoTs: llamadoAt,
-        finTs: finAt
+        finTs: finAt,
       });
 
       return {
@@ -688,10 +684,9 @@ export default function Metrics() {
         estadoKey: r.estado || "SIN_ESTADO",
         tramiteKey: r.tramiteID || "SIN_TRAMITE",
         agenteKey: r.agenteID || "SIN_AGENTE",
-        dniKey: r.dni || r.dniCiudadano || "SIN_DNI"
+        dniKey: r.dni || r.dniCiudadano || "SIN_DNI",
       };
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stats]);
 
   const allRecords = useMemo(() => [...detalleCitas, ...detalleTurnos], [detalleCitas, detalleTurnos]);
@@ -713,6 +708,7 @@ export default function Metrics() {
 
   const filteredRecords = useMemo(() => {
     const t = searchText.trim().toLowerCase();
+
     return allRecords.filter((r) => {
       if (originFilter !== "ALL" && r.__origen !== originFilter) return false;
       if (tramiteFilter !== "ALL" && r.tramiteKey !== tramiteFilter) return false;
@@ -723,6 +719,7 @@ export default function Metrics() {
         const blob = JSON.stringify(r).toLowerCase();
         if (!blob.includes(t)) return false;
       }
+
       return true;
     });
   }, [allRecords, originFilter, tramiteFilter, moduloFilter, agenteFilter, searchText]);
@@ -734,16 +731,15 @@ export default function Metrics() {
     const total = filteredRecords.length;
     const totalWeb = filteredCitas.length;
     const totalKiosko = filteredTurnos.length;
-
     const atendidas = filteredRecords.filter((r) => r.estadoKey === "completado").length;
     const noPresento = filteredRecords.filter((r) => (r.clasificacion || r.estadoKey) === "NO_SE_PRESENTO").length;
-
     return { total, totalWeb, totalKiosko, atendidas, noPresento };
   }, [filteredRecords, filteredCitas, filteredTurnos]);
 
   const tiempos = useMemo(() => {
     const esperaVals = [];
     const atVals = [];
+
     filteredRecords.forEach((r) => {
       if (Number.isFinite(Number(r.esperaMs))) esperaVals.push(Number(r.esperaMs));
       if (Number.isFinite(Number(r.atencionMs))) atVals.push(Number(r.atencionMs));
@@ -755,64 +751,201 @@ export default function Metrics() {
 
     return {
       espera: { minMs: min(esperaVals), avgMs: avg(esperaVals), maxMs: max(esperaVals) },
-      atencion: { minMs: min(atVals), avgMs: avg(atVals), maxMs: max(atVals) }
+      atencion: { minMs: min(atVals), avgMs: avg(atVals), maxMs: max(atVals) },
     };
   }, [filteredRecords]);
 
   const byAgente = useMemo(() => countBy(filteredRecords, (r) => r.agenteKey), [filteredRecords]);
   const byModulo = useMemo(() => countBy(filteredRecords, (r) => r.moduloKey), [filteredRecords]);
+  const byTramiteCount = useMemo(() => countBy(filteredRecords, (r) => r.tramiteKey), [filteredRecords]);
 
   const byTramiteStats = useMemo(() => {
     const m = new Map();
+
     filteredRecords.forEach((r) => {
       const k = r.tramiteKey || "SIN_TRAMITE";
       const prev = m.get(k) || { tramite: k, count: 0, espera: [], atencion: [], atencionMax: 0 };
       prev.count += 1;
+
       if (Number.isFinite(Number(r.esperaMs))) prev.espera.push(Number(r.esperaMs));
+
       if (Number.isFinite(Number(r.atencionMs))) {
-        const v = Number(r.atencionMs);
-        prev.atencion.push(v);
-        if (v > prev.atencionMax) prev.atencionMax = v;
+        const value = Number(r.atencionMs);
+        prev.atencion.push(value);
+        if (value > prev.atencionMax) prev.atencionMax = value;
       }
+
       m.set(k, prev);
     });
 
     const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
 
-    const rows = Array.from(m.values()).map((x) => ({
-      tramite: x.tramite,
-      count: x.count,
-      esperaAvgMs: avg(x.espera),
-      atencionAvgMs: avg(x.atencion),
-      atencionMaxMs: x.atencionMax || null
-    }));
-
-    // ordenamos por atención promedio, pero si no hay tiempos, igual quedan
-    rows.sort((a, b) => (b.atencionAvgMs || 0) - (a.atencionAvgMs || 0));
-    return rows;
+    return Array.from(m.values())
+      .map((x) => ({
+        tramite: x.tramite,
+        count: x.count,
+        esperaAvgMs: avg(x.espera),
+        atencionAvgMs: avg(x.atencion),
+        atencionMaxMs: x.atencionMax || null,
+      }))
+      .sort((a, b) => (b.count || 0) - (a.count || 0));
   }, [filteredRecords]);
+
+  const completionRate = useMemo(() => {
+    if (!overview.total) return 0;
+    return Math.round((overview.atendidas / overview.total) * 100);
+  }, [overview]);
+
+  const noShowRate = useMemo(() => {
+    if (!overview.total) return 0;
+    return Math.round((overview.noPresento / overview.total) * 100);
+  }, [overview]);
 
   const kpiMayorAtencion = useMemo(() => msToHMS(tiempos.atencion.maxMs), [tiempos]);
   const kpiAtencionProm = useMemo(() => msToHMS(tiempos.atencion.avgMs), [tiempos]);
   const kpiEsperaProm = useMemo(() => msToHMS(tiempos.espera.avgMs), [tiempos]);
 
-  const kpiMenorEsperaPorTramite = useMemo(() => {
-    const candidates = byTramiteStats.filter((x) => Number.isFinite(Number(x.esperaAvgMs)) && x.count >= 3);
-    if (!candidates.length) return { label: "—", value: "--:--:--" };
-    candidates.sort((a, b) => (a.esperaAvgMs || 0) - (b.esperaAvgMs || 0));
-    return { label: candidates[0].tramite, value: msToHMS(candidates[0].esperaAvgMs) };
-  }, [byTramiteStats]);
+  const topTramite = useMemo(() => {
+    const first = byTramiteCount[0];
+    return first ? { label: first.key, value: first.count } : { label: "Sin datos", value: 0 };
+  }, [byTramiteCount]);
+
+  const topModulo = useMemo(() => {
+    const first = byModulo[0];
+    return first ? { label: first.key, value: first.count } : { label: "Sin datos", value: 0 };
+  }, [byModulo]);
+
+  const getAgentLabel = (uid) => {
+    const ag = agentsMap?.[uid] || {};
+    return ag.nombreCompleto || ag.email || (uid === "SIN_AGENTE" ? "SIN AGENTE" : uid);
+  };
+
+  const topAgente = useMemo(() => {
+    const first = byAgente[0];
+    return first ? { label: getAgentLabel(first.key), value: first.count } : { label: "Sin datos", value: 0 };
+  }, [byAgente, agentsMap]);
+
+  const byEstado = useMemo(() => {
+    return countBy(filteredRecords, (r) => {
+      if ((r.clasificacion || r.estadoKey) === "NO_SE_PRESENTO") return "No se presentó";
+      if (r.estadoKey === "completado") return "Completadas";
+      if (r.estadoKey === "cerrado") return "Cerradas";
+      return "En proceso / otras";
+    });
+  }, [filteredRecords]);
+
+  const byOrigen = useMemo(() => {
+    const rows = [];
+    if (overview.totalWeb > 0) rows.push({ key: "WEB", count: overview.totalWeb });
+    if (overview.totalKiosko > 0) rows.push({ key: "Kiosko", count: overview.totalKiosko });
+    return rows;
+  }, [overview]);
+
+  const byDay = useMemo(() => {
+    const map = new Map();
+
+    filteredRecords.forEach((r) => {
+      const d = safeToDate(r.fechaHora || r.fechaHoraGenerado || r.createdAt);
+      if (!d) return;
+      const key = format(d, "yyyy-MM-dd");
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-14)
+      .map(([key, count]) => ({
+        key,
+        label: format(new Date(`${key}T00:00:00`), "dd/MM"),
+        count,
+      }));
+  }, [filteredRecords]);
+
+  const mainChartModel = useMemo(() => {
+    if (mainMetric === "ESPERA") {
+      const rows = byTramiteStats
+        .filter((x) => Number.isFinite(Number(x.esperaAvgMs)))
+        .sort((a, b) => (b.esperaAvgMs || 0) - (a.esperaAvgMs || 0))
+        .slice(0, 8);
+
+      return {
+        title: "Mayor espera promedio por trámite",
+        subtitle: "Top 8 trámites con mayor tiempo de espera",
+        type: "bar",
+        horizontal: true,
+        suffix: " min",
+        labels: rows.map((x) => x.tramite),
+        values: rows.map((x) => Math.round(((x.esperaAvgMs || 0) / 60000) * 10) / 10),
+      };
+    }
+
+    if (mainMetric === "ATENCION") {
+      const rows = byTramiteStats
+        .filter((x) => Number.isFinite(Number(x.atencionAvgMs)))
+        .sort((a, b) => (b.atencionAvgMs || 0) - (a.atencionAvgMs || 0))
+        .slice(0, 8);
+
+      return {
+        title: "Mayor atención promedio por trámite",
+        subtitle: "Top 8 trámites con mayor duración de atención",
+        type: "bar",
+        horizontal: true,
+        suffix: " min",
+        labels: rows.map((x) => x.tramite),
+        values: rows.map((x) => Math.round(((x.atencionAvgMs || 0) / 60000) * 10) / 10),
+      };
+    }
+
+    return {
+      title: "Volumen diario",
+      subtitle: "Últimos 14 días disponibles dentro del filtro",
+      type: "line",
+      horizontal: false,
+      suffix: " casos",
+      labels: byDay.map((x) => x.label),
+      values: byDay.map((x) => x.count),
+    };
+  }, [mainMetric, byTramiteStats, byDay]);
+
+  const breakdownModel = useMemo(() => {
+    const rows = breakdownMode === "ORIGEN" ? byOrigen : byEstado;
+    return {
+      title: breakdownMode === "ORIGEN" ? "Origen de atención" : "Distribución operacional",
+      labels: rows.map((x) => x.key),
+      values: rows.map((x) => x.count),
+    };
+  }, [breakdownMode, byOrigen, byEstado]);
+
+  const busiestDay = useMemo(() => {
+    if (!byDay.length) return { label: "Sin datos", value: 0 };
+    const sorted = [...byDay].sort((a, b) => (b.count || 0) - (a.count || 0));
+    return { label: sorted[0].label, value: sorted[0].count };
+  }, [byDay]);
+
+  const activeFilters = useMemo(() => {
+    const items = [`Rango ${startDateISO} → ${endDateISO}`];
+    if (originFilter !== "ALL") items.push(`Origen: ${originFilter}`);
+    if (tramiteFilter !== "ALL") items.push(`Trámite: ${tramiteFilter}`);
+    if (moduloFilter !== "ALL") items.push(`Módulo: ${moduloFilter}`);
+    if (agenteFilter !== "ALL") items.push(`Agente: ${getAgentLabel(agenteFilter)}`);
+    if (searchText.trim()) items.push(`Búsqueda: ${searchText.trim()}`);
+    return items;
+  }, [startDateISO, endDateISO, originFilter, tramiteFilter, moduloFilter, agenteFilter, searchText, agentsMap]);
 
   const fetchAgentsInfo = async (uids) => {
     try {
       const chunkSize = 10;
       const all = {};
+
       for (let i = 0; i < uids.length; i += chunkSize) {
         const chunk = uids.slice(i, i + chunkSize);
         const qUsers = query(collection(db, "usuarios"), where(documentId(), "in", chunk));
         const snap = await getDocs(qUsers);
-        snap.docs.forEach((d) => (all[d.id] = d.data()));
+        snap.docs.forEach((d) => {
+          all[d.id] = d.data();
+        });
       }
+
       setAgentsMap(all);
     } catch (err) {
       console.warn("No se pudo cargar info agentes (usuarios):", err);
@@ -823,6 +956,7 @@ export default function Metrics() {
     setSelectedRecord(record);
     setModalOpen(true);
   };
+
   const closeDetails = () => {
     setModalOpen(false);
     setSelectedRecord(null);
@@ -834,15 +968,11 @@ export default function Metrics() {
     setTramiteModalRecords(list);
     setTramiteModalOpen(true);
   };
+
   const closeTramite = () => {
     setTramiteModalOpen(false);
     setTramiteModalName("");
     setTramiteModalRecords([]);
-  };
-
-  const getAgentLabel = (uid) => {
-    const ag = agentsMap?.[uid] || {};
-    return ag.nombreCompleto || ag.email || (uid === "SIN_AGENTE" ? "SIN AGENTE" : uid);
   };
 
   const fetchMetrics = async () => {
@@ -867,7 +997,10 @@ export default function Metrics() {
       const agenteIds = new Set();
       (data?.detalleCitas || []).forEach((r) => r?.agenteID && agenteIds.add(r.agenteID));
       (data?.detalleTurnos || []).forEach((r) => r?.agenteID && agenteIds.add(r.agenteID));
-      if (agenteIds.size > 0) await fetchAgentsInfo(Array.from(agenteIds));
+
+      if (agenteIds.size > 0) {
+        await fetchAgentsInfo(Array.from(agenteIds));
+      }
     } catch (err) {
       console.error("Error al cargar métricas:", err);
       alert("Error al cargar métricas. Revisa logs / índices.");
@@ -878,7 +1011,6 @@ export default function Metrics() {
 
   useEffect(() => {
     if (isAdmin) fetchMetrics();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin]);
 
   const canExport = !!stats && !loading;
@@ -893,166 +1025,115 @@ export default function Metrics() {
       byTramiteStats,
       detalleCitas: filteredCitas,
       detalleTurnos: filteredTurnos,
-      agentsMap
+      agentsMap,
     });
   };
 
-  // ✅ Chart model con fallback:
-  // - Si estás en "Atención promedio" pero NO hay datos de atención, cambia automáticamente a "Volumen"
-  const chartModel = useMemo(() => {
-    const groupMap = new Map();
-
-    const getGroupKey = (r) => {
-      if (chartGroup === "AGENTE") return r.agenteKey;
-      if (chartGroup === "MODULO") return r.moduloKey;
-      if (chartGroup === "DIA") {
-        const d = safeToDate(r.fechaHora || r.fechaHoraGenerado || r.createdAt);
-        return d ? format(d, "yyyy-MM-dd") : "SIN_FECHA";
-      }
-      return r.tramiteKey;
-    };
-
-    filteredRecords.forEach((r) => {
-      const k = String(getGroupKey(r) || "-");
-      const prev = groupMap.get(k) || { key: k, count: 0, espera: [], atencion: [] };
-      prev.count += 1;
-      if (Number.isFinite(Number(r.esperaMs))) prev.espera.push(Number(r.esperaMs));
-      if (Number.isFinite(Number(r.atencionMs))) prev.atencion.push(Number(r.atencionMs));
-      groupMap.set(k, prev);
-    });
-
-    const avgOrNull = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
-
-    let rows = Array.from(groupMap.values()).map((x) => ({
-      key: x.key,
-      count: x.count,
-      esperaAvgMin: avgOrNull(x.espera) != null ? avgOrNull(x.espera) / 60000 : null,
-      atencionAvgMin: avgOrNull(x.atencion) != null ? avgOrNull(x.atencion) / 60000 : null
-    }));
-
-    rows = rows.map((r) => ({
-      ...r,
-      label: chartGroup === "AGENTE" ? getAgentLabel(r.key) : r.key
-    }));
-
-    // detecta si hay tiempos reales
-    const hasAnyAtencion = rows.some((r) => Number.isFinite(r.atencionAvgMin) && r.atencionAvgMin > 0);
-    const hasAnyEspera = rows.some((r) => Number.isFinite(r.esperaAvgMin) && r.esperaAvgMin > 0);
-
-    // orden
-    if (chartType === "VOLUMEN") rows.sort((a, b) => (b.count || 0) - (a.count || 0));
-    else if (chartType === "ESPERA_PROM") rows.sort((a, b) => (b.esperaAvgMin || 0) - (a.esperaAvgMin || 0));
-    else rows.sort((a, b) => (b.atencionAvgMin || 0) - (a.atencionAvgMin || 0));
-
-    rows = rows.slice(0, 12);
-
-    let effectiveType = chartType;
-    if (chartType === "ATENCION_PROM" && !hasAnyAtencion) effectiveType = "VOLUMEN";
-    if (chartType === "ESPERA_PROM" && !hasAnyEspera) effectiveType = "VOLUMEN";
-
-    let title = "Atención promedio (min)";
-    let values = rows.map((x) => (Number.isFinite(x.atencionAvgMin) ? Math.round(x.atencionAvgMin * 10) / 10 : 0));
-
-    if (effectiveType === "ESPERA_PROM") {
-      title = "Espera promedio (min)";
-      values = rows.map((x) => (Number.isFinite(x.esperaAvgMin) ? Math.round(x.esperaAvgMin * 10) / 10 : 0));
-    } else if (effectiveType === "VOLUMEN") {
-      title = "Volumen (cantidad)";
-      values = rows.map((x) => x.count || 0);
-    } else if (effectiveType === "MIX") {
-      title = "MIX";
-    }
-
-    const labels = rows.map((x) => x.label);
-
-    return { labels, values, rows, title, effectiveType };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredRecords, chartGroup, chartType, agentsMap]);
-
   const rangeText = useMemo(() => {
-    return `Rango: ${startDateISO} → ${endDateISO} · Origen=${originFilter} · Trámite=${tramiteFilter} · Módulo=${moduloFilter} · Agente=${agenteFilter}`;
-  }, [startDateISO, endDateISO, originFilter, tramiteFilter, moduloFilter, agenteFilter]);
+    return `Rango: ${startDateISO} → ${endDateISO} · Registros: ${overview.total}`;
+  }, [startDateISO, endDateISO, overview.total]);
 
   const exportPDFDashboard = () => {
-    const sections = [];
-
-    sections.push({
-      title: "KPIs Resumen",
-      kpis: [
-        { label: "Total", value: overview.total, hint: `WEB: ${overview.totalWeb} · KIOSKO: ${overview.totalKiosko}` },
-        { label: "Completadas", value: overview.atendidas, hint: "Estado = completado" },
-        { label: "No se presentó", value: overview.noPresento, hint: "Clasificación = NO_SE_PRESENTO" },
-        { label: "Espera promedio", value: msToHMS(tiempos.espera.avgMs), hint: `Min ${msToHMS(tiempos.espera.minMs)} · Max ${msToHMS(tiempos.espera.maxMs)}` }
-      ]
-    });
-
-    // gráfico seleccionado
-    if (chartModel.effectiveType !== "MIX") {
-      sections.push({
-        title: `Gráfico: ${chartModel.title} · Agrupar por ${chartGroup}`,
+    const sections = [
+      {
+        title: "Resumen Ejecutivo",
+        kpis: [
+          { label: "Total de atenciones", value: overview.total, hint: `WEB ${overview.totalWeb} · Kiosko ${overview.totalKiosko}` },
+          { label: "Completadas", value: `${completionRate}%`, hint: `${overview.atendidas} atenciones cerradas` },
+          { label: "Espera promedio", value: kpiEsperaProm, hint: `No se presentó ${noShowRate}%` },
+          { label: "Atención promedio", value: kpiAtencionProm, hint: `Pico máximo ${kpiMayorAtencion}` },
+        ],
+      },
+      {
+        title: mainChartModel.title,
         chartBase64: makeChartImageBase64({
-          type: "bar",
-          labels: chartModel.labels,
-          values: chartModel.values,
-          title: `${chartModel.title}`
-        })
-      });
-    } else {
-      const rows = chartModel.rows || [];
-      sections.push({
-        title: `Gráfico: Atención promedio (min) · Agrupar por ${chartGroup}`,
+          type: mainChartModel.type === "doughnut" ? "doughnut" : "bar",
+          labels: mainChartModel.labels,
+          values: mainChartModel.values,
+          title: mainChartModel.title,
+        }),
+      },
+      {
+        title: breakdownModel.title,
         chartBase64: makeChartImageBase64({
-          type: "bar",
-          labels: rows.map((x) => x.label),
-          values: rows.map((x) => (Number.isFinite(x.atencionAvgMin) ? Math.round(x.atencionAvgMin * 10) / 10 : 0)),
-          title: "Atención promedio (min)"
-        })
-      });
-      sections.push({
-        title: `Gráfico: Espera promedio (min) · Agrupar por ${chartGroup}`,
-        chartBase64: makeChartImageBase64({
-          type: "bar",
-          labels: rows.map((x) => x.label),
-          values: rows.map((x) => (Number.isFinite(x.esperaAvgMin) ? Math.round(x.esperaAvgMin * 10) / 10 : 0)),
-          title: "Espera promedio (min)"
-        })
-      });
-    }
-
-    sections.push({
-      title: "Ranking por Trámite (Atención promedio)",
-      table: {
-        headers: ["Trámite", "Cantidad", "Espera Prom.", "Atención Prom.", "Atención Máx."],
-        rows: byTramiteStats.slice(0, 20).map((t) => [
-          t.tramite,
-          t.count,
-          msToHMS(t.esperaAvgMs),
-          msToHMS(t.atencionAvgMs),
-          msToHMS(t.atencionMaxMs)
-        ])
-      }
-    });
+          type: "doughnut",
+          labels: breakdownModel.labels,
+          values: breakdownModel.values,
+          title: breakdownModel.title,
+        }),
+      },
+      {
+        title: "Ranking por trámite",
+        table: {
+          headers: ["Trámite", "Cantidad", "Espera Prom.", "Atención Prom.", "Atención Máx."],
+          rows: byTramiteStats.slice(0, 12).map((t) => [
+            t.tramite,
+            t.count,
+            msToHMS(t.esperaAvgMs),
+            msToHMS(t.atencionAvgMs),
+            msToHMS(t.atencionMaxMs),
+          ]),
+        },
+      },
+    ];
 
     const html = buildPrintableHTML({
-      title: "Métricas de Atención",
+      title: "Dashboard de Métricas",
       subtitle: rangeText,
-      sections
+      sections,
     });
 
     const w = window.open("", "_blank");
-    if (!w) return alert("Pop-up bloqueado. Permite ventanas emergentes para imprimir.");
+    if (!w) {
+      alert("Pop-up bloqueado. Permite ventanas emergentes para imprimir.");
+      return;
+    }
+
     w.document.open();
     w.document.write(html);
     w.document.close();
+  };
+
+  const resetFilters = () => {
+    setOriginFilter("ALL");
+    setTramiteFilter("ALL");
+    setModuloFilter("ALL");
+    setAgenteFilter("ALL");
+    setSearchText("");
+  };
+
+  const topAgentRows = useMemo(() => {
+    return byAgente.slice(0, 6).map((row) => ({
+      label: getAgentLabel(row.key),
+      value: row.count,
+      hint: "Casos asignados en el filtro actual",
+    }));
+  }, [byAgente, agentsMap]);
+
+  const topTramiteRows = useMemo(() => {
+    return byTramiteStats.slice(0, 6).map((row) => ({
+      label: row.tramite,
+      value: row.count,
+      hint: `Atención prom. ${msToHMS(row.atencionAvgMs)}`,
+    }));
+  }, [byTramiteStats]);
+
+  const maxRankValue = (rows) => {
+    if (!rows.length) return 1;
+    return Math.max(...rows.map((row) => Number(row.value) || 0), 1);
   };
 
   if (!isAdmin) {
     return (
       <div className="metrics-page">
         <div className="metrics-header">
-          <h1 className="metrics-title">Métricas</h1>
+          <div>
+            <h1 className="metrics-title">Métricas</h1>
+            <p className="metrics-sub">Panel ejecutivo del sistema de citas.</p>
+          </div>
           <span className="metrics-pill">No autorizado</span>
         </div>
+
         <div className="metrics-card">Tu rol no permite acceder a métricas.</div>
       </div>
     );
@@ -1063,7 +1144,7 @@ export default function Metrics() {
       <div className="metrics-header">
         <div>
           <h1 className="metrics-title">Métricas</h1>
-          <p className="metrics-sub">Dashboard ejecutivo + gráficos bajo demanda + reporte imprimible por trámite/caso.</p>
+          <p className="metrics-sub">Vista ejecutiva del sistema, enfocada en volumen, tiempos y desempeño real.</p>
         </div>
 
         <div className="metrics-actions">
@@ -1074,22 +1155,23 @@ export default function Metrics() {
             Exportar Excel
           </button>
           <button className="metrics-btn secondary" onClick={exportPDFDashboard} disabled={!canExport}>
-            Imprimir / PDF (Dashboard)
+            Imprimir / PDF
           </button>
         </div>
       </div>
 
-      {/* Filtros */}
       <div className="metrics-card">
         <div className="metrics-filters">
           <div className="metrics-field">
             <div className="metrics-label">Desde</div>
             <input className="metrics-input" type="date" value={startDateISO} onChange={(e) => setStartDateISO(e.target.value)} />
           </div>
+
           <div className="metrics-field">
             <div className="metrics-label">Hasta</div>
             <input className="metrics-input" type="date" value={endDateISO} onChange={(e) => setEndDateISO(e.target.value)} />
           </div>
+
           <div className="metrics-field">
             <div className="metrics-label">Origen</div>
             <select className="metrics-input" value={originFilter} onChange={(e) => setOriginFilter(e.target.value)}>
@@ -1098,11 +1180,14 @@ export default function Metrics() {
               <option value="KIOSKO">Kiosko</option>
             </select>
           </div>
+
           <div className="metrics-field">
             <div className="metrics-label">Trámite</div>
             <select className="metrics-input" value={tramiteFilter} onChange={(e) => setTramiteFilter(e.target.value)}>
               {tramiteOptions.map((x) => (
-                <option key={x} value={x}>{x}</option>
+                <option key={x} value={x}>
+                  {x}
+                </option>
               ))}
             </select>
           </div>
@@ -1111,7 +1196,9 @@ export default function Metrics() {
             <div className="metrics-label">Módulo</div>
             <select className="metrics-input" value={moduloFilter} onChange={(e) => setModuloFilter(e.target.value)}>
               {moduloOptions.map((x) => (
-                <option key={x} value={x}>{x}</option>
+                <option key={x} value={x}>
+                  {x}
+                </option>
               ))}
             </select>
           </div>
@@ -1120,160 +1207,283 @@ export default function Metrics() {
             <div className="metrics-label">Agente</div>
             <select className="metrics-input" value={agenteFilter} onChange={(e) => setAgenteFilter(e.target.value)}>
               {agenteOptions.map((x) => (
-                <option key={x} value={x}>{x === "ALL" ? "Todos" : getAgentLabel(x)}</option>
+                <option key={x} value={x}>
+                  {x === "ALL" ? "Todos" : getAgentLabel(x)}
+                </option>
               ))}
             </select>
           </div>
 
           <div className="metrics-field metrics-search">
             <div className="metrics-label">Buscar</div>
-            <input className="metrics-input" placeholder="Código, DNI, trámite, módulo..." value={searchText} onChange={(e) => setSearchText(e.target.value)} />
-          </div>
-        </div>
-
-        <div className="metrics-mini">
-          Total: <b>{overview.total}</b> · WEB: <b>{overview.totalWeb}</b> · Kiosko: <b>{overview.totalKiosko}</b>
-        </div>
-      </div>
-
-      {/* KPIs */}
-      <div className="metrics-kpiGrid">
-        <div className="metrics-kpi">
-          <div className="metrics-kpiLabel">Mayor tiempo de atención</div>
-          <div className="metrics-kpiValue">{kpiMayorAtencion}</div>
-          <div className="metrics-kpiHint">Máximo dentro del rango/filtrado</div>
-        </div>
-
-        <div className="metrics-kpi">
-          <div className="metrics-kpiLabel">Tiempo de atención promedio</div>
-          <div className="metrics-kpiValue">{kpiAtencionProm}</div>
-          <div className="metrics-kpiHint">Promedio general</div>
-        </div>
-
-        <div className="metrics-kpi">
-          <div className="metrics-kpiLabel">Menor espera promedio</div>
-          <div className="metrics-kpiValue">{kpiMenorEsperaPorTramite.value}</div>
-          <div className="metrics-kpiHint">Trámite: {kpiMenorEsperaPorTramite.label}</div>
-        </div>
-
-        <div className="metrics-kpi">
-          <div className="metrics-kpiLabel">Tiempo de espera promedio</div>
-          <div className="metrics-kpiValue">{kpiEsperaProm}</div>
-          <div className="metrics-kpiHint">Promedio general</div>
-        </div>
-      </div>
-
-      {/* Gráficos */}
-      <div className="metrics-card">
-        <div className="metrics-sectionHead">
-          <div>
-            <div className="metrics-sectionTitle">Gráficos interactivos</div>
-            <div className="metrics-sub">Si no hay tiempos cargados, se mostrará Volumen automáticamente.</div>
-          </div>
-
-          <button className="metrics-btn ghost" onClick={() => setAdvancedOpen((v) => !v)}>
-            {advancedOpen ? "Ocultar detalles" : "Ver detalles"}
-          </button>
-        </div>
-
-        <div className="metrics-chartControls">
-          <div className="metrics-field">
-            <div className="metrics-label">Agrupar por</div>
-            <select className="metrics-input" value={chartGroup} onChange={(e) => setChartGroup(e.target.value)}>
-              <option value="TRAMITE">Trámite</option>
-              <option value="AGENTE">Agente</option>
-              <option value="MODULO">Módulo</option>
-              <option value="DIA">Día</option>
-            </select>
-          </div>
-
-          <div className="metrics-field">
-            <div className="metrics-label">Gráfico</div>
-            <select className="metrics-input" value={chartType} onChange={(e) => setChartType(e.target.value)}>
-              <option value="ATENCION_PROM">Atención promedio</option>
-              <option value="ESPERA_PROM">Espera promedio</option>
-              <option value="VOLUMEN">Volumen (cantidad)</option>
-              <option value="MIX">MIX (Atención + Espera)</option>
-            </select>
-          </div>
-        </div>
-
-        {chartModel.effectiveType !== "MIX" ? (
-          <div className="metrics-chartBox" style={{ marginTop: 12 }}>
-            <ReportChart
-              type="bar"
-              title={`${chartModel.title} · Agrupar por ${chartGroup}`}
-              labels={chartModel.labels}
-              values={chartModel.values}
-              height={300}
+            <input
+              className="metrics-input"
+              placeholder="Código, DNI, trámite, módulo, agente..."
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
             />
           </div>
-        ) : (
-          <div style={{ marginTop: 12, display: "grid", gap: 12 }}>
-            <div className="metrics-chartBox">
-              <ReportChart
-                type="bar"
-                title={`Atención promedio (min) · Agrupar por ${chartGroup}`}
-                labels={chartModel.rows.map((x) => x.label)}
-                values={chartModel.rows.map((x) => (Number.isFinite(x.atencionAvgMin) ? Math.round(x.atencionAvgMin * 10) / 10 : 0))}
-                height={260}
-              />
-            </div>
-            <div className="metrics-chartBox">
-              <ReportChart
-                type="bar"
-                title={`Espera promedio (min) · Agrupar por ${chartGroup}`}
-                labels={chartModel.rows.map((x) => x.label)}
-                values={chartModel.rows.map((x) => (Number.isFinite(x.esperaAvgMin) ? Math.round(x.esperaAvgMin * 10) / 10 : 0))}
-                height={260}
-              />
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Ranking por trámite */}
-      <div className="metrics-card">
-        <div className="metrics-sectionHead">
-          <div>
-            <div className="metrics-sectionTitle">Ranking por Trámite</div>
-            <div className="metrics-sub">Click en “Ver” para abrir reporte imprimible por trámite.</div>
-          </div>
         </div>
 
-        <div className="metrics-tramiteGrid">
-          {byTramiteStats.slice(0, 12).map((t) => (
-            <div key={t.tramite} className="metrics-tramiteCard">
-              <div className="metrics-tramiteTop">
-                <div className="metrics-tramiteName">{t.tramite}</div>
-                <div className="metrics-pill">{t.count} casos</div>
-              </div>
-
-              <div className="metrics-tramiteTime">{msToHMS(t.atencionAvgMs)}</div>
-              <div className="metrics-tramiteSub">
-                Espera prom.: <b>{msToHMS(t.esperaAvgMs)}</b> · Máx. atención: <b>{msToHMS(t.atencionMaxMs)}</b>
-              </div>
-
-              <div style={{ marginTop: 10 }}>
-                <button className="metrics-btn tiny secondary" onClick={() => openTramite(t.tramite)}>
-                  Ver
-                </button>
-              </div>
-            </div>
+        <div className="metrics-pillRow">
+          {activeFilters.map((item) => (
+            <span key={item} className="metrics-pill">
+              {item}
+            </span>
           ))}
+          <button className="metrics-btn tiny secondary" onClick={resetFilters}>
+            Limpiar filtros
+          </button>
         </div>
       </div>
 
-      {/* Detalles */}
-      {advancedOpen ? (
+      <div className="metrics-kpiGrid">
+        <div className="metrics-kpi">
+          <div className="metrics-kpiLabel">Atenciones totales</div>
+          <div className="metrics-kpiValue">{overview.total}</div>
+          <div className="metrics-kpiHint">WEB {overview.totalWeb} · Kiosko {overview.totalKiosko}</div>
+        </div>
+
+        <div className="metrics-kpi">
+          <div className="metrics-kpiLabel">Completadas</div>
+          <div className="metrics-kpiValue">{completionRate}%</div>
+          <div className="metrics-kpiHint">{overview.atendidas} atenciones cerradas dentro del filtro</div>
+        </div>
+
+        <div className="metrics-kpi">
+          <div className="metrics-kpiLabel">Espera promedio</div>
+          <div className="metrics-kpiValue">{kpiEsperaProm}</div>
+          <div className="metrics-kpiHint">No se presentó {noShowRate}% del total filtrado</div>
+        </div>
+
+        <div className="metrics-kpi">
+          <div className="metrics-kpiLabel">Atención promedio</div>
+          <div className="metrics-kpiValue">{kpiAtencionProm}</div>
+          <div className="metrics-kpiHint">Pico máximo registrado {kpiMayorAtencion}</div>
+        </div>
+      </div>
+
+      <div className="metrics-card">
+        <div className="metrics-spotlight">
+          <div className="metrics-spotlightMain">
+            <div>
+              <div className="metrics-spotlightEyebrow">Lectura rápida</div>
+              <div className="metrics-spotlightTitle">{topTramite.label}</div>
+              <div className="metrics-spotlightSub">
+                Es el trámite con mayor volumen del filtro actual, con {topTramite.value} caso{topTramite.value === 1 ? "" : "s"}.
+              </div>
+            </div>
+
+            <div className="metrics-pillRow">
+              <span className="metrics-pill">Módulo líder: {topModulo.label}</span>
+              <span className="metrics-pill">Agente líder: {topAgente.label}</span>
+              <span className="metrics-pill">Día más cargado: {busiestDay.label}</span>
+            </div>
+          </div>
+
+          <div className="metrics-spotlightStats">
+            <div className="metrics-statCard">
+              <div className="metrics-statLabel">Módulo con mayor carga</div>
+              <div className="metrics-statValue">{topModulo.label}</div>
+              <div className="metrics-statHint">{topModulo.value} casos dentro del período filtrado</div>
+            </div>
+
+            <div className="metrics-statCard">
+              <div className="metrics-statLabel">Día más cargado</div>
+              <div className="metrics-statValue">{busiestDay.label}</div>
+              <div className="metrics-statHint">{busiestDay.value} atenciones registradas</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="metrics-boardGrid">
         <div className="metrics-card">
           <div className="metrics-sectionHead">
             <div>
-              <div className="metrics-sectionTitle">Detalle</div>
-              <div className="metrics-sub">Tabla (top 80). “Ver” abre caso imprimible.</div>
+              <div className="metrics-sectionTitle">{mainChartModel.title}</div>
+              <div className="metrics-sectionCaption">{mainChartModel.subtitle}</div>
+            </div>
+
+            <div className="metrics-segment">
+              <button
+                className={`metrics-segmentBtn ${mainMetric === "VOLUMEN" ? "active" : ""}`}
+                onClick={() => setMainMetric("VOLUMEN")}
+              >
+                Volumen
+              </button>
+              <button
+                className={`metrics-segmentBtn ${mainMetric === "ESPERA" ? "active" : ""}`}
+                onClick={() => setMainMetric("ESPERA")}
+              >
+                Espera
+              </button>
+              <button
+                className={`metrics-segmentBtn ${mainMetric === "ATENCION" ? "active" : ""}`}
+                onClick={() => setMainMetric("ATENCION")}
+              >
+                Atención
+              </button>
             </div>
           </div>
 
+          <div className="metrics-chartBox">
+            <ReportChart
+              type={mainChartModel.type}
+              labels={mainChartModel.labels}
+              values={mainChartModel.values}
+              height={360}
+              horizontal={mainChartModel.horizontal}
+              suffix={mainChartModel.suffix}
+            />
+          </div>
+
+          <div className="metrics-insightGrid">
+            <div className="metrics-insightCard">
+              <div className="metrics-insightLabel">Rango evaluado</div>
+              <div className="metrics-insightValue">{startDateISO} → {endDateISO}</div>
+              <div className="metrics-insightHint">Panel recalculado según filtros actuales</div>
+            </div>
+
+            <div className="metrics-insightCard">
+              <div className="metrics-insightLabel">Registros visibles</div>
+              <div className="metrics-insightValue">{overview.total}</div>
+              <div className="metrics-insightHint">Base activa para gráficos, KPIs y detalle</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="metrics-stack">
+          <div className="metrics-card">
+            <div className="metrics-sectionHead">
+              <div>
+                <div className="metrics-sectionTitle">{breakdownModel.title}</div>
+                <div className="metrics-sectionCaption">Distribución actual para una lectura ejecutiva rápida</div>
+              </div>
+
+              <div className="metrics-segment">
+                <button
+                  className={`metrics-segmentBtn ${breakdownMode === "ESTADO" ? "active" : ""}`}
+                  onClick={() => setBreakdownMode("ESTADO")}
+                >
+                  Estado
+                </button>
+                <button
+                  className={`metrics-segmentBtn ${breakdownMode === "ORIGEN" ? "active" : ""}`}
+                  onClick={() => setBreakdownMode("ORIGEN")}
+                >
+                  Origen
+                </button>
+              </div>
+            </div>
+
+            <div className="metrics-chartBox">
+              <ReportChart
+                type="doughnut"
+                labels={breakdownModel.labels}
+                values={breakdownModel.values}
+                height={280}
+                showLegend
+              />
+            </div>
+          </div>
+
+          <div className="metrics-card">
+            <div className="metrics-sectionTitle">Semáforo operativo</div>
+            <div className="metrics-sectionCaption">Indicadores secundarios que ayudan a interpretar el comportamiento del período</div>
+
+            <div className="metrics-insightGrid" style={{ marginTop: 14 }}>
+              <div className="metrics-insightCard">
+                <div className="metrics-insightLabel">No se presentó</div>
+                <div className="metrics-insightValue">{overview.noPresento}</div>
+                <div className="metrics-insightHint">{noShowRate}% del total filtrado</div>
+              </div>
+
+              <div className="metrics-insightCard">
+                <div className="metrics-insightLabel">WEB vs Kiosko</div>
+                <div className="metrics-insightValue">{overview.totalWeb}/{overview.totalKiosko}</div>
+                <div className="metrics-insightHint">Relación de origen en el mismo rango</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="metrics-rankGrid">
+        <div className="metrics-card">
+          <div className="metrics-sectionHead">
+            <div>
+              <div className="metrics-sectionTitle">Top trámites por volumen</div>
+              <div className="metrics-sectionCaption">Menos tarjetas sueltas y una lectura más clara del ranking principal</div>
+            </div>
+          </div>
+
+          <div className="metrics-rankList">
+            {topTramiteRows.map((row) => (
+              <div key={row.label}>
+                <div className="metrics-rankRow">
+                  <div className="metrics-rankMeta">
+                    <div className="metrics-rankName">{row.label}</div>
+                    <div className="metrics-rankHint">{row.hint}</div>
+                    <div className="metrics-progress">
+                      <span style={{ width: `${(row.value / maxRankValue(topTramiteRows)) * 100}%` }} />
+                    </div>
+                  </div>
+                  <div className="metrics-rankValue">{row.value}</div>
+                </div>
+
+                <div style={{ marginTop: 8 }}>
+                  <button className="metrics-btn tiny secondary" onClick={() => openTramite(row.label)}>
+                    Ver detalle
+                  </button>
+                </div>
+              </div>
+            ))}
+
+            {topTramiteRows.length === 0 ? <div className="metrics-mini">Sin datos para mostrar.</div> : null}
+          </div>
+        </div>
+
+        <div className="metrics-card">
+          <div className="metrics-sectionHead">
+            <div>
+              <div className="metrics-sectionTitle">Top agentes por carga</div>
+              <div className="metrics-sectionCaption">Comparación rápida del volumen asignado dentro del filtro actual</div>
+            </div>
+          </div>
+
+          <div className="metrics-rankList">
+            {topAgentRows.map((row) => (
+              <div key={row.label} className="metrics-rankRow">
+                <div className="metrics-rankMeta">
+                  <div className="metrics-rankName">{row.label}</div>
+                  <div className="metrics-rankHint">{row.hint}</div>
+                  <div className="metrics-progress">
+                    <span style={{ width: `${(row.value / maxRankValue(topAgentRows)) * 100}%` }} />
+                  </div>
+                </div>
+                <div className="metrics-rankValue">{row.value}</div>
+              </div>
+            ))}
+
+            {topAgentRows.length === 0 ? <div className="metrics-mini">Sin datos para mostrar.</div> : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="metrics-card">
+        <div className="metrics-sectionHead">
+          <div>
+            <div className="metrics-sectionTitle">Detalle operacional</div>
+            <div className="metrics-sectionCaption">La tabla se deja como apoyo, no como elemento dominante del dashboard</div>
+          </div>
+
+          <button className="metrics-btn ghost" onClick={() => setAdvancedOpen((value) => !value)}>
+            {advancedOpen ? "Ocultar detalle" : "Ver detalle"}
+          </button>
+        </div>
+
+        {advancedOpen ? (
           <div className="metrics-tableWrap">
             <table className="metrics-table">
               <thead>
@@ -1309,21 +1519,25 @@ export default function Metrics() {
                     </td>
                   </tr>
                 ))}
+
                 {filteredRecords.length === 0 ? (
                   <tr>
-                    <td colSpan={10} style={{ color: "#666", fontWeight: 800, padding: 12 }}>
+                    <td colSpan={10} style={{ color: "#64748b", fontWeight: 800, padding: 14 }}>
                       Sin datos con los filtros actuales.
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
-            <div className="metrics-mini" style={{ marginTop: 10 }}>
+
+            <div className="metrics-mini" style={{ marginTop: 12 }}>
               Mostrando {Math.min(80, filteredRecords.length)} de {filteredRecords.length} registros.
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : (
+          <div className="metrics-mini">Oculto por defecto para que el dashboard se sienta más ejecutivo y menos “tabla primero”.</div>
+        )}
+      </div>
 
       <RecordModal open={modalOpen} onClose={closeDetails} record={selectedRecord} agentsMap={agentsMap} />
       <TramiteModal

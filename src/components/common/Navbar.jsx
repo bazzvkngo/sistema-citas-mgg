@@ -7,12 +7,15 @@ import logoConsulado from "../../assets/logo-consulado.png";
 function useClickOutside(ref, handler, when = true) {
   useEffect(() => {
     if (!when) return;
+
     const onDown = (e) => {
       if (!ref.current) return;
       if (!ref.current.contains(e.target)) handler?.();
     };
+
     window.addEventListener("mousedown", onDown);
     window.addEventListener("touchstart", onDown);
+
     return () => {
       window.removeEventListener("mousedown", onDown);
       window.removeEventListener("touchstart", onDown);
@@ -25,11 +28,15 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(() =>
+    Boolean(document.fullscreenElement)
+  );
   const [mobileOpen, setMobileOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(false);
 
   const adminDropRef = useRef(null);
+  const cursorHideTimerRef = useRef(null);
+
   useClickOutside(adminDropRef, () => setAdminOpen(false), adminOpen);
 
   const rol = useMemo(
@@ -41,13 +48,13 @@ export default function Navbar() {
     ciudadano: "Ciudadano",
     agente: "Agente",
     agent: "Agente",
-    admin: "Admin",
+    admin: "Administrador",
     pantalla: "Pantalla TV",
-    kiosko: "Kiosko",
+    kiosko: "Kiosco",
   };
+
   const roleLabel = roleLabelMap[rol] || rol;
 
-  // ✅ Rutas "públicas" (sin sesión): se muestra header centrado y limpio
   const isPublicAuthRoute = useMemo(() => {
     const p = location.pathname;
     return (
@@ -59,6 +66,75 @@ export default function Navbar() {
   }, [location.pathname]);
 
   const isPublicHeader = !currentUser && isPublicAuthRoute;
+
+  const isKioskView =
+    (rol === "kiosko" || rol === "admin") && location.pathname === "/kiosko";
+
+  const isScreenView =
+    (rol === "pantalla" || rol === "admin") && location.pathname === "/pantalla-tv";
+
+  const isImmersiveRoute = isKioskView || isScreenView;
+  const showFullscreenButton = isImmersiveRoute;
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    setMobileOpen(false);
+    setAdminOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    const shouldAutoHideCursor = isFullscreen && isImmersiveRoute;
+
+    const clearCursorTimer = () => {
+      if (cursorHideTimerRef.current) {
+        clearTimeout(cursorHideTimerRef.current);
+      }
+    };
+
+    if (!shouldAutoHideCursor) {
+      clearCursorTimer();
+      document.body.classList.remove("cursor-hidden-immersive");
+      return;
+    }
+
+    const showCursor = () => {
+      document.body.classList.remove("cursor-hidden-immersive");
+    };
+
+    const resetCursorTimer = () => {
+      showCursor();
+      clearCursorTimer();
+      cursorHideTimerRef.current = setTimeout(() => {
+        document.body.classList.add("cursor-hidden-immersive");
+      }, 1800);
+    };
+
+    resetCursorTimer();
+
+    window.addEventListener("mousemove", resetCursorTimer, { passive: true });
+    window.addEventListener("mousedown", resetCursorTimer);
+    window.addEventListener("keydown", resetCursorTimer);
+    window.addEventListener("touchstart", resetCursorTimer, { passive: true });
+
+    return () => {
+      clearCursorTimer();
+      document.body.classList.remove("cursor-hidden-immersive");
+      window.removeEventListener("mousemove", resetCursorTimer);
+      window.removeEventListener("mousedown", resetCursorTimer);
+      window.removeEventListener("keydown", resetCursorTimer);
+      window.removeEventListener("touchstart", resetCursorTimer);
+    };
+  }, [isFullscreen, isImmersiveRoute]);
 
   const handleLogout = async () => {
     try {
@@ -82,21 +158,15 @@ export default function Navbar() {
     } else {
       document
         .exitFullscreen()
-        .then(() => setIsFullscreen(false))
+        .then(() => {
+          setIsFullscreen(false);
+          document.body.classList.remove("cursor-hidden-immersive");
+        })
         .catch((err) => console.error("Error al salir de fullscreen:", err));
     }
   };
 
-  const isKioskView =
-    (rol === "kiosko" || rol === "admin") && location.pathname === "/kiosko";
-  const isScreenView =
-    (rol === "pantalla" || rol === "admin") &&
-    location.pathname === "/pantalla-tv";
-  const showFullscreenButton = isKioskView || isScreenView;
-
   const isActive = (path) => location.pathname === path;
-
-  const closeMobile = () => setMobileOpen(false);
 
   const goAdminTab = (tabKey) => {
     setAdminOpen(false);
@@ -104,264 +174,321 @@ export default function Navbar() {
     navigate("/administrador", { state: { adminTab: tabKey } });
   };
 
+  const getHomePath = () => {
+    if (!currentUser) return "/ingreso";
+    if (rol === "ciudadano") return "/citas";
+    if (rol === "agente" || rol === "agent") return "/panel-agente";
+    if (rol === "pantalla") return "/pantalla-tv";
+    if (rol === "kiosko") return "/kiosko";
+    if (rol === "admin") return "/panel-agente";
+    return "/ingreso";
+  };
+
   const baseItems = useMemo(() => {
     if (!currentUser) return [];
 
     if (rol === "ciudadano") {
       return [
-        { label: "Mis Citas", to: "/citas" },
-        { label: "Mi Perfil", to: "/perfil" },
+        { label: "Citas", to: "/citas" },
+        { label: "Perfil", to: "/perfil" },
       ];
     }
 
     if (rol === "agente" || rol === "agent") {
       return [
-        { label: "Panel Agente", to: "/panel-agente" },
+        { label: "Atención", to: "/panel-agente" },
         { label: "Agenda", to: "/agenda" },
-        { label: "Mi Perfil", to: "/perfil" },
+        { label: "Perfil", to: "/perfil" },
       ];
     }
 
     if (rol === "pantalla") {
       return [
-        { label: "Pantalla TV", to: "/pantalla-tv" },
-        { label: "Mi Perfil", to: "/perfil" },
+        { label: "Turnos TV", to: "/pantalla-tv" },
+        { label: "Perfil", to: "/perfil" },
       ];
     }
 
     if (rol === "kiosko") {
       return [
-        { label: "Kiosko", to: "/kiosko" },
-        { label: "Mi Perfil", to: "/perfil" },
+        { label: "Kiosco", to: "/kiosko" },
+        { label: "Perfil", to: "/perfil" },
       ];
     }
 
-    // admin
     return [
-      { label: "Panel Agente", to: "/panel-agente" },
+      { label: "Atención", to: "/panel-agente" },
       { label: "Agenda", to: "/agenda" },
-      { label: "Admin", to: "/administrador", dropdown: true },
-      { label: "Métricas", to: "/metricas" },
-      { label: "Pantalla TV", to: "/pantalla-tv" },
-      { label: "Kiosko", to: "/kiosko" },
-      { label: "Mi Perfil", to: "/perfil" },
+      { label: "Gestión", to: "/administrador", dropdown: true },
+      { label: "Reportes", to: "/metricas" },
+      { label: "Turnos TV", to: "/pantalla-tv" },
+      { label: "Kiosco", to: "/kiosko" },
+      { label: "Perfil", to: "/perfil" },
     ];
   }, [currentUser, rol]);
-
-  useEffect(() => {
-    setMobileOpen(false);
-    setAdminOpen(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
 
   const email = currentUser?.email || "";
   const brandTitleFull = "Consulado General del Perú en Iquique";
   const brandTitleShort = "Consulado Perú";
+  const brandTo = getHomePath();
 
-  // ✅ link del logo: si no hay sesión, vuelve a ingreso
-  const brandTo = currentUser ? "/inicio" : "/ingreso";
+  const navbarClassName = [
+    "navbar",
+    "cp-navbar",
+    isPublicHeader ? "navbar--public" : "",
+    isImmersiveRoute ? "navbar--immersive" : "",
+    isFullscreen && isImmersiveRoute ? "navbar--fullscreen-mode" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  if (isPublicHeader) {
+    return (
+      <header className={navbarClassName}>
+        <div className="navbar__top navbar__top--public">
+          <Link to={brandTo} className="navbar__brand">
+            <img
+              src={logoConsulado}
+              alt="Consulado del Perú"
+              className="navbar__brandLogo"
+            />
+            <div className="navbar__brandText">
+              <span className="navbar__title navbar__title--desktop">
+                {brandTitleFull}
+              </span>
+              <span className="navbar__title navbar__title--mobile">
+                {brandTitleShort}
+              </span>
+              <span className="navbar__subtitle">Sistema de atención consular</span>
+            </div>
+          </Link>
+        </div>
+        <div className="navbar__menuBar navbar__menuBar--public" />
+      </header>
+    );
+  }
 
   return (
-    <nav className={`cp-navbar ${isPublicHeader ? "cp-navbar--public" : ""}`}>
-      <div className="cp-navbar-inner">
-        {/* LEFT */}
-        <div className="cp-navbar-left">
-          <Link to={brandTo} className="cp-brand" onClick={closeMobile}>
-            <img
-              className="cp-brand-logo"
-              src={logoConsulado}
-              alt="Logo Consulado"
-            />
-
-            <span className="cp-brand-title">
-              <span className="cp-brand-title-full">{brandTitleFull}</span>
-              <span className="cp-brand-title-short">{brandTitleShort}</span>
+    <header className={navbarClassName}>
+      <div className="navbar__top">
+        <Link to={brandTo} className="navbar__brand">
+          <img
+            src={logoConsulado}
+            alt="Consulado del Perú"
+            className="navbar__brandLogo"
+          />
+          <div className="navbar__brandText">
+            <span className="navbar__title navbar__title--desktop">
+              {brandTitleFull}
             </span>
-          </Link>
+            <span className="navbar__title navbar__title--mobile">
+              {brandTitleShort}
+            </span>
+            <span className="navbar__subtitle">Sistema de atención consular</span>
+          </div>
+        </Link>
 
-          {/* Desktop links */}
-          {currentUser ? (
-            <div className="cp-links cp-desktop">
-              {baseItems.map((it) => {
-                if (it.dropdown && rol === "admin") {
-                  return (
-                    <div
-                      key={it.label}
-                      className="cp-dropdown"
-                      ref={adminDropRef}
-                    >
-                      <button
-                        type="button"
-                        className={`cp-link cp-link-btn ${
-                          isActive("/administrador") ? "active" : ""
-                        }`}
-                        onClick={() => setAdminOpen((v) => !v)}
-                        aria-haspopup="menu"
-                        aria-expanded={adminOpen}
-                      >
-                        {it.label}
-                        <span
-                          className={`cp-caret ${adminOpen ? "open" : ""}`}
-                          aria-hidden="true"
-                        >
-                          ▾
-                        </span>
-                      </button>
-
-                      {adminOpen ? (
-                        <div className="cp-dropdown-menu" role="menu">
-                          <button
-                            className="cp-dd-item"
-                            onClick={() => goAdminTab("tramites")}
-                            role="menuitem"
-                          >
-                            Gestionar Trámites
-                          </button>
-                          <button
-                            className="cp-dd-item"
-                            onClick={() => goAdminTab("agentes")}
-                            role="menuitem"
-                          >
-                            Gestionar Agentes
-                          </button>
-                          <button
-                            className="cp-dd-item"
-                            onClick={() => goAdminTab("feriados")}
-                            role="menuitem"
-                          >
-                            Días Bloqueados / Feriados
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  );
-                }
-
-                return (
-                  <Link
-                    key={it.label}
-                    to={it.to}
-                    className={`cp-link ${isActive(it.to) ? "active" : ""}`}
-                    onClick={closeMobile}
-                  >
-                    {it.label}
-                  </Link>
-                );
-              })}
-            </div>
-          ) : null}
-        </div>
-
-        {/* RIGHT */}
-        <div className="cp-navbar-right">
-          {currentUser ? (
-            <>
-              {showFullscreenButton ? (
-                <button
-                  className="cp-btn cp-btn-ghost"
-                  onClick={handleToggleFullscreen}
-                >
-                  {isFullscreen
-                    ? "Salir Pantalla Completa"
-                    : "Pantalla Completa"}
-                </button>
-              ) : null}
-
-              <div className="cp-userchip cp-desktop">
-                <span className="cp-userchip-email" title={email}>
-                  {email}
-                </span>
-                <span className="cp-userchip-role">{roleLabel}</span>
-              </div>
-
+        {currentUser ? (
+          <div className="navbar__topRight">
+            {showFullscreenButton ? (
               <button
-                className="cp-btn cp-btn-danger cp-desktop"
-                onClick={handleLogout}
+                type="button"
+                className="navbar__ghostBtn"
+                onClick={handleToggleFullscreen}
               >
-                Cerrar Sesión
+                {isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
               </button>
+            ) : null}
 
-              {/* Mobile hamburger */}
-              <button
-                className="cp-hamburger cp-mobile"
-                onClick={() => setMobileOpen((v) => !v)}
-                aria-label="Abrir menú"
-              >
-                <span />
-                <span />
-                <span />
-              </button>
-            </>
-          ) : null}
-        </div>
-      </div>
-
-      {/* Mobile drawer */}
-      {currentUser && mobileOpen ? (
-        <div className="cp-drawer">
-          <div className="cp-drawer-top">
-            <div className="cp-userchip">
-              <span className="cp-userchip-email" title={email}>
+            <div className="navbar__session desktop-only">
+              <span className="navbar__email" title={email}>
                 {email}
               </span>
-              <span className="cp-userchip-role">{roleLabel}</span>
+              <span className="navbar__role">{roleLabel}</span>
             </div>
 
-            <button className="cp-btn cp-btn-danger" onClick={handleLogout}>
-              Cerrar Sesión
+            <button
+              type="button"
+              className="navbar__logout desktop-only"
+              onClick={handleLogout}
+            >
+              Cerrar sesión
+            </button>
+
+            <button
+              type="button"
+              className="navbar__hamburger mobile-only"
+              onClick={() => setMobileOpen((v) => !v)}
+              aria-label="Abrir menú"
+            >
+              <span />
+              <span />
+              <span />
             </button>
           </div>
+        ) : null}
+      </div>
 
-          <div className="cp-drawer-links">
+      {currentUser ? (
+        <div className="navbar__menuBar">
+          <nav className="navbar__nav desktop-only" aria-label="Navegación principal">
             {baseItems.map((it) => {
               if (it.dropdown && rol === "admin") {
                 return (
-                  <div key={it.label} className="cp-drawer-group">
-                    <div className="cp-drawer-group-title">Admin</div>
+                  <div
+                    key={it.label}
+                    className="navbar__dropdown"
+                    ref={adminDropRef}
+                  >
                     <button
-                      className="cp-drawer-link"
-                      onClick={() => goAdminTab("tramites")}
+                      type="button"
+                      className={`navbar__navItem navbar__navButton ${
+                        isActive("/administrador") ? "active" : ""
+                      }`}
+                      onClick={() => setAdminOpen((v) => !v)}
+                      aria-haspopup="menu"
+                      aria-expanded={adminOpen}
                     >
-                      Gestionar Trámites
+                      {it.label}
+                      <span className={`navbar__caret ${adminOpen ? "open" : ""}`}>
+                        ▾
+                      </span>
                     </button>
-                    <button
-                      className="cp-drawer-link"
-                      onClick={() => goAdminTab("agentes")}
-                    >
-                      Gestionar Agentes
-                    </button>
-                    <button
-                      className="cp-drawer-link"
-                      onClick={() => goAdminTab("feriados")}
-                    >
-                      Días Bloqueados / Feriados
-                    </button>
+
+                    {adminOpen ? (
+                      <div className="navbar__dropdownMenu" role="menu">
+                        <button
+                          type="button"
+                          onClick={() => goAdminTab("tramites")}
+                          className="navbar__dropdownItem"
+                          role="menuitem"
+                        >
+                          Trámites
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => goAdminTab("agentes")}
+                          className="navbar__dropdownItem"
+                          role="menuitem"
+                        >
+                          Equipo
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => goAdminTab("feriados")}
+                          className="navbar__dropdownItem"
+                          role="menuitem"
+                        >
+                          Calendario
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                 );
               }
 
               return (
                 <Link
-                  key={it.label}
+                  key={it.to}
                   to={it.to}
-                  className={`cp-drawer-link ${isActive(it.to) ? "active" : ""}`}
-                  onClick={closeMobile}
+                  className={`navbar__navItem ${isActive(it.to) ? "active" : ""}`}
                 >
                   {it.label}
                 </Link>
               );
             })}
-          </div>
+          </nav>
 
-          {showFullscreenButton ? (
-            <div className="cp-drawer-bottom">
-              <button className="cp-btn cp-btn-ghost" onClick={handleToggleFullscreen}>
-                {isFullscreen ? "Salir Pantalla Completa" : "Pantalla Completa"}
-              </button>
+          {mobileOpen ? (
+            <div className="navbar__mobilePanel mobile-only">
+              <div className="navbar__mobileSession">
+                <span className="navbar__mobileEmail">{email}</span>
+                <span className="navbar__mobileRole">{roleLabel}</span>
+              </div>
+
+              <div className="navbar__mobileLinks">
+                {baseItems.map((it) => {
+                  if (it.dropdown && rol === "admin") {
+                    return (
+                      <div key={it.label} className="navbar__mobileGroup">
+                        <button
+                          type="button"
+                          className="navbar__mobileLink navbar__mobileLink--group"
+                          onClick={() => setAdminOpen((v) => !v)}
+                        >
+                          {it.label}
+                          <span className={`navbar__caret ${adminOpen ? "open" : ""}`}>
+                            ▾
+                          </span>
+                        </button>
+
+                        {adminOpen ? (
+                          <div className="navbar__mobileSubmenu">
+                            <button
+                              type="button"
+                              className="navbar__mobileSubLink"
+                              onClick={() => goAdminTab("tramites")}
+                            >
+                              Trámites
+                            </button>
+                            <button
+                              type="button"
+                              className="navbar__mobileSubLink"
+                              onClick={() => goAdminTab("agentes")}
+                            >
+                              Equipo
+                            </button>
+                            <button
+                              type="button"
+                              className="navbar__mobileSubLink"
+                              onClick={() => goAdminTab("feriados")}
+                            >
+                              Calendario
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <Link
+                      key={it.to}
+                      to={it.to}
+                      className={`navbar__mobileLink ${isActive(it.to) ? "active" : ""}`}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      {it.label}
+                    </Link>
+                  );
+                })}
+              </div>
+
+              <div className="navbar__mobileActions">
+                {showFullscreenButton ? (
+                  <button
+                    type="button"
+                    className="navbar__ghostBtn navbar__ghostBtn--mobile"
+                    onClick={handleToggleFullscreen}
+                  >
+                    {isFullscreen ? "Salir de pantalla completa" : "Pantalla completa"}
+                  </button>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="navbar__logout navbar__logout--mobile"
+                  onClick={handleLogout}
+                >
+                  Cerrar sesión
+                </button>
+              </div>
             </div>
           ) : null}
         </div>
-      ) : null}
-    </nav>
+      ) : (
+        <div className="navbar__menuBar navbar__menuBar--public" />
+      )}
+    </header>
   );
 }

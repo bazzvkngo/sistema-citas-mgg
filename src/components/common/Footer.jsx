@@ -138,6 +138,8 @@ export default function Footer() {
     "/kiosko",
     "/panel-agente",
     "/administrador",
+    "/metricas",
+    "/agenda",
   ];
 
   if (hideOn.some((r) => pathname.startsWith(r))) return null;
