@@ -36,7 +36,7 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
   }, []);
 
   useEffect(() => {
-    const qTurnos = query(collection(db, 'turnos'), where('estado', '==', 'pendiente'));
+    const qTurnos = query(collection(db, 'turnos'), where('estado', '==', 'en-espera'));
     const unsub = onSnapshot(qTurnos, (snap) => setPendingTurnos(snap.size));
     return () => unsub();
   }, []);
@@ -65,7 +65,7 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
 
     const qTurnosList = query(
       collection(db, 'turnos'),
-      where('estado', '==', 'pendiente'),
+      where('estado', '==', 'en-espera'),
       orderBy('fechaHoraGenerado', 'asc'),
       limit(80)
     );
