@@ -2,9 +2,11 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import resolveUserRole from '../../utils/resolveUserRole';
 
 export default function KioskRoute({ children }) {
   const { currentUser, loading } = useAuth();
+  const rol = resolveUserRole(currentUser);
 
   if (loading) {
     return (
@@ -19,7 +21,7 @@ export default function KioskRoute({ children }) {
   // - o "admin" (para pruebas / respaldo)
   if (
     !currentUser ||
-    (currentUser.rol !== 'kiosko' && currentUser.rol !== 'admin')
+    (rol !== 'kiosko' && rol !== 'admin')
   ) {
     return <Navigate to="/inicio" replace />;
   }

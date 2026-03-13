@@ -2,6 +2,7 @@
 import React from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import resolveUserRole from "../../utils/resolveUserRole";
 
 export default function ScreenRoute({ children }) {
   const { currentUser, loading } = useAuth();
@@ -16,7 +17,7 @@ export default function ScreenRoute({ children }) {
     return <Navigate to="/ingreso" replace />;
   }
 
-  const rol = currentUser.rol || "ciudadano";
+  const rol = resolveUserRole(currentUser) || "ciudadano";
 
   // Solo admin o pantalla pueden ver /pantalla-tv
   if (rol !== "admin" && rol !== "pantalla") {

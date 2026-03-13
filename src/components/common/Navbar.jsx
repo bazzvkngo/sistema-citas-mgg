@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import "./Navbar.css";
 import { useAuth } from "../../context/AuthContext";
+import resolveUserRole from "../../utils/resolveUserRole";
 import logoConsulado from "../../assets/logo-consulado.png";
 
 function useClickOutside(ref, handler, when = true) {
@@ -39,10 +40,7 @@ export default function Navbar() {
 
   useClickOutside(adminDropRef, () => setAdminOpen(false), adminOpen);
 
-  const rol = useMemo(
-    () => String(currentUser?.rol || "ciudadano").toLowerCase().trim(),
-    [currentUser]
-  );
+  const rol = useMemo(() => resolveUserRole(currentUser) || "ciudadano", [currentUser]);
 
   const roleLabelMap = {
     ciudadano: "Ciudadano",
@@ -61,7 +59,7 @@ export default function Navbar() {
       p === "/ingreso" ||
       p === "/registro" ||
       p === "/recuperar-contrasena" ||
-      p === "/verificar-email"
+      p === "/verificar-correo"
     );
   }, [location.pathname]);
 

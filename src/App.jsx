@@ -11,6 +11,7 @@ import ScreenRoute from './components/common/ScreenRoute';
 import StaffRoute from './components/common/StaffRoute';
 
 import { useAuth } from './context/AuthContext';
+import resolveUserRole from './utils/resolveUserRole';
 
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -34,7 +35,7 @@ function getHomeRouteByRole(rolRaw) {
   const rol = String(rolRaw || '').toLowerCase().trim();
   if (rol === 'ciudadano') return '/citas';
   if (rol === 'agente' || rol === 'agent') return '/panel-agente';
-  if (rol === 'admin') return '/administrador';
+  if (rol === 'admin') return '/panel-agente';
   if (rol === 'pantalla') return '/pantalla-tv';
   if (rol === 'kiosko') return '/kiosko';
   return '/citas';
@@ -44,7 +45,7 @@ function HomeRedirect() {
   const { currentUser } = useAuth();
   // ProtectedRoute ya asegura login, pero dejamos fallback por seguridad
   if (!currentUser) return <Navigate to="/ingreso" replace />;
-  return <Navigate to={getHomeRouteByRole(currentUser.rol)} replace />;
+  return <Navigate to={getHomeRouteByRole(resolveUserRole(currentUser))} replace />;
 }
 
 export default function App() {
@@ -80,7 +81,14 @@ export default function App() {
         />
 
         <Route path="/qr-seguimiento" element={<TicketTracking />} />
-        <Route path="/verificar-correo" element={<VerifyEmail />} />
+        <Route
+          path="/verificar-correo"
+          element={
+            <ProtectedRoute>
+              <VerifyEmail />
+            </ProtectedRoute>
+          }
+        />
 
         {/* ✅ /inicio ahora NO es una página, es un redirect inteligente */}
         <Route
