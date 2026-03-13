@@ -15,6 +15,14 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "../../firebase";
+import { useAuth } from "../../context/AuthContext";
+import {
+  buildCitizenFullName,
+  buildCitizenPayload,
+  mapCitizenDocToForm,
+  mapUserBootstrapToForm,
+  normalizeCitizenDoc,
+} from "../../utils/citizenProfileData";
 
 const styles = {
   container: {
@@ -91,36 +99,12 @@ const styles = {
   },
 };
 
-// Normaliza a solo dígitos (y K si viene), para DNI/RUT.
-function normalizeDniRut(raw) {
-  if (!raw) return "";
-  return String(raw).toUpperCase().replace(/[^0-9K]/g, "");
-}
-
-function buildNombreFinal({ nombres, apellidos, nombreCompleto }) {
-  const n = (nombres || "").trim();
-  const a = (apellidos || "").trim();
-  const c = (nombreCompleto || "").trim();
-  if (c) return c;
-  return `${n} ${a}`.trim();
-}
-
-function splitNombreCompleto(full) {
-  const t = (full || "").trim();
-  if (!t) return { nombres: "", apellidos: "" };
-  const parts = t.split(/\s+/);
-  if (parts.length === 1) return { nombres: parts[0], apellidos: "" };
-  return {
-    nombres: parts.slice(0, -1).join(" "),
-    apellidos: parts.slice(-1).join(" "),
-  };
-}
-
 export default function CitizenProfile({ role = "agente" }) {
+  const { currentUser } = useAuth();
   const isAdmin = role === "admin";
 
   const [dniRaw, setDniRaw] = useState("");
-  const dniNorm = useMemo(() => normalizeDniRut(dniRaw), [dniRaw]);
+  const dniNorm = useMemo(() => normalizeCitizenDoc(dniRaw), [dniRaw]);
 
   const [tipoDoc, setTipoDoc] = useState("DNI");
   const [nombres, setNombres] = useState("");
@@ -195,14 +179,15 @@ export default function CitizenProfile({ role = "agente" }) {
 
       if (snapC.exists()) {
         const data = snapC.data() || {};
-        setTipoDoc(data.tipoDoc || "DNI");
-        setNombres(data.nombres || "");
-        setApellidos(data.apellidos || "");
-        setNombreCompleto(data.nombreCompleto || "");
-        setTelefono(data.telefono || "");
-        setEmail(data.email || "");
-        setExists(true);
-        setSource("ciudadanos");
+        const mapped = mapCitizenDocToForm(dniNorm, data);
+        setTipoDoc(mapped.tipoDoc);
+        setNombres(mapped.nombres);
+        setApellidos(mapped.apellidos);
+        setNombreCompleto(mapped.nombreCompleto);
+        setTelefono(mapped.telefono);
+        setEmail(mapped.email);
+        setExists(mapped.exists);
+        setSource(mapped.source);
         setMsg("✅ Encontrado en “ciudadanos”.");
         return;
       }
@@ -220,18 +205,15 @@ export default function CitizenProfile({ role = "agente" }) {
         if (!uSnap.empty) {
           const d = uSnap.docs[0];
           const data = d.data() || {};
-          const full = data.nombre || data.nombreCompleto || "";
-          const parts = splitNombreCompleto(full);
-
-          setTipoDoc("DNI");
-          setNombres(parts.nombres);
-          setApellidos(parts.apellidos);
-          setNombreCompleto(full || "");
-          setTelefono(data.telefono || "");
-          setEmail(data.email || "");
-
-          setExists(true);
-          setSource("usuarios");
+          const mapped = mapUserBootstrapToForm(dniNorm, data);
+          setTipoDoc(mapped.tipoDoc);
+          setNombres(mapped.nombres);
+          setApellidos(mapped.apellidos);
+          setNombreCompleto(mapped.nombreCompleto);
+          setTelefono(mapped.telefono);
+          setEmail(mapped.email);
+          setExists(mapped.exists);
+          setSource(mapped.source);
           setMsg("✅ Encontrado en “usuarios”. Puedes GUARDAR para crear/actualizar ficha en “ciudadanos”.");
           return;
         }
@@ -254,22 +236,28 @@ export default function CitizenProfile({ role = "agente" }) {
     setBusy(true);
 
     try {
-      const nombreFinal = buildNombreFinal({ nombres, apellidos, nombreCompleto });
-
       const ref = doc(db, "ciudadanos", dniNorm);
       const payload = {
-        dni: dniNorm,
-        tipoDoc,
-        nombres: (nombres || "").trim(),
-        apellidos: (apellidos || "").trim(),
-        nombreCompleto: (nombreFinal || "").trim(),
-        telefono: (telefono || "").trim(),
-        email: (email || "").trim(),
+        ...buildCitizenPayload({
+          docNorm: dniNorm,
+          docDisplay: dniRaw,
+          tipoDoc,
+          nombres,
+          apellidos,
+          nombreCompleto,
+          telefono,
+          email,
+        }),
         updatedAt: serverTimestamp(),
       };
 
       const before = await getDoc(ref);
-      if (!before.exists()) payload.createdAt = serverTimestamp();
+      if (!before.exists()) {
+        payload.createdAt = serverTimestamp();
+        payload.createdBy = currentUser?.uid || "";
+      } else {
+        payload.updatedBy = currentUser?.uid || "";
+      }
 
       await setDoc(ref, payload, { merge: true });
 
@@ -377,7 +365,7 @@ export default function CitizenProfile({ role = "agente" }) {
           {`Estado: ${exists ? "Existe" : "No existe"}\n` +
             `Fuente: ${source || "--"}\n` +
             `ID norm: ${dniNorm || "--"}\n` +
-            `Nombre final: ${buildNombreFinal({ nombres, apellidos, nombreCompleto }) || "--"}\n\n` +
+            `Nombre final: ${buildCitizenFullName({ nombres, apellidos, nombreCompleto }) || "--"}\n\n` +
             `Mensaje: ${msg || (exists ? "Listo." : "No existe. Puedes crear el perfil y guardar.")}`}
         </div>
       </div>

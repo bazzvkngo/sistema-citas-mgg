@@ -15,6 +15,13 @@ import {
 } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
 import { db } from '../firebase';
+import {
+  buildCitizenFullName,
+  buildCitizenPayload,
+  mapCitizenDocToForm,
+  mapUserBootstrapToForm,
+  normalizeCitizenDoc,
+} from '../utils/citizenProfileData';
 
 const styles = {
   container: {
@@ -110,32 +117,6 @@ const styles = {
   recentLine: { fontSize: '12px', color: '#555' }
 };
 
-function normalizeDocId(v) {
-  return (v || '')
-    .toString()
-    .trim()
-    .toUpperCase()
-    .replace(/[^0-9K]/g, '');
-}
-
-function formatRutLikeCL(norm) {
-  return norm || '';
-}
-
-function buildNombreCompleto(nombres, apellidos) {
-  const a = (nombres || '').toString().trim();
-  const b = (apellidos || '').toString().trim();
-  return [a, b].filter(Boolean).join(' ').trim();
-}
-
-function splitNombreCompleto(full) {
-  const t = (full || '').toString().trim();
-  if (!t) return { nombres: '', apellidos: '' };
-  const parts = t.split(/\s+/);
-  if (parts.length === 1) return { nombres: parts[0], apellidos: '' };
-  return { nombres: parts.slice(0, -1).join(' '), apellidos: parts.slice(-1).join(' ') };
-}
-
 // ✅ intenta encontrar el usuario ciudadano por dni (y fallback por rut si tu data lo usa así)
 async function findCitizenUserByDoc(docNorm) {
   // 1) usuarios donde dni == docNorm
@@ -177,9 +158,7 @@ export default function CitizenProfile() {
   const [recent, setRecent] = useState([]);
 
   const computedNombreCompleto = useMemo(() => {
-    const v = (nombreCompleto || '').toString().trim();
-    if (v) return v;
-    return buildNombreCompleto(nombres, apellidos);
+    return buildCitizenFullName({ nombres, apellidos, nombreCompleto });
   }, [nombreCompleto, nombres, apellidos]);
 
   const role = useMemo(() => {
@@ -227,7 +206,7 @@ export default function CitizenProfile() {
   // ✅ NUEVO: busca en ciudadanos, y si no existe, autocompleta desde usuarios
   const loadCitizen = async (docIdRaw) => {
     setStatusMsg('');
-    const idNorm = normalizeDocId(docIdRaw || docIdInput);
+    const idNorm = normalizeCitizenDoc(docIdRaw || docIdInput);
 
     if (!idNorm) {
       setStatusMsg('Ingresa un DNI/RUT válido para buscar.');
@@ -242,17 +221,18 @@ export default function CitizenProfile() {
 
       if (snap.exists()) {
         const data = snap.data() || {};
-        setDocIdInput(data.docDisplay || formatRutLikeCL(idNorm));
-        setTipoDoc(data.tipoDoc || 'DNI');
-        setNombres(data.nombres || '');
-        setApellidos(data.apellidos || '');
-        setNombreCompleto(data.nombreCompleto || '');
-        setTelefono(data.telefono || '');
-        setEmail(data.email || '');
-        setExists(true);
+        const mapped = mapCitizenDocToForm(idNorm, data);
+        setDocIdInput(mapped.docIdInput);
+        setTipoDoc(mapped.tipoDoc);
+        setNombres(mapped.nombres);
+        setApellidos(mapped.apellidos);
+        setNombreCompleto(mapped.nombreCompleto);
+        setTelefono(mapped.telefono);
+        setEmail(mapped.email);
+        setExists(mapped.exists);
         setLastLoadedId(idNorm);
 
-        const nombreFinal = (data.nombreCompleto || buildNombreCompleto(data.nombres, data.apellidos) || '').trim();
+        const nombreFinal = buildCitizenFullName(data).trim();
         if (!nombreFinal && !data.telefono && !data.email) {
           setStatusMsg('⚠️ Existe la ficha, pero está incompleta. Completa y presiona Guardar.');
         } else {
@@ -265,20 +245,15 @@ export default function CitizenProfile() {
       const userDoc = await findCitizenUserByDoc(idNorm);
       if (userDoc) {
         const u = userDoc.data() || {};
-
-        // nombres/apellidos pueden venir separados o en nombre/nombreCompleto
-        const full = (u.nombreCompleto || u.nombre || '').toString().trim();
-        const parts = splitNombreCompleto(full);
-
-        setDocIdInput(formatRutLikeCL(idNorm));
-        setTipoDoc(u.tipoDoc || 'DNI');
-        setNombres((u.nombres || parts.nombres || '').toString());
-        setApellidos((u.apellidos || parts.apellidos || '').toString());
-        setNombreCompleto(full || '');
-        setTelefono((u.telefono || '').toString());
-        setEmail((u.email || '').toString());
-
-        setExists(false);
+        const mapped = mapUserBootstrapToForm(idNorm, u);
+        setDocIdInput(mapped.docIdInput);
+        setTipoDoc(mapped.tipoDoc);
+        setNombres(mapped.nombres);
+        setApellidos(mapped.apellidos);
+        setNombreCompleto(mapped.nombreCompleto);
+        setTelefono(mapped.telefono);
+        setEmail(mapped.email);
+        setExists(mapped.exists);
         setLastLoadedId(idNorm);
         setStatusMsg('✅ Datos cargados desde REGISTRO. Presiona Guardar para crear la ficha del ciudadano.');
         return;
@@ -312,8 +287,6 @@ export default function CitizenProfile() {
       return;
     }
 
-    const nombresV = (nombres || '').toString().trim();
-    const apellidosV = (apellidos || '').toString().trim();
     const nombreCompletoV = (computedNombreCompleto || '').toString().trim();
 
     if (!nombreCompletoV) {
@@ -324,16 +297,17 @@ export default function CitizenProfile() {
     setLoading(true);
     try {
       const ref = doc(db, 'ciudadanos', idNorm);
-
       const payload = {
-        docNorm: idNorm,
-        docDisplay: (docIdInput || '').toString().trim(),
-        tipoDoc: (tipoDoc || 'DNI').toString().trim(),
-        nombres: nombresV,
-        apellidos: apellidosV,
-        nombreCompleto: nombreCompletoV,
-        telefono: (telefono || '').toString().trim(),
-        email: (email || '').toString().trim(),
+        ...buildCitizenPayload({
+          docNorm: idNorm,
+          docDisplay: docIdInput,
+          tipoDoc,
+          nombres,
+          apellidos,
+          nombreCompleto: nombreCompletoV,
+          telefono,
+          email,
+        }),
         updatedAt: serverTimestamp()
       };
 
@@ -436,7 +410,7 @@ export default function CitizenProfile() {
                 }}
               />
               <div style={{ fontSize: '12px', color: '#666', fontWeight: 800 }}>
-                Normalizado: {normalizeDocId(docIdInput) || '--'}
+                Normalizado: {normalizeCitizenDoc(docIdInput) || '--'}
               </div>
             </div>
 
@@ -578,7 +552,7 @@ export default function CitizenProfile() {
           ) : (
             <div style={styles.recentList}>
               {recent.map((c) => {
-                const nombre = (c.nombreCompleto || buildNombreCompleto(c.nombres, c.apellidos) || '').toString();
+                const nombre = buildCitizenFullName(c).toString();
                 return (
                   <div key={c.id} style={styles.recentCard}>
                     <div style={styles.recentName}>{nombre || 'Sin nombre'}</div>
