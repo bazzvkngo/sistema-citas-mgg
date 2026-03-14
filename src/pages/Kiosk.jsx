@@ -1,60 +1,82 @@
-// src/pages/Kiosk.jsx
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { collection, getDocs, query } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { QRCodeSVG } from "qrcode.react";
 import { db, app } from "../firebase";
+import useImmersiveFullscreen from "../hooks/useImmersiveFullscreen";
+import logoConsulado from "../assets/logo-consulado.png";
 
-// Functions
 const functions = getFunctions(app, "southamerica-west1");
 const generarTurnoKiosko = httpsCallable(functions, "generarTurnoKiosko");
 
-/**
- * Kiosk – estilo “Sodimac”
- * - Flujo: trámites -> dni -> ticket
- * - Fullscreen: doble click / tecla F
- * - En fullscreen se oculta navbar global (.cp-navbar)
- */
-
 const UI = {
-  bg: "#eef3fb",
+  bg: "#f1f4f8",
   panel: "#ffffff",
   ink: "#0b1220",
   muted: "#6b7280",
-  brand: "#1f6feb",
-  border: "rgba(15, 23, 42, 0.12)",
-  shadow: "0 18px 55px rgba(0,0,0,0.14)",
+  brand: "#c8102e",
+  borderSoft: "rgba(148, 163, 184, 0.18)",
+  shadow: "0 20px 48px rgba(15,23,42,0.1)",
 };
 
 const styles = {
   page: {
     minHeight: "100vh",
     background: UI.bg,
-    fontFamily: "Arial, sans-serif",
+    fontFamily: '"Segoe UI", Arial, sans-serif',
     display: "flex",
     flexDirection: "column",
   },
 
   top: {
-    height: 78,
-    background: UI.panel,
-    borderBottom: `1px solid ${UI.border}`,
+    minHeight: 76,
+    background: "#ffffff",
+    borderBottom: `1px solid ${UI.borderSoft}`,
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    padding: "0 22px",
+    padding: "10px 20px",
+    gap: 16,
   },
   topLeft: { display: "flex", alignItems: "center", gap: 14 },
   logoBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    background: "linear-gradient(135deg, #0ea5e9, #1f6feb)",
-    boxShadow: "0 10px 24px rgba(31,111,235,0.25)",
+    width: 50,
+    height: 50,
+    borderRadius: 14,
+    background: "#ffffff",
+    boxShadow: "0 8px 20px rgba(15,23,42,0.1)",
+    display: "grid",
+    placeItems: "center",
+    flexShrink: 0,
   },
-  topTitle: { fontWeight: 900, fontSize: 18 },
-  topSub: { fontWeight: 800, fontSize: 12, color: UI.muted, marginTop: 2 },
-  topRight: { fontWeight: 900, fontSize: 13, color: UI.muted },
+  logoImg: {
+    width: 38,
+    height: 38,
+    objectFit: "contain",
+  },
+  topTitle: {
+    fontWeight: 900,
+    fontSize: 20,
+    lineHeight: 1.05,
+    color: UI.ink,
+    letterSpacing: "-0.03em",
+  },
+  topSub: {
+    fontWeight: 800,
+    fontSize: 12,
+    color: UI.muted,
+    marginTop: 3,
+  },
+  topRight: {
+    fontWeight: 900,
+    fontSize: 11,
+    color: UI.muted,
+    background: "#f8fafc",
+    border: "1px solid rgba(148,163,184,0.16)",
+    borderRadius: 999,
+    padding: "8px 11px",
+    whiteSpace: "nowrap",
+  },
 
   center: {
     flex: 1,
@@ -64,39 +86,81 @@ const styles = {
     padding: 18,
   },
   card: {
-    width: "min(860px, 96vw)",
+    width: "min(840px, 92vw)",
     background: UI.panel,
-    border: `1px solid ${UI.border}`,
-    borderRadius: 20,
+    border: `1px solid ${UI.borderSoft}`,
+    borderRadius: 24,
     boxShadow: UI.shadow,
-    padding: "28px 26px",
+    padding: "24px 24px 22px",
   },
-  h1: { margin: 0, fontSize: 30, fontWeight: 900, color: UI.ink },
-  h2: { margin: "10px 0 0 0", fontSize: 18, fontWeight: 800, color: UI.muted },
+  eyebrow: {
+    margin: 0,
+    fontSize: 12,
+    fontWeight: 900,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+    color: UI.brand,
+  },
+  h1: {
+    margin: "10px 0 0",
+    fontSize: 38,
+    lineHeight: 1.02,
+    fontWeight: 900,
+    color: UI.ink,
+    letterSpacing: "-0.04em",
+  },
+  h2: {
+    margin: "12px 0 0 0",
+    fontSize: 17,
+    fontWeight: 800,
+    color: UI.muted,
+    lineHeight: 1.45,
+    maxWidth: 640,
+  },
 
   gridBtns: {
-    marginTop: 22,
+    marginTop: 20,
     display: "grid",
     gridTemplateColumns: "1fr",
-    gap: 14,
+    gap: 12,
   },
   btn: {
     width: "100%",
     textAlign: "center",
-    padding: "22px 18px",
-    borderRadius: 14,
-    border: `2px solid ${UI.border}`,
-    background: "#fff",
+    padding: "18px 18px",
+    borderRadius: 18,
+    border: `1px solid ${UI.borderSoft}`,
+    background: "#ffffff",
     fontSize: 22,
     fontWeight: 900,
     color: UI.ink,
     cursor: "pointer",
-    transition: "transform .06s ease",
+    transition: "transform .12s ease, box-shadow .12s ease, border-color .12s ease, background .12s ease",
+    boxShadow: "0 10px 24px rgba(15,23,42,0.06)",
+    minHeight: 86,
+  },
+  btnLabel: {
+    display: "block",
+    fontSize: 22,
+    lineHeight: 1.1,
+    fontWeight: 900,
+    color: UI.ink,
+    letterSpacing: "-0.03em",
+  },
+  btnMeta: {
+    display: "block",
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 1.4,
+    fontWeight: 800,
+    color: UI.muted,
   },
   btnPrimary: {
-    background: "linear-gradient(135deg, #1f6feb, #0b3d91)",
+    background: "linear-gradient(135deg, #c8102e, #a30f1f)",
     color: "#fff",
     border: "none",
+    boxShadow: "0 16px 30px rgba(200,16,46,0.2)",
+    textAlign: "center",
   },
   btnGhost: {
     background: "transparent",
@@ -106,127 +170,124 @@ const styles = {
     cursor: "pointer",
     textDecoration: "underline",
     marginTop: 14,
+    fontSize: 15,
   },
-
-  dniWrap: { marginTop: 18, display: "grid", gap: 12 },
+  sectionCard: {
+    marginTop: 18,
+    padding: 0,
+    borderRadius: 0,
+    background: "transparent",
+    border: "none",
+  },
+  selectedService: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    borderRadius: 999,
+    background: "#fff5f5",
+    border: "1px solid rgba(200,16,46,0.16)",
+    color: UI.brand,
+    fontSize: 12,
+    fontWeight: 900,
+  },
+  dniWrap: { marginTop: 14, display: "grid", gap: 12 },
   input: {
-    height: 66,
-    borderRadius: 14,
-    border: `2px solid ${UI.border}`,
-    padding: "0 16px",
-    fontSize: 26,
+    height: 72,
+    borderRadius: 18,
+    border: `2px solid ${UI.borderSoft}`,
+    padding: "0 18px",
+    fontSize: 28,
     fontWeight: 900,
     textAlign: "center",
     outline: "none",
+    background: "#ffffff",
+    color: UI.ink,
+    letterSpacing: "0.04em",
   },
 
   ticketBox: {
     marginTop: 16,
-    border: `2px solid ${UI.border}`,
+    border: `1px solid ${UI.borderSoft}`,
     borderRadius: 18,
-    padding: 18,
-    background: "#f8fafc",
+    padding: 20,
+    background: "#ffffff",
     textAlign: "center",
   },
-  ticketLabel: { margin: 0, fontSize: 16, fontWeight: 900, color: UI.muted },
+  ticketLabel: {
+    margin: 0,
+    fontSize: 13,
+    fontWeight: 900,
+    color: UI.muted,
+    textTransform: "uppercase",
+    letterSpacing: "0.08em",
+  },
   ticketService: {
-    margin: "8px 0 0 0",
-    fontSize: 24,
+    margin: "10px 0 0 0",
+    fontSize: 26,
     fontWeight: 900,
     color: UI.ink,
+    letterSpacing: "-0.03em",
   },
   ticketCode: {
-    margin: "10px 0 0 0",
-    fontSize: 74,
+    margin: "16px 0 0 0",
+    fontSize: 76,
     fontWeight: 900,
-    color: "#C8102E",
+    color: UI.brand,
     lineHeight: 1,
+    letterSpacing: "-0.04em",
   },
-  hr: { margin: "16px 0", border: "none", borderTop: `1px solid ${UI.border}` },
-
+  qrWrap: {
+    display: "flex",
+    justifyContent: "center",
+    marginTop: 12,
+    padding: 10,
+    borderRadius: 16,
+    background: "#ffffff",
+    border: `1px solid ${UI.borderSoft}`,
+  },
+  hr: {
+    margin: "16px 0",
+    border: "none",
+    borderTop: `1px solid ${UI.borderSoft}`,
+  },
   error: {
     marginTop: 10,
     background: "#fff5f5",
-    border: "1px solid #ffd0d0",
-    color: "#7a0000",
-    borderRadius: 12,
-    padding: "10px 12px",
+    border: "1px solid #fecdd3",
+    color: "#9f1239",
+    borderRadius: 14,
+    padding: "12px 14px",
     fontWeight: 900,
+  },
+  loadingState: {
+    padding: "14px 16px",
+    borderRadius: 16,
+    border: `1px dashed ${UI.borderSoft}`,
+    background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
+    fontWeight: 900,
+    color: UI.muted,
   },
 };
 
 export default function Kiosk() {
   const rootRef = useRef(null);
+  const { toggleFullscreen } = useImmersiveFullscreen(rootRef, {
+    styleId: "cp-kiosk-fullscreen-style",
+    bodyClassName: "cp-kiosk-fullscreen",
+  });
 
   const [tramites, setTramites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [view, setView] = useState("tramites"); // "tramites" | "dni" | "ticket"
+  const [view, setView] = useState("tramites");
   const [selectedTramite, setSelectedTramite] = useState(null);
 
   const [dniVisual, setDniVisual] = useState("");
   const [dniLimpio, setDniLimpio] = useState("");
 
   const [generatedTicket, setGeneratedTicket] = useState(null);
-
-  // Oculta navbar global SOLO cuando el kiosko está montado y hay fullscreen
-  useEffect(() => {
-    const STYLE_ID = "cp-kiosk-fullscreen-style";
-    if (!document.getElementById(STYLE_ID)) {
-      const style = document.createElement("style");
-      style.id = STYLE_ID;
-      style.textContent = `
-        body.cp-kiosk-fullscreen .cp-navbar{display:none!important;}
-      `;
-      document.head.appendChild(style);
-    }
-
-    const onFs = () => {
-      const fs = !!document.fullscreenElement;
-      if (fs) document.body.classList.add("cp-kiosk-fullscreen");
-      else document.body.classList.remove("cp-kiosk-fullscreen");
-    };
-
-    document.addEventListener("fullscreenchange", onFs);
-    onFs();
-
-    return () => {
-      document.removeEventListener("fullscreenchange", onFs);
-      document.body.classList.remove("cp-kiosk-fullscreen");
-    };
-  }, []);
-
-  const toggleFullscreen = useCallback(async () => {
-    try {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen();
-        return;
-      }
-      const el = rootRef.current || document.documentElement;
-      if (el.requestFullscreen) await el.requestFullscreen();
-    } catch (e) {
-      console.error("Fullscreen error:", e);
-    }
-  }, []);
-
-  // Tecla F para fullscreen (no interfiere con input)
-  useEffect(() => {
-    const onKeyDown = (e) => {
-      const tag = (e.target?.tagName || "").toLowerCase();
-      const isTypingTarget =
-        tag === "input" || tag === "textarea" || e.target?.isContentEditable;
-      if (isTypingTarget) return;
-
-      if (e.key === "f" || e.key === "F") {
-        e.preventDefault();
-        toggleFullscreen();
-      }
-    };
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggleFullscreen]);
 
   useEffect(() => {
     const fetchTramites = async () => {
@@ -287,7 +348,6 @@ export default function Kiosk() {
       });
 
       const { id, codigo, nombre } = result.data;
-
       const qrUrl = `${window.location.origin}/qr-seguimiento?turnoId=${id}`;
 
       setGeneratedTicket({
@@ -302,9 +362,7 @@ export default function Kiosk() {
 
       let userMessage = "Error al generar su turno.\nIntente de nuevo.";
       if (err.message && err.message.includes("FirebaseError: ")) {
-        userMessage = err.message
-          .replace("FirebaseError: ", "")
-          .replace(":", "");
+        userMessage = err.message.replace("FirebaseError: ", "").replace(":", "");
       } else if (err.code) {
         userMessage = `Error de servidor (${err.code}). Por favor, intente más tarde.`;
       }
@@ -329,13 +387,14 @@ export default function Kiosk() {
 
   return (
     <div ref={rootRef} style={styles.page} onDoubleClick={toggleFullscreen}>
-      {/* TOP BAR (propio del kiosko) */}
       <div style={styles.top}>
         <div style={styles.topLeft}>
-          <div style={styles.logoBox} />
+          <div style={styles.logoBox}>
+            <img src={logoConsulado} alt="Consulado del Perú" style={styles.logoImg} />
+          </div>
           <div>
-            <div style={styles.topTitle}>Consulado del Perú – Iquique</div>
-            <div style={styles.topSub}>Kiosko de turnos</div>
+            <div style={styles.topTitle}>Consulado del Perú en Iquique</div>
+            <div style={styles.topSub}>Kiosko de atención consular</div>
           </div>
         </div>
         <div style={styles.topRight}>{stepLabel}</div>
@@ -343,93 +402,96 @@ export default function Kiosk() {
 
       <div style={styles.center}>
         <div style={styles.card}>
-          {/* VISTA 1: TRÁMITES */}
           {view === "tramites" && (
             <>
+              <p style={styles.eyebrow}>Paso 1</p>
               <h1 style={styles.h1}>Selecciona un servicio</h1>
-              <h2 style={styles.h2}>para obtener tu turno:</h2>
+              <h2 style={styles.h2}>
+                Toca el trámite que necesitas para comenzar la emisión de tu turno.
+              </h2>
 
               <div style={styles.gridBtns}>
-                {loading && (
-                  <div style={{ fontWeight: 900, color: UI.muted }}>
-                    Cargando servicios…
-                  </div>
-                )}
-
+                {loading && <div style={styles.loadingState}>Cargando servicios…</div>}
                 {error && <div style={styles.error}>{error}</div>}
 
                 {!loading &&
                   tramites.map((t) => (
-                    <button
-                      key={t.id}
-                      style={styles.btn}
-                      onClick={() => handleSelectTramite(t)}
-                    >
-                      {t.nombre || t.id}
+                    <button key={t.id} style={styles.btn} onClick={() => handleSelectTramite(t)}>
+                      <span style={styles.btnLabel}>{t.nombre || t.id}</span>
+                      <span style={styles.btnMeta}>Continuar con este servicio</span>
                     </button>
                   ))}
               </div>
             </>
           )}
 
-          {/* VISTA 2: DNI */}
           {view === "dni" && selectedTramite && (
             <>
-              <h1 style={styles.h1}>{selectedTramite.nombre || "Servicio"}</h1>
-              <h2 style={styles.h2}>Ingresa tu DNI o RUT para continuar</h2>
+              <p style={styles.eyebrow}>Paso 2</p>
+              <h1 style={styles.h1}>Identificación</h1>
+              <h2 style={styles.h2}>
+                Ingresa tu DNI o RUT para generar el turno del trámite seleccionado.
+              </h2>
 
-              <div style={styles.dniWrap}>
-                <input
-                  style={styles.input}
-                  value={dniVisual}
-                  onChange={handleDniChange}
-                  placeholder="12.345.678-9"
-                  autoFocus
-                  inputMode="text"
-                  autoComplete="off"
-                />
+              <div style={styles.sectionCard}>
+                <span style={styles.selectedService}>
+                  Servicio: {selectedTramite.nombre || "Servicio"}
+                </span>
+
+                <div style={styles.dniWrap}>
+                  <input
+                    style={styles.input}
+                    value={dniVisual}
+                    onChange={handleDniChange}
+                    placeholder="12.345.678-9"
+                    autoFocus
+                    inputMode="text"
+                    autoComplete="off"
+                  />
 
                 {error && <div style={styles.error}>{error}</div>}
 
                 <button
-                  style={{ ...styles.btn, ...styles.btnPrimary }}
+                  style={{ ...styles.btn, ...styles.btnPrimary, marginTop: 6 }}
                   onClick={handleGenerarTurno}
                   disabled={loading}
                 >
-                  {loading ? "Generando…" : "Generar Turno"}
-                </button>
+                  {loading ? "Generando…" : "Generar turno"}
+                  </button>
 
-                <button style={styles.btnGhost} onClick={resetKiosk} disabled={loading}>
-                  ← Volver
-                </button>
+                  <button style={styles.btnGhost} onClick={resetKiosk} disabled={loading}>
+                    ← Volver
+                  </button>
+                </div>
               </div>
             </>
           )}
 
-          {/* VISTA 3: TICKET */}
           {view === "ticket" && generatedTicket && (
             <>
+              <p style={styles.eyebrow}>Paso 3</p>
               <h1 style={styles.h1}>Tu turno fue generado</h1>
-              <h2 style={styles.h2}>Espera a ser llamado en pantalla</h2>
+              <h2 style={styles.h2}>
+                Espera a ser llamado en pantalla. También puedes seguir el estado escaneando
+                el código QR.
+              </h2>
 
               <div style={styles.ticketBox}>
-                <p style={styles.ticketLabel}>Servicio:</p>
+                <p style={styles.ticketLabel}>Servicio</p>
                 <p style={styles.ticketService}>{generatedTicket.nombre}</p>
 
                 <p style={styles.ticketCode}>{generatedTicket.codigo}</p>
 
                 <hr style={styles.hr} />
 
-                <p style={styles.ticketLabel}>
-                  Escanea este QR para ver el estado de tu turno:
-                </p>
+                <p style={styles.ticketLabel}>Escanea este QR para ver el estado de tu turno</p>
 
-                <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
-                  <QRCodeSVG value={generatedTicket.qrValue} size={170} />
+                <div style={styles.qrWrap}>
+                  <QRCodeSVG value={generatedTicket.qrValue} size={146} />
                 </div>
 
                 <button
-                  style={{ ...styles.btn, ...styles.btnPrimary, marginTop: 18 }}
+                  style={{ ...styles.btn, ...styles.btnPrimary, marginTop: 20 }}
                   onClick={resetKiosk}
                 >
                   Aceptar

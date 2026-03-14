@@ -148,9 +148,6 @@ export default function Navbar() {
         .requestFullscreen()
         .then(() => {
           setIsFullscreen(true);
-          if (location.pathname === "/pantalla-tv") {
-            window.dispatchEvent(new Event("enableTvSound"));
-          }
         })
         .catch((err) => console.error("Error al entrar en fullscreen:", err));
     } else {

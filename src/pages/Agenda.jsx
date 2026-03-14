@@ -248,6 +248,14 @@ export default function Agenda() {
       </div>
 
       <div className="agenda-card">
+        <div className="agenda-toolbar">
+          <div className="agenda-toolbarCopy">
+            <div className="agenda-toolbarEyebrow">Vista operativa</div>
+            <div className="agenda-toolbarTitle">Consulta de citas web y turnos kiosko</div>
+            <div className="agenda-toolbarHint">Mismo flujo y filtros actuales, con una lectura más clara de estados y registros.</div>
+          </div>
+        </div>
+
         <div className="agenda-controls">
           <div className="agenda-field">
             <label>Rango</label>
@@ -320,6 +328,21 @@ export default function Agenda() {
           </button>
         </div>
 
+        <div className="agenda-statusBar">
+          <span className="agenda-statusItem">
+            <span className="agenda-statusDot agenda-statusDot--records" />
+            {rows.length} registro{rows.length === 1 ? '' : 's'} visibles
+          </span>
+          <span className="agenda-statusItem">
+            <span className="agenda-statusDot agenda-statusDot--tab" />
+            {tab === 'citas' ? 'Citas web' : 'Turnos kiosko'}
+          </span>
+          <span className="agenda-statusItem">
+            <span className="agenda-statusDot agenda-statusDot--range" />
+            {monthsAhead} mes{monthsAhead === 1 ? '' : 'es'} de rango
+          </span>
+        </div>
+
         {loadError ? <div className="agenda-empty">{loadError}</div> : null}
 
         {!loadError && loading ? <div className="agenda-empty">Cargando…</div> : null}
@@ -353,15 +376,26 @@ export default function Agenda() {
                   return (
                     <tr key={x.id}>
                       <td>
-                        <strong>{codigo}</strong>
+                        <div className="agenda-codeCell">
+                          <strong>{codigo}</strong>
+                          <span className="agenda-codeSub">{tab === 'citas' ? 'Cita web' : 'Turno kiosko'}</span>
+                        </div>
                       </td>
-                      <td>{tramiteNombre}</td>
-                      <td>{fecha}</td>
+                      <td>
+                        <div className="agenda-mainText">{tramiteNombre}</div>
+                      </td>
+                      <td>
+                        <div className="agenda-dateCell">{fecha}</div>
+                      </td>
                       <td>
                         <span className={badgeClass(x.estado)}>{x.estado || '—'}</span>
                       </td>
-                      <td>{mod}</td>
-                      <td>{x.dni || '—'}</td>
+                      <td>
+                        <span className="agenda-chip">{mod}</span>
+                      </td>
+                      <td>
+                        <span className="agenda-mutedCell">{x.dni || '—'}</span>
+                      </td>
                     </tr>
                   );
                 })}

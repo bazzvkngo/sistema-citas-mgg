@@ -42,14 +42,6 @@ const styles = {
   btnPrimary: { background: '#0d6efd', color: '#fff' },
   btnWarn: { background: '#ffc107', color: '#333' },
   btnDanger: { background: '#dc3545', color: '#fff' },
-  badge: {
-    display: 'inline-block',
-    padding: '4px 8px',
-    borderRadius: 999,
-    border: '1px solid #ddd',
-    fontWeight: 800,
-    fontSize: 12
-  },
   modalBackdrop: {
     position: 'fixed',
     inset: 0,
@@ -63,6 +55,19 @@ const styles = {
   modal: { width: 'min(720px, 100%)', background: '#fff', borderRadius: 14, padding: 16 },
   modalTitle: { margin: '0 0 10px', fontSize: 16, fontWeight: 900 },
   modalRow: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 },
+  modalReadOnly: {
+    width: '100%',
+    minHeight: 42,
+    padding: '10px 12px',
+    borderRadius: 10,
+    border: '1px solid #ddd',
+    background: '#f8fafc',
+    color: '#334155',
+    fontWeight: 800,
+    boxSizing: 'border-box',
+    display: 'flex',
+    alignItems: 'center'
+  },
   textarea: {
     width: '100%',
     minHeight: 90,
@@ -113,23 +118,23 @@ export default function AdminClosedAppointments() {
   const [tramiteID, setTramiteID] = useState('');
 
   const [selected, setSelected] = useState(null);
+  const [editComentarios, setEditComentarios] = useState('');
   const [editObs, setEditObs] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
       const snap = await getDocs(collection(db, 'tramites'));
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setTramites(list);
     })();
   }, []);
 
   useEffect(() => {
-    const day = new Date(dateISO + 'T00:00:00');
+    const day = new Date(`${dateISO}T00:00:00`);
     const from = Timestamp.fromDate(startOfDay(day));
     const to = Timestamp.fromDate(endOfDay(day));
 
-    // Cerradas reales del día: estado completado + fechaHoraAtencionFin dentro del día
     const qC = query(
       collection(db, 'citas'),
       where('estado', '==', 'completado'),
@@ -140,7 +145,7 @@ export default function AdminClosedAppointments() {
     );
 
     const unsub = onSnapshot(qC, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
       setRows(list);
     });
 
@@ -149,7 +154,9 @@ export default function AdminClosedAppointments() {
 
   const tramiteName = useMemo(() => {
     const map = {};
-    tramites.forEach(t => { map[t.id] = t.nombre || t.id; });
+    tramites.forEach((t) => {
+      map[t.id] = t.nombre || t.id;
+    });
     return map;
   }, [tramites]);
 
@@ -157,8 +164,8 @@ export default function AdminClosedAppointments() {
     const s = search.trim().toLowerCase();
 
     return rows
-      .filter(r => (tramiteID ? r.tramiteID === tramiteID : true))
-      .filter(r => {
+      .filter((r) => (tramiteID ? r.tramiteID === tramiteID : true))
+      .filter((r) => {
         if (!s) return true;
         const hay =
           String(r.codigo || '').toLowerCase().includes(s) ||
@@ -172,11 +179,13 @@ export default function AdminClosedAppointments() {
 
   const openEdit = (r) => {
     setSelected(r);
-    setEditObs(String(r.observacion || r.obs || r.comentariosAgente || ''));
+    setEditComentarios(String(r.comentariosAgente || ''));
+    setEditObs(String(r.observacion || r.obs || ''));
   };
 
   const closeModal = () => {
     setSelected(null);
+    setEditComentarios('');
     setEditObs('');
   };
 
@@ -188,6 +197,7 @@ export default function AdminClosedAppointments() {
       const fn = httpsCallable(functions, 'adminUpdateClosedCita');
       await fn({
         citaId: selected.id,
+        comentariosAgente: editComentarios,
         observacion: editObs
       });
       closeModal();
@@ -216,20 +226,17 @@ export default function AdminClosedAppointments() {
 
   return (
     <div style={styles.wrap}>
-      <h3 style={styles.title}>Citas Cerradas / Concluidas</h3>
+      <h3 style={styles.title}>Citas cerradas / concluidas</h3>
 
       <div style={styles.filters}>
-        <input
-          style={styles.input}
-          type="date"
-          value={dateISO}
-          onChange={(e) => setDateISO(e.target.value)}
-        />
+        <input style={styles.input} type="date" value={dateISO} onChange={(e) => setDateISO(e.target.value)} />
 
         <select style={styles.input} value={tramiteID} onChange={(e) => setTramiteID(e.target.value)}>
-          <option value="">Todos los trámites</option>
-          {tramites.map(t => (
-            <option key={t.id} value={t.id}>{t.nombre || t.id}</option>
+          <option value="">Todos los tramites</option>
+          {tramites.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.nombre || t.id}
+            </option>
           ))}
         </select>
 
@@ -237,7 +244,7 @@ export default function AdminClosedAppointments() {
 
         <input
           style={styles.input}
-          placeholder="Buscar por código, DNI, nombre..."
+          placeholder="Buscar por codigo, DNI, nombre..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -246,18 +253,20 @@ export default function AdminClosedAppointments() {
       <table style={styles.table}>
         <thead>
           <tr>
-            <th style={styles.th}>Código</th>
-            <th style={styles.th}>Trámite</th>
-            <th style={styles.th}>Fecha Programada</th>
-            <th style={styles.th}>Fecha Cierre</th>
+            <th style={styles.th}>Codigo</th>
+            <th style={styles.th}>Tramite</th>
+            <th style={styles.th}>Fecha programada</th>
+            <th style={styles.th}>Fecha cierre</th>
             <th style={styles.th}>DNI</th>
             <th style={styles.th}>Acciones</th>
           </tr>
         </thead>
         <tbody>
-          {filtered.map(r => (
+          {filtered.map((r) => (
             <tr key={r.id}>
-              <td style={styles.td}><strong>{r.codigo || r.id}</strong></td>
+              <td style={styles.td}>
+                <strong>{r.codigo || r.id}</strong>
+              </td>
               <td style={styles.td}>{tramiteName[r.tramiteID] || r.tramiteID || '—'}</td>
               <td style={styles.td}>{fmtTs(r.fechaHora)}</td>
               <td style={styles.td}>{fmtTs(r.fechaHoraAtencionFin)}</td>
@@ -274,7 +283,9 @@ export default function AdminClosedAppointments() {
           ))}
           {filtered.length === 0 && (
             <tr>
-              <td style={styles.td} colSpan={6}>No hay citas cerradas para los filtros seleccionados.</td>
+              <td style={styles.td} colSpan={6}>
+                No hay citas cerradas para los filtros seleccionados.
+              </td>
             </tr>
           )}
         </tbody>
@@ -288,39 +299,50 @@ export default function AdminClosedAppointments() {
             <div style={styles.modalRow}>
               <div>
                 <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Estado</div>
-                <input style={styles.input} value={String(selected.estado || '')} disabled />
+                <div style={styles.modalReadOnly}>{String(selected.estado || '—')}</div>
               </div>
 
               <div>
-                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Trámite</div>
-                <input
-                  style={styles.input}
-                  value={tramiteName[selected.tramiteID] || selected.tramiteID || ''}
-                  disabled
-                />
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Tramite</div>
+                <div style={styles.modalReadOnly}>{tramiteName[selected.tramiteID] || selected.tramiteID || '—'}</div>
               </div>
             </div>
 
-            <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Observación</div>
-            <textarea
-              style={styles.textarea}
-              value={editObs}
-              onChange={(e) => setEditObs(e.target.value)}
-            />
+            <div style={styles.modalRow}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Clasificacion</div>
+                <div style={styles.modalReadOnly}>{String(selected.clasificacion || '—')}</div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Modulo</div>
+                <div style={styles.modalReadOnly}>{String(selected.moduloAsignado || selected.modulo || '—')}</div>
+              </div>
+            </div>
+
+            <div style={styles.modalRow}>
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Agente</div>
+                <div style={styles.modalReadOnly}>{String(selected.agenteID || selected.cerradoPor || '—')}</div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Fecha de cierre</div>
+                <div style={styles.modalReadOnly}>{fmtTs(selected.fechaHoraAtencionFin)}</div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, fontWeight: 800, marginBottom: 6 }}>Comentarios del agente</div>
+            <textarea style={styles.textarea} value={editComentarios} onChange={(e) => setEditComentarios(e.target.value)} />
+
+            <div style={{ fontSize: 12, fontWeight: 800, margin: '10px 0 6px' }}>Observacion administrativa</div>
+            <textarea style={styles.textarea} value={editObs} onChange={(e) => setEditObs(e.target.value)} />
 
             <div style={styles.modalActions}>
-              <button
-                style={{ ...styles.btn, ...styles.btnDanger }}
-                onClick={closeModal}
-                disabled={saving}
-              >
+              <button style={{ ...styles.btn, ...styles.btnDanger }} onClick={closeModal} disabled={saving}>
                 Cancelar
               </button>
-              <button
-                style={{ ...styles.btn, ...styles.btnPrimary }}
-                onClick={handleSave}
-                disabled={saving}
-              >
+              <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={handleSave} disabled={saving}>
                 {saving ? 'Guardando...' : 'Guardar'}
               </button>
             </div>

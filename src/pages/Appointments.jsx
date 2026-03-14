@@ -43,9 +43,14 @@ function getChileHHmm(dateObj) {
     hourCycle: 'h23'
   }).formatToParts(dateObj);
 
-  const hh = parts.find(p => p.type === 'hour')?.value ?? '00';
-  const mm = parts.find(p => p.type === 'minute')?.value ?? '00';
+  const hh = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const mm = parts.find((p) => p.type === 'minute')?.value ?? '00';
   return `${hh}:${mm}`;
+}
+
+function capitalizeText(value) {
+  if (!value) return '';
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 export default function Appointments() {
@@ -78,10 +83,10 @@ export default function Appointments() {
       setLoadingTramites(true);
       try {
         const tramitesSnapshot = await getDocs(collection(db, 'tramites'));
-        const tramitesList = tramitesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const tramitesList = tramitesSnapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         setTramites(tramitesList);
       } catch (error) {
-        console.error('Error al cargar trámites: ', error);
+        console.error('Error al cargar tramites: ', error);
       }
       setLoadingTramites(false);
     };
@@ -109,7 +114,7 @@ export default function Appointments() {
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
-        const citasList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+        const citasList = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         setMyCitas(citasList);
         setLoadingMyCitas(false);
       },
@@ -124,7 +129,7 @@ export default function Appointments() {
 
   const selectedTramite = useMemo(() => {
     if (!selectedTramiteId) return null;
-    return tramites.find(t => t.id === selectedTramiteId) || null;
+    return tramites.find((t) => t.id === selectedTramiteId) || null;
   }, [tramites, selectedTramiteId]);
 
   const step = useMemo(() => {
@@ -190,7 +195,7 @@ export default function Appointments() {
 
   const filteredSlots = useMemo(() => {
     if (!availableSlots?.length) return [];
-    return availableSlots.filter(s => !userTakenSlotsOnSelectedDate.has(s));
+    return availableSlots.filter((s) => !userTakenSlotsOnSelectedDate.has(s));
   }, [availableSlots, userTakenSlotsOnSelectedDate]);
 
   const myCitasSorted = useMemo(() => {
@@ -223,7 +228,7 @@ export default function Appointments() {
     const uid = auth.currentUser?.uid || currentUser?.uid;
 
     if (!uid) {
-      setAgendarError('Sesión no válida.');
+      setAgendarError('Sesion no valida.');
       return;
     }
 
@@ -245,7 +250,7 @@ export default function Appointments() {
       });
 
       const codigo = resp?.data?.codigo || '';
-      const mensajeFinal = `Cita agendada con éxito.\nRecuerde estar 10 minutos antes.`;
+      const mensajeFinal = 'Cita agendada con exito.\nRecuerde estar 10 minutos antes.';
       setSuccessMessage(mensajeFinal);
       setSuccessCode(codigo);
 
@@ -268,7 +273,7 @@ export default function Appointments() {
   };
 
   const handleCancelCita = async (citaId) => {
-    if (!window.confirm('¿Está seguro de que desea cancelar esta cita?')) return;
+    if (!window.confirm('Esta seguro de que desea cancelar esta cita?')) return;
 
     try {
       const citaDocRef = doc(db, 'citas', citaId);
@@ -286,7 +291,6 @@ export default function Appointments() {
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
-      // fallback mínimo
       const el = document.createElement('textarea');
       el.value = successCode;
       document.body.appendChild(el);
@@ -306,7 +310,7 @@ export default function Appointments() {
 
         {successCode ? (
           <div className="cp-code-row">
-            <span className="cp-muted">Código:</span>
+            <span className="cp-muted">Codigo:</span>
             <span className="cp-code-pill">{successCode}</span>
             <button type="button" className="cp-btn cp-btn-ghost" onClick={handleCopyCode}>
               {copied ? 'Copiado' : 'Copiar'}
@@ -320,19 +324,23 @@ export default function Appointments() {
   };
 
   const renderCitaItem = (cita) => {
-    const tramite = tramites.find(t => t.id === cita.tramiteID);
+    const tramite = tramites.find((t) => t.id === cita.tramiteID);
     const link = tramite?.enlaceInfo;
     const nombreTramite = tramite?.nombre || cita.tramiteID;
+    const citaDate = cita.fechaHora?.toDate ? cita.fechaHora.toDate() : null;
+    const moduloTexto = cita.moduloAsignado || cita.modulo || 'Por confirmar';
 
     const esLlamada = cita.estado === 'llamado';
     const estadoTexto = esLlamada
-      ? 'Llamada (el consulado está listo para atenderle)'
-      : 'Activa (aún en espera)';
+      ? 'Llamada (el consulado ya esta listo para atenderle)'
+      : 'Activa (su cita sigue registrada y en espera)';
 
     const qrUrl = `${window.location.origin}/qr-seguimiento?turnoId=${cita.id}`;
-    const fechaTexto = cita.fechaHora
-      ? format(cita.fechaHora.toDate(), 'dd/MM/yyyy HH:mm')
+    const fechaTexto = citaDate ? format(citaDate, 'dd/MM/yyyy HH:mm') : 'Fecha no disponible';
+    const fechaDiaTexto = citaDate
+      ? capitalizeText(format(citaDate, "EEEE d 'de' MMMM", { locale: es }))
       : 'Fecha no disponible';
+    const fechaHoraTexto = citaDate ? format(citaDate, 'HH:mm') : '--:--';
 
     const badgeClass = esLlamada ? 'cp-badge cp-badge--green' : 'cp-badge cp-badge--amber';
     const badgeText = esLlamada ? 'Llamado' : 'En espera';
@@ -340,18 +348,34 @@ export default function Appointments() {
     return (
       <li key={cita.id} className="cp-cita-item">
         <div className="cp-cita-top">
-          <div className="cp-cita-title">{nombreTramite}</div>
+          <div className="cp-cita-heading">
+            <div className="cp-cita-kicker">Cita registrada</div>
+            <div className="cp-cita-title">{nombreTramite}</div>
+          </div>
           <span className={badgeClass}>{badgeText}</span>
         </div>
 
-        <div className="cp-cita-grid">
-          <div>
-            <div className="cp-muted">Código</div>
-            <div className="cp-strong">{cita.codigo || '---'}</div>
+        <div className="cp-cita-highlight">
+          <div className="cp-cita-dateCard">
+            <div className="cp-cita-dateLabel">Fecha y hora</div>
+            <div className="cp-cita-dateDay">{fechaDiaTexto}</div>
+            <div className="cp-cita-dateHour">{fechaHoraTexto}</div>
           </div>
-          <div>
-            <div className="cp-muted">Fecha y hora</div>
+
+          <div className="cp-cita-codeCard">
+            <div className="cp-muted">Codigo</div>
+            <div className="cp-cita-codeValue">{cita.codigo || '---'}</div>
+          </div>
+        </div>
+
+        <div className="cp-cita-grid">
+          <div className="cp-cita-detail">
+            <div className="cp-muted">Fecha completa</div>
             <div className="cp-strong">{fechaTexto}</div>
+          </div>
+          <div className="cp-cita-detail">
+            <div className="cp-muted">Modulo o sucursal</div>
+            <div className="cp-strong">{moduloTexto}</div>
           </div>
         </div>
 
@@ -360,7 +384,7 @@ export default function Appointments() {
         <div className="cp-cita-links">
           {link ? (
             <a className="cp-link" href={link} target="_blank" rel="noopener noreferrer">
-              Ver requisitos del trámite
+              Ver requisitos del tramite
             </a>
           ) : null}
 
@@ -384,56 +408,48 @@ export default function Appointments() {
     );
   };
 
-  const summaryDate = selectedDate ? format(selectedDate, 'dd/MM/yyyy') : '—';
-  const summaryTramite = selectedTramite?.nombre || '—';
-  const summarySlot = selectedSlot || '—';
+  const summaryDate = selectedDate ? format(selectedDate, 'dd/MM/yyyy') : '--';
+  const summaryTramite = selectedTramite?.nombre || '--';
+  const summarySlot = selectedSlot || '--';
+  const activeAppointmentsCount = myCitasSorted.length;
 
   return (
     <div className="appointments-page">
-      <header className="appointments-header">
-        <div>
-          <h2 className="appointments-title">Citas Web</h2>
+      <header className="appointments-header appointments-header--hero">
+        <div className="appointments-hero-copy">
+          <div className="appointments-kicker">Mis citas</div>
+          <h2 className="appointments-title">Agenda y revisa tus citas en un solo lugar</h2>
           <p className="appointments-subtitle">
-            Agende una cita seleccionando trámite, fecha y horario disponible.
+            Agenda una nueva cita con claridad y revisa debajo el estado de tus citas activas.
           </p>
+        </div>
+
+        <div className="appointments-hero-panel">
+          <div className="appointments-hero-stat">
+            <span className="appointments-hero-statLabel">Citas activas</span>
+            <strong className="appointments-hero-statValue">{activeAppointmentsCount}</strong>
+          </div>
+
+          <a className="appointments-hero-link" href="#agendar-cita">
+            Ir a agendar nueva cita
+          </a>
         </div>
       </header>
 
       <div className="appointments-grid">
-        <section className="appointments-card appointments-card--mine">
-          <div className="cp-section-head">
-            <h3 className="cp-section-title">Mis citas activas</h3>
-            <div className="cp-muted cp-small">Aquí verás tus citas en espera o llamadas.</div>
-          </div>
-
-          {loadingMyCitas ? (
-            <p className="cp-muted">Cargando citas...</p>
-          ) : myCitas.length === 0 ? (
-            <div className="cp-empty">
-              <div className="cp-empty-title">No tienes citas activas</div>
-              <div className="cp-empty-body">
-                Puedes agendar una cita en el panel de la derecha.
-              </div>
-            </div>
-          ) : (
-            <ul className="cp-citas-list">
-              {myCitasSorted.map(renderCitaItem)}
-            </ul>
-          )}
-        </section>
-
         <section className="appointments-card appointments-card--agendar">
           <div className="cp-section-head" id="agendar-cita">
+            <div className="cp-section-kicker">Nuevo agendamiento</div>
             <h3 className="cp-section-title">Agendar nueva cita</h3>
             <div className="cp-muted cp-small">
-              Solo días hábiles desde mañana. Un horario por turno.
+              Elige tramite, fecha y horario disponible. Solo dias habiles desde manana.
             </div>
           </div>
 
           <div className="cp-stepper" aria-label="Pasos para agendar">
             <div className={`cp-step ${step > 1 ? 'cp-step--done' : ''} ${step === 1 ? 'cp-step--active' : ''}`}>
               <span className="cp-step-dot" />
-              <span className="cp-step-text">Trámite</span>
+              <span className="cp-step-text">Tramite</span>
             </div>
             <div className={`cp-step ${step > 2 ? 'cp-step--done' : ''} ${step === 2 ? 'cp-step--active' : ''}`}>
               <span className="cp-step-dot" />
@@ -449,9 +465,9 @@ export default function Appointments() {
             </div>
           </div>
 
-          <div className="cp-summary" aria-label="Resumen de selección">
+          <div className="cp-summary" aria-label="Resumen de seleccion">
             <div className="cp-summary-row">
-              <span className="cp-muted">Trámite</span>
+              <span className="cp-muted">Tramite</span>
               <span className="cp-strong">{summaryTramite}</span>
             </div>
             <div className="cp-summary-row">
@@ -475,10 +491,10 @@ export default function Appointments() {
 
           <form onSubmit={handleAgendarCita}>
             {loadingTramites ? (
-              <p className="cp-muted">Cargando trámites...</p>
+              <p className="cp-muted">Cargando tramites...</p>
             ) : (
               <div className="cp-form-row">
-                <label className="cp-label">1. Trámite</label>
+                <label className="cp-label">1. Tramite</label>
                 <select
                   value={selectedTramiteId}
                   onChange={(e) => {
@@ -495,7 +511,7 @@ export default function Appointments() {
                   className="cp-select"
                 >
                   <option value="">-- Por favor seleccione --</option>
-                  {tramites.map(tramite => (
+                  {tramites.map((tramite) => (
                     <option key={tramite.id} value={tramite.id}>
                       {tramite.nombre}
                     </option>
@@ -521,12 +537,12 @@ export default function Appointments() {
                       }}
                       locale={es}
                       disabled={[finesDeSemana, { before: tomorrow }]}
-                      hidden={day => getDay(day) === 0 || getDay(day) === 6}
+                      hidden={(day) => getDay(day) === 0 || getDay(day) === 6}
                       initialFocus
                       footer={
                         selectedDate
                           ? <div className="cp-calendar-footer">Has seleccionado: {format(selectedDate, 'dd/MM/yyyy')}</div>
-                          : <div className="cp-calendar-footer">Selecciona un día hábil.</div>
+                          : <div className="cp-calendar-footer">Selecciona un dia habil.</div>
                       }
                     />
                   </div>
@@ -534,9 +550,9 @@ export default function Appointments() {
 
                 {selectedDate && userTakenSlotsOnSelectedDate.size > 0 ? (
                   <div className="cp-alert cp-alert--info" role="status">
-                    <div className="cp-alert-title">Atención</div>
+                    <div className="cp-alert-title">Atencion</div>
                     <div className="cp-alert-body">
-                      Ya tienes un horario reservado ese día. Los horarios tomados se ocultan automáticamente.
+                      Ya tienes un horario reservado ese dia. Los horarios tomados se ocultan automaticamente.
                     </div>
                   </div>
                 ) : null}
@@ -570,7 +586,7 @@ export default function Appointments() {
                 {filteredSlots.length === 0 && !loadingSlots && selectedDate ? (
                   <div className="cp-alert cp-alert--info" role="status">
                     <div className="cp-alert-title">Sin horarios disponibles</div>
-                    <div className="cp-alert-body">Prueba con otra fecha o vuelve más tarde.</div>
+                    <div className="cp-alert-body">Prueba con otra fecha o vuelve mas tarde.</div>
                   </div>
                 ) : null}
 
@@ -583,11 +599,42 @@ export default function Appointments() {
                 </button>
 
                 <div className="cp-footnote">
-                  Recomendación: llegue con 10 minutos de anticipación.
+                  Recomendacion: llegue con 10 minutos de anticipacion.
                 </div>
               </>
             )}
           </form>
+        </section>
+
+        <section className="appointments-card appointments-card--mine">
+          <div className="cp-section-head">
+            <div className="cp-section-kicker">Tus registros</div>
+            <div className="cp-section-titleRow">
+              <h3 className="cp-section-title">Mis citas activas y registradas</h3>
+              <span className="cp-count-pill">{activeAppointmentsCount}</span>
+            </div>
+            <div className="cp-muted cp-small">
+              Revisa aqui tus citas en espera o si tu turno ya fue llamado.
+            </div>
+          </div>
+
+          {loadingMyCitas ? (
+            <p className="cp-muted">Cargando citas...</p>
+          ) : myCitas.length === 0 ? (
+            <div className="cp-empty">
+              <div className="cp-empty-title">Aun no tienes citas registradas</div>
+              <div className="cp-empty-body">
+                Cuando agendes una cita, la veras aqui con su fecha, estado y acceso al seguimiento.
+              </div>
+              <a className="cp-btn cp-btn-primary cp-empty-cta" href="#agendar-cita">
+                Agendar mi primera cita
+              </a>
+            </div>
+          ) : (
+            <ul className="cp-citas-list">
+              {myCitasSorted.map(renderCitaItem)}
+            </ul>
+          )}
         </section>
       </div>
     </div>

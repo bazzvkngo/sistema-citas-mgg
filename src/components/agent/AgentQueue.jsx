@@ -131,8 +131,8 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
   const callNext = async () => {
     if (loadingCall) return;
 
-    if (!moduloEfectivo) return alert('Asigna un módulo para poder llamar.');
-    if (atencionActual) return alert('Ya hay una atención activa. Finaliza primero.');
+    if (!moduloEfectivo) return alert('Asigna un modulo para poder llamar.');
+    if (atencionActual) return alert('Ya hay una atencion activa. Finaliza primero.');
 
     setLoadingCall(true);
     try {
@@ -154,20 +154,18 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
       <div style={styles.topRow}>
         <div>
           <h3 style={styles.title}>Cola unificada</h3>
-          <p style={styles.sub}>
-            Prioridad: <b>WEB</b> (si está dentro de hora) → <b>KIOSKO</b>
-          </p>
+          <p style={styles.sub}>Prioridad: WEB elegible, luego KIOSKO.</p>
         </div>
 
         <div style={styles.badges}>
           <span style={styles.chip('kiosko')}>
-            <span style={styles.chipDot('#6c757d')} />
+            <span style={styles.chipDot('#64748b')} />
             Kiosko <span style={styles.chipValue}>{pendingTurnos}</span>
           </span>
 
           <span style={styles.chip('web')}>
-            <span style={styles.chipDot('#0d6efd')} />
-            Web (elegibles) <span style={styles.chipValue}>{pendingCitas}</span>
+            <span style={styles.chipDot('#2563eb')} />
+            Web <span style={styles.chipValue}>{pendingCitas}</span>
           </span>
         </div>
       </div>
@@ -176,12 +174,12 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
         <div style={styles.callHeader}>
           <div>
             <div style={styles.callTitle}>Llamado simple</div>
-            <div style={styles.callText}>
-              El sistema decide automáticamente si corresponde <b>KIOSKO</b> o <b>WEB</b> según prioridad.
-            </div>
+            <div style={styles.callText}>Llamado automatico segun prioridad.</div>
           </div>
+
           <div style={styles.callTotal}>
-            Pendientes totales: <b>{totalPendientes}</b>
+            <span style={styles.callTotalLabel}>Pendientes</span>
+            <strong style={styles.callTotalValue}>{totalPendientes}</strong>
           </div>
         </div>
 
@@ -189,7 +187,7 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
           type="button"
           onClick={callNext}
           disabled={callDisabled}
-          title={!moduloEfectivo ? 'Asigna un módulo para poder llamar.' : (atencionActual ? 'Finaliza la atención actual.' : '')}
+          title={!moduloEfectivo ? 'Asigna un modulo para poder llamar.' : atencionActual ? 'Finaliza la atencion actual.' : ''}
           style={{
             ...styles.callBtn,
             opacity: callDisabled ? 0.6 : 1,
@@ -206,27 +204,31 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
         {showDetail && (
           <div style={styles.detailBox}>
             <div style={styles.detailTitle}>Detalle de pendientes</div>
-            <div style={styles.detailHint}>Lista unificada por prioridad (máx. 120).</div>
+            <div style={styles.detailHint}>Orden actual de atencion.</div>
 
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
                   <tr>
                     <th style={styles.th}>Tipo</th>
-                    <th style={styles.th}>Trámite</th>
-                    <th style={styles.th}>Código</th>
+                    <th style={styles.th}>Tramite</th>
+                    <th style={styles.th}>Codigo</th>
                     <th style={styles.th}>DNI/RUT</th>
                   </tr>
                 </thead>
                 <tbody>
                   {unifiedList.length === 0 ? (
                     <tr>
-                      <td style={styles.td} colSpan={4}>Sin pendientes.</td>
+                      <td style={styles.td} colSpan={4}>
+                        Sin pendientes.
+                      </td>
                     </tr>
                   ) : (
                     unifiedList.map((r) => (
                       <tr key={`${r.tipo}-${r.id}`}>
-                        <td style={styles.td}><b>{r.tipo}</b></td>
+                        <td style={styles.td}>
+                          <strong>{r.tipo}</strong>
+                        </td>
                         <td style={styles.td}>{r.tramiteNombre || r.tramiteID}</td>
                         <td style={styles.td}>{r.codigo}</td>
                         <td style={styles.td}>{r.dni}</td>
@@ -245,75 +247,126 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
 
 const styles = {
   card: {
-    background: '#fff',
-    borderRadius: 16,
-    padding: 18,
-    border: '1px solid rgba(0,0,0,0.06)',
-    boxShadow: '0 8px 20px rgba(0,0,0,0.06)',
+    background: 'linear-gradient(180deg, rgba(255,255,255,0.99) 0%, rgba(248,250,252,0.97) 100%)',
+    borderRadius: 22,
+    padding: 20,
+    border: '1px solid rgba(148,163,184,0.16)',
+    boxShadow: '0 20px 42px rgba(15,23,42,0.08)',
   },
   topRow: {
     display: 'flex',
-    gap: 12,
+    gap: 14,
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
-    paddingBottom: 10,
-    borderBottom: '1px solid rgba(0,0,0,0.06)'
+    paddingBottom: 14,
+    borderBottom: '1px solid rgba(148,163,184,0.14)'
   },
-  title: { margin: 0, fontSize: 22 },
-  sub: { margin: '6px 0 0', color: '#555', fontSize: 13 },
+  title: { margin: 0, fontSize: 24, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' },
+  sub: { margin: '6px 0 0', color: '#64748b', fontSize: 12, fontWeight: 700, letterSpacing: '0.02em' },
   badges: { display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' },
   chip: (type) => ({
     display: 'inline-flex',
     alignItems: 'center',
     gap: 8,
     borderRadius: 999,
-    padding: '8px 12px',
-    border: '1px solid rgba(0,0,0,0.08)',
-    background: type === 'web' ? 'rgba(13,110,253,0.06)' : 'rgba(108,117,125,0.08)',
-    fontSize: 13,
+    padding: '9px 13px',
+    border: '1px solid rgba(148,163,184,0.16)',
+    background:
+      type === 'web'
+        ? 'linear-gradient(180deg, #eef4ff 0%, #dfeafe 100%)'
+        : 'linear-gradient(180deg, #ffffff 0%, #f1f5f9 100%)',
+    fontSize: 11,
+    fontWeight: 900,
+    color: type === 'web' ? '#1d4ed8' : '#334155',
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase',
+    boxShadow: '0 10px 20px rgba(15,23,42,0.05)'
   }),
-  chipDot: (c) => ({ width: 10, height: 10, borderRadius: 999, background: c }),
-  chipValue: { fontWeight: 800, marginLeft: 4 },
+  chipDot: (c) => ({ width: 8, height: 8, borderRadius: 999, background: c }),
+  chipValue: { fontWeight: 900, marginLeft: 2 },
 
-  callBox: { marginTop: 14 },
-  callHeader: { display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' },
-  callTitle: { fontSize: 18, fontWeight: 800, color: '#0d6efd' },
-  callText: { marginTop: 6, fontSize: 13, color: '#555', maxWidth: 520 },
-  callTotal: { fontSize: 13, color: '#555', alignSelf: 'center' },
+  callBox: {
+    marginTop: 16,
+    padding: '18px 18px 16px',
+    borderRadius: 20,
+    border: '1px solid rgba(59,130,246,0.12)',
+    background: 'radial-gradient(circle at top left, rgba(239,246,255,0.96) 0%, rgba(255,255,255,0.98) 60%, rgba(248,250,252,0.98) 100%)',
+    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.82), 0 18px 34px rgba(37,99,235,0.07)'
+  },
+  callHeader: { display: 'flex', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap', alignItems: 'flex-start' },
+  callTitle: { fontSize: 20, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' },
+  callText: { marginTop: 5, fontSize: 12, color: '#64748b', fontWeight: 700, letterSpacing: '0.02em' },
+  callTotal: {
+    minWidth: 118,
+    padding: '10px 12px',
+    borderRadius: 16,
+    border: '1px solid rgba(148,163,184,0.16)',
+    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+    boxShadow: '0 10px 18px rgba(15,23,42,0.05)',
+    display: 'grid',
+    gap: 2,
+    justifyItems: 'end'
+  },
+  callTotalLabel: {
+    fontSize: 10,
+    fontWeight: 900,
+    color: '#64748b',
+    letterSpacing: '0.12em',
+    textTransform: 'uppercase'
+  },
+  callTotalValue: {
+    fontSize: 26,
+    lineHeight: 1,
+    fontWeight: 900,
+    color: '#0f172a',
+    letterSpacing: '-0.04em'
+  },
 
   callBtn: {
     width: '100%',
-    marginTop: 10,
+    marginTop: 14,
     border: 'none',
-    borderRadius: 12,
-    padding: '14px 16px',
+    borderRadius: 16,
+    padding: '15px 18px',
     fontWeight: 900,
-    fontSize: 18,
-    background: '#0d6efd',
-    color: '#fff'
+    fontSize: 17,
+    letterSpacing: '0.01em',
+    background: 'linear-gradient(135deg, #0b5ed7 0%, #0f4fb6 100%)',
+    color: '#fff',
+    boxShadow: '0 18px 28px rgba(13,94,215,0.22)'
   },
   detailBtn: {
     marginTop: 10,
     padding: '10px 14px',
-    borderRadius: 12,
-    border: '1px solid rgba(0,0,0,0.12)',
-    background: '#fff',
-    fontWeight: 700,
+    borderRadius: 14,
+    border: '1px solid rgba(148,163,184,0.18)',
+    background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+    fontWeight: 800,
+    color: '#334155',
     cursor: 'pointer'
   },
 
   detailBox: {
     marginTop: 12,
-    borderRadius: 14,
-    border: '1px solid rgba(0,0,0,0.08)',
-    padding: 12
+    borderRadius: 18,
+    border: '1px solid rgba(148,163,184,0.14)',
+    background: 'rgba(255,255,255,0.88)',
+    padding: 14
   },
-  detailTitle: { fontWeight: 900, fontSize: 13 },
-  detailHint: { marginTop: 4, fontSize: 12, color: '#666', fontWeight: 700 },
+  detailTitle: { fontWeight: 900, fontSize: 13, color: '#0f172a', letterSpacing: '0.01em' },
+  detailHint: { marginTop: 4, fontSize: 12, color: '#64748b', fontWeight: 700 },
 
   tableWrap: { marginTop: 10, overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse' },
-  th: { textAlign: 'left', padding: 10, borderBottom: '1px solid rgba(0,0,0,0.08)', fontSize: 12 },
-  td: { padding: 10, borderBottom: '1px solid rgba(0,0,0,0.05)', fontSize: 12 }
+  th: {
+    textAlign: 'left',
+    padding: 10,
+    borderBottom: '1px solid rgba(148,163,184,0.14)',
+    fontSize: 11,
+    color: '#64748b',
+    letterSpacing: '0.04em',
+    textTransform: 'uppercase'
+  },
+  td: { padding: 10, borderBottom: '1px solid rgba(148,163,184,0.08)', fontSize: 12, color: '#0f172a' }
 };

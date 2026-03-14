@@ -52,6 +52,13 @@ function safeStr(v) {
   return String(v);
 }
 
+function normalizeCitizenDocServer(raw) {
+  return safeStr(raw)
+    .trim()
+    .toUpperCase()
+    .replace(/[^0-9K]/g, "");
+}
+
 async function resolveTramiteNombre(tramiteID, fallback = "") {
   const base = fallback ? safeStr(fallback) : "";
   const id = safeStr(tramiteID).trim();
@@ -312,6 +319,62 @@ exports.checkDniExists = onCall({ region: SANTIAGO_REGION }, async (request) => 
   } catch (error) {
     console.error("Error al verificar DNI:", error);
     throw new HttpsError("internal", "Ocurrió un error interno al verificar el DNI.");
+  }
+});
+
+exports.lookupCitizenUserByDoc = onCall({ region: SANTIAGO_REGION }, async (request) => {
+  try {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+
+    const callerSnap = await db.collection("usuarios").doc(auth.uid).get();
+    const caller = callerSnap.exists ? (callerSnap.data() || {}) : null;
+    const rol = safeStr(caller?.rol || caller?.role || caller?.tipoUsuario || caller?.perfil)
+      .trim()
+      .toLowerCase();
+
+    if (!["admin", "agente"].includes(rol)) {
+      throw new HttpsError("permission-denied", "No autorizado.");
+    }
+
+    const docNorm = normalizeCitizenDocServer(data?.doc || data?.docNorm || data?.dni || data?.rut);
+    if (!docNorm || docNorm.length < 7) {
+      throw new HttpsError("invalid-argument", "Documento no valido.");
+    }
+
+    const fields = ["dni", "rut", "docNorm"];
+
+    for (const field of fields) {
+      const snap = await db.collection("usuarios").where(field, "==", docNorm).limit(5).get();
+      if (snap.empty) continue;
+
+      for (const docSnap of snap.docs) {
+        const user = docSnap.data() || {};
+        const userRol = safeStr(user.rol || user.role || user.tipoUsuario || user.perfil).trim().toLowerCase();
+        if (userRol && userRol !== "ciudadano") continue;
+
+        return {
+          found: true,
+          user: {
+            docNorm,
+            docDisplay: safeStr(user.rut || user.dni || user.docNorm || docNorm).trim(),
+            tipoDoc: safeStr(user.tipoDoc || "DNI").trim() || "DNI",
+            nombre: safeStr(user.nombre || "").trim(),
+            nombreCompleto: safeStr(user.nombreCompleto || "").trim(),
+            nombres: safeStr(user.nombres || "").trim(),
+            apellidos: safeStr(user.apellidos || "").trim(),
+            telefono: safeStr(user.telefono || "").trim(),
+            email: safeStr(user.email || "").trim(),
+          },
+        };
+      }
+    }
+
+    return { found: false };
+  } catch (error) {
+    console.error("lookupCitizenUserByDoc error:", error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Error interno al buscar ciudadano.");
   }
 });
 
@@ -1281,7 +1344,7 @@ exports.adminUpdateClosedCita = onCall({ region: SANTIAGO_REGION }, async (reque
       throw new HttpsError("permission-denied", "No tienes permisos para editar citas cerradas.");
     }
 
-    const { citaId, observacion = "" } = data || {};
+    const { citaId, comentariosAgente = "", observacion = "" } = data || {};
     if (!citaId) throw new HttpsError("invalid-argument", "Falta citaId.");
 
     const ref = db.collection("citas").doc(String(citaId));
@@ -1295,6 +1358,7 @@ exports.adminUpdateClosedCita = onCall({ region: SANTIAGO_REGION }, async (reque
     }
 
     await ref.update({
+      comentariosAgente: String(comentariosAgente),
       observacion: String(observacion),
       updatedAt: Timestamp.now(),
       updatedBy: auth.uid,
@@ -1360,16 +1424,6 @@ exports.adminReopenCita = onCall({ region: SANTIAGO_REGION }, async (request) =>
 /* =========================
    PASO 10: ADMIN EDITA AGENTES (datos + email + contraseña)
    ========================= */
-
-async function requireAdmin(uid) {
-  const snap = await db.collection("usuarios").doc(uid).get();
-  const u = snap.exists ? snap.data() : null;
-  const rol = u?.rol || u?.role || "user";
-  if (rol !== "admin") {
-    throw new HttpsError("permission-denied", "Solo un administrador puede realizar esta acción.");
-  }
-  return { userDoc: u || null };
-}
 
 exports.adminUpdateAgente = onCall({ region: SANTIAGO_REGION }, async (request) => {
   try {
@@ -1743,6 +1797,9 @@ async function requireAdmin(uid) {
   return u;
 }
 
+// LEGACY / compatibilidad:
+// El frontend actual usa `adminUpdateAgente`.
+// Mantener este callable mientras no se confirme que no hay consumidores externos.
 exports.adminUpdateAgent = onCall({ region: SANTIAGO_REGION }, async (request) => {
   try {
     const { auth, data } = request;

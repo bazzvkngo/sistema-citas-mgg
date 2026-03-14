@@ -45,39 +45,57 @@ export default function ReportChart({
 
     const isDoughnut = type === "doughnut";
     const isLine = type === "line";
+    const barGradient = !isDoughnut && !isLine
+      ? ctx.createLinearGradient(0, 0, 0, el.height || 320)
+      : null;
+    const lineGradient = isLine
+      ? ctx.createLinearGradient(0, 0, 0, el.height || 320)
+      : null;
+
+    if (barGradient) {
+      barGradient.addColorStop(0, "rgba(200, 16, 46, 0.96)");
+      barGradient.addColorStop(1, "rgba(239, 68, 68, 0.58)");
+    }
+
+    if (lineGradient) {
+      lineGradient.addColorStop(0, "rgba(200, 16, 46, 0.28)");
+      lineGradient.addColorStop(1, "rgba(200, 16, 46, 0.02)");
+    }
 
     const dataset = isDoughnut
       ? {
           label: title || "",
           data: safe.safeValues,
           backgroundColor: safe.safeLabels.map((_, index) => DONUT_COLORS[index % DONUT_COLORS.length]),
-          borderWidth: 0,
-          hoverOffset: 6,
+          borderColor: "#ffffff",
+          borderWidth: 3,
+          spacing: 3,
+          hoverOffset: 8,
         }
       : isLine
         ? {
             label: title || "",
             data: safe.safeValues,
             borderColor: "#C8102E",
-            backgroundColor: "rgba(200, 16, 46, 0.12)",
+            backgroundColor: lineGradient || "rgba(200, 16, 46, 0.12)",
             pointBackgroundColor: "#C8102E",
             pointBorderColor: "#ffffff",
             pointBorderWidth: 2,
             pointRadius: 4,
             pointHoverRadius: 5,
             borderWidth: 3,
-            tension: 0.32,
+            tension: 0.38,
             fill: true,
           }
         : {
             label: title || "",
             data: safe.safeValues,
-            backgroundColor: "rgba(200, 16, 46, 0.82)",
+            backgroundColor: barGradient || "rgba(200, 16, 46, 0.82)",
             borderColor: "#C8102E",
-            borderWidth: 1,
-            borderRadius: 10,
+            borderWidth: 0,
+            borderRadius: 12,
             borderSkipped: false,
-            maxBarThickness: 34,
+            maxBarThickness: 36,
           };
 
     const chart = new Chart(ctx, {
@@ -94,13 +112,14 @@ export default function ReportChart({
         },
         layout: {
           padding: {
-            top: 6,
-            right: 8,
-            bottom: 0,
-            left: 4,
+            top: 10,
+            right: 12,
+            bottom: 2,
+            left: 6,
           },
         },
         indexAxis: !isDoughnut && horizontal ? "y" : "x",
+        cutout: isDoughnut ? "68%" : undefined,
         plugins: {
           legend: {
             display: isDoughnut || showLegend,
@@ -109,7 +128,7 @@ export default function ReportChart({
               usePointStyle: true,
               pointStyle: "circle",
               boxWidth: 10,
-              padding: 16,
+              padding: 18,
               color: "#475569",
               font: {
                 size: 11,
@@ -121,6 +140,9 @@ export default function ReportChart({
           tooltip: {
             backgroundColor: "#0f172a",
             padding: 12,
+            cornerRadius: 12,
+            titleColor: "#f8fafc",
+            bodyColor: "#f8fafc",
             displayColors: isDoughnut,
             callbacks: {
               label: (context) => {
@@ -138,6 +160,7 @@ export default function ReportChart({
                 beginAtZero: true,
                 grid: {
                   display: false,
+                  drawBorder: false,
                 },
                 ticks: {
                   color: "#64748b",
@@ -150,7 +173,8 @@ export default function ReportChart({
               y: {
                 beginAtZero: true,
                 grid: {
-                  color: "rgba(148, 163, 184, 0.18)",
+                  color: "rgba(148, 163, 184, 0.16)",
+                  drawBorder: false,
                 },
                 ticks: {
                   color: "#64748b",

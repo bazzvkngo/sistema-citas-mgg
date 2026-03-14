@@ -1,3 +1,6 @@
+// LEGACY / no usado en el deploy actual:
+// functions/package.json apunta a `index.js` como entrypoint y este archivo no se importa allí.
+// Se conserva solo como referencia histórica de una implementación anterior.
 const admin = require('firebase-admin');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 

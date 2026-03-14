@@ -11,8 +11,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  min-height: 86px;
-  padding: 14px 28px;
+  min-height: 72px;
+  padding: 10px 22px;
   background: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.98),
@@ -34,8 +34,8 @@
 }
 
 .navbar__brandLogo {
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
   flex-shrink: 0;
   border-radius: 14px;
@@ -59,7 +59,7 @@
 
 .navbar__title--desktop {
   display: block;
-  font-size: 1.5rem;
+  font-size: 1.18rem;
 }
 
 .navbar__title--mobile {
@@ -70,7 +70,7 @@
 .navbar__subtitle {
   margin-top: 4px;
   color: #6b7280;
-  font-size: 0.95rem;
+  font-size: 0.82rem;
   font-weight: 600;
 }
 
@@ -89,13 +89,13 @@
 }
 
 .navbar__email {
-  max-width: 280px;
-  padding: 10px 14px;
+  max-width: 230px;
+  padding: 8px 12px;
   border-radius: 999px;
   background: #f8fafc;
   border: 1px solid rgba(15, 23, 42, 0.08);
   color: #475569;
-  font-size: 0.9rem;
+  font-size: 0.84rem;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -103,12 +103,12 @@
 }
 
 .navbar__role {
-  padding: 9px 12px;
+  padding: 7px 10px;
   border-radius: 999px;
   background: rgba(180, 24, 34, 0.1);
   border: 1px solid rgba(180, 24, 34, 0.18);
   color: #b41822;
-  font-size: 0.82rem;
+  font-size: 0.76rem;
   font-weight: 800;
 }
 
@@ -116,8 +116,8 @@
 .navbar__logout {
   border: none;
   border-radius: 999px;
-  padding: 11px 16px;
-  font-size: 0.92rem;
+  padding: 10px 14px;
+  font-size: 0.86rem;
   font-weight: 800;
   cursor: pointer;
   transition:
@@ -156,7 +156,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  min-height: 56px;
+  min-height: 50px;
   padding: 0 18px;
   background: linear-gradient(90deg, #8d1017 0%, #b41822 45%, #991019 100%);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
@@ -180,13 +180,13 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 56px;
-  padding: 0 16px;
+  min-height: 50px;
+  padding: 0 14px;
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.94);
   text-decoration: none;
-  font-size: 0.96rem;
+  font-size: 0.92rem;
   font-weight: 800;
   letter-spacing: 0.01em;
   cursor: pointer;
