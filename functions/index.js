@@ -27,6 +27,8 @@ const TZ_OFFSET = "-03:00";
 const TRACKING_PUBLIC_ACTIVE_TURNO_TTL_MS = 24 * 60 * 60 * 1000;
 const TRACKING_PUBLIC_ACTIVE_CITA_TTL_MS = 24 * 60 * 60 * 1000;
 const TRACKING_PUBLIC_FINALIZED_TTL_MS = 6 * 60 * 60 * 1000;
+const RATE_LIMIT_COLLECTION = "rateLimits";
+const DEFAULT_RATE_LIMIT_MESSAGE = "Demasiadas solicitudes. Intente nuevamente en unos minutos.";
 const ACTIVE_RECORD_EXISTS_MESSAGE = "Ya existe un registro activo para este trámite.";
 const INVALID_TRAMITE_LOOKUP_MESSAGE = "Faltan datos válidos para consultar horarios.";
 const INVALID_KIOSK_INPUT_MESSAGE = "Documento o trámite no válidos.";
@@ -73,6 +75,88 @@ function getTsDate(ts) {
 function safeStr(v) {
   if (v === null || v === undefined) return "";
   return String(v);
+}
+
+function normalizeRateLimitFragment(value, fallback = "anon") {
+  const normalized = safeStr(value).trim().toLowerCase();
+  return normalized || fallback;
+}
+
+function hashRateLimitIdentity(parts) {
+  return crypto.createHash("sha256").update(parts.join("||")).digest("hex");
+}
+
+function getRequestIp(request) {
+  const forwardedFor = safeStr(request?.rawRequest?.headers?.["x-forwarded-for"]);
+  if (forwardedFor) {
+    const firstIp = forwardedFor.split(",")[0].trim();
+    if (firstIp) return firstIp;
+  }
+
+  return safeStr(
+    request?.rawRequest?.ip ||
+    request?.rawRequest?.socket?.remoteAddress ||
+    request?.rawRequest?.connection?.remoteAddress ||
+    "unknown"
+  ).trim();
+}
+
+function getRequestAppId(request) {
+  return normalizeRateLimitFragment(request?.app?.appId, "no-app");
+}
+
+function getAppClientRateLimitKey(request) {
+  return [getRequestAppId(request), normalizeRateLimitFragment(getRequestIp(request), "unknown-ip")];
+}
+
+async function assertRateLimit({
+  endpoint,
+  scope,
+  keyParts = [],
+  limit,
+  windowMs,
+  message = DEFAULT_RATE_LIMIT_MESSAGE,
+}) {
+  if (!endpoint || !scope || !Number.isFinite(limit) || limit < 1 || !Number.isFinite(windowMs) || windowMs < 1000) {
+    throw new Error(`Invalid rate limit configuration for ${endpoint || "unknown-endpoint"}.`);
+  }
+
+  const nowMs = Date.now();
+  const windowBucket = Math.floor(nowMs / windowMs);
+  const identityHash = hashRateLimitIdentity([
+    endpoint,
+    scope,
+    ...keyParts.map((part) => normalizeRateLimitFragment(part)),
+  ]);
+  const rateLimitRef = db.collection(RATE_LIMIT_COLLECTION).doc(`${windowBucket}_${identityHash}`);
+  const nowTs = Timestamp.now();
+  const expiresAt = Timestamp.fromMillis((windowBucket + 2) * windowMs);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(rateLimitRef);
+    const data = snap.exists ? (snap.data() || {}) : {};
+    const currentCount = Number(data.count || 0);
+
+    if (currentCount >= limit) {
+      throw new HttpsError("resource-exhausted", message);
+    }
+
+    tx.set(
+      rateLimitRef,
+      {
+        endpoint,
+        scope,
+        count: currentCount + 1,
+        limit,
+        windowMs,
+        windowBucket,
+        createdAt: snap.exists ? (data.createdAt || nowTs) : nowTs,
+        updatedAt: nowTs,
+        expiresAt,
+      },
+      { merge: true }
+    );
+  });
 }
 
 async function writeAuditLog({
@@ -544,6 +628,15 @@ exports.checkDniExists = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true
   }
 
   try {
+    await assertRateLimit({
+      endpoint: "checkDniExists",
+      scope: "app_ip",
+      keyParts: getAppClientRateLimitKey(request),
+      limit: 20,
+      windowMs: 5 * 60 * 1000,
+      message: "Demasiadas validaciones de documento. Intente nuevamente en unos minutos.",
+    });
+
     const q = db.collection("usuarios").where("dni", "==", dni).limit(1);
     const querySnapshot = await q.get();
     return { exists: !querySnapshot.empty };
@@ -553,10 +646,19 @@ exports.checkDniExists = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true
   }
 });
 
-exports.lookupCitizenUserByDoc = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.lookupCitizenUserByDoc = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   try {
     const { auth, data } = request;
     if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+
+    await assertRateLimit({
+      endpoint: "lookupCitizenUserByDoc",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 30,
+      windowMs: 5 * 60 * 1000,
+      message: "Demasiadas busquedas de ciudadanos. Intente nuevamente en unos minutos.",
+    });
 
     const callerSnap = await db.collection("usuarios").doc(auth.uid).get();
     const caller = callerSnap.exists ? (callerSnap.data() || {}) : null;
@@ -629,6 +731,15 @@ exports.createArcoRequest = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
     ) {
       throw new HttpsError("invalid-argument", INVALID_ARCO_REQUEST_MESSAGE);
     }
+
+    await assertRateLimit({
+      endpoint: "createArcoRequest",
+      scope: "app_ip",
+      keyParts: getAppClientRateLimitKey(request),
+      limit: 5,
+      windowMs: 15 * 60 * 1000,
+      message: "Demasiadas solicitudes ARCO desde este origen. Intente nuevamente mas tarde.",
+    });
 
     const nowTs = Timestamp.now();
     const arcoRef = db.collection("arcoRequests").doc();
@@ -857,6 +968,15 @@ exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
   };
 
   try {
+    await assertRateLimit({
+      endpoint: "getAvailableSlots",
+      scope: "app_ip",
+      keyParts: getAppClientRateLimitKey(request),
+      limit: 60,
+      windowMs: 5 * 60 * 1000,
+      message: "Demasiadas consultas de horarios disponibles. Intente nuevamente en unos minutos.",
+    });
+
     const baseDate = new Date(fechaISO);
     const fechaKey = getChileDateISO(baseDate);
 
@@ -937,6 +1057,15 @@ exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION, enforceAppCheck: 
   }
 
   try {
+    await assertRateLimit({
+      endpoint: "generarTurnoKiosko",
+      scope: "document",
+      keyParts: [dniLimpio],
+      limit: 8,
+      windowMs: 10 * 60 * 1000,
+      message: "Demasiados intentos para generar turnos con este documento. Intente nuevamente en unos minutos.",
+    });
+
     const qCitas = db
       .collection("citas")
       .where("dni", "==", dniLimpio)
@@ -1082,6 +1211,15 @@ exports.checkDuplicados = onCall({ region: SANTIAGO_REGION, enforceAppCheck: tru
   }
 
   try {
+    await assertRateLimit({
+      endpoint: "checkDuplicados",
+      scope: "app_ip",
+      keyParts: getAppClientRateLimitKey(request),
+      limit: 20,
+      windowMs: 5 * 60 * 1000,
+      message: "Demasiadas validaciones de duplicados. Intente nuevamente en unos minutos.",
+    });
+
     const qCitas = db
       .collection("citas")
       .where("dni", "==", dniLimpio)
@@ -1168,14 +1306,30 @@ function msToMinutes(ms) {
   return Math.round((ms / 60000) * 10) / 10; // 1 decimal
 }
 
-exports.getMetricsData = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.getMetricsData = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
+  const { auth } = request;
   const { startDateISO, endDateISO, includeDetails = true } = request.data || {};
+
+  if (!auth) {
+    throw new HttpsError("unauthenticated", "No autenticado.");
+  }
 
   if (!startDateISO || !endDateISO) {
     throw new HttpsError("invalid-argument", "Fechas son requeridas.");
   }
 
   try {
+    await requireAdmin(auth.uid);
+
+    await assertRateLimit({
+      endpoint: "getMetricsData",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 12,
+      windowMs: 5 * 60 * 1000,
+      message: "Demasiadas consultas de metricas. Intente nuevamente en unos minutos.",
+    });
+
     const { start, end } = buildLocalRange(startDateISO, endDateISO);
 
     const stats = {
@@ -1544,7 +1698,7 @@ async function cerrarJornadaPorFechaISO({ dateISO, motivo, cerradoPorUid = "sist
   };
 }
 
-exports.cerrarJornadaMasiva = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.cerrarJornadaMasiva = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   try {
     const { auth, data } = request;
     if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
@@ -1555,6 +1709,15 @@ exports.cerrarJornadaMasiva = onCall({ region: SANTIAGO_REGION }, async (request
     if (!["admin", "agente"].includes(rol)) {
       throw new HttpsError("permission-denied", "No tienes permisos para cerrar jornada.");
     }
+
+    await assertRateLimit({
+      endpoint: "cerrarJornadaMasiva",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 3,
+      windowMs: 10 * 60 * 1000,
+      message: "Demasiados intentos de cierre masivo. Intente nuevamente en unos minutos.",
+    });
 
     const { dateISO, motivo = "cierre_contingencia" } = data || {};
     if (!dateISO) throw new HttpsError("invalid-argument", "Falta dateISO (YYYY-MM-DD)");
@@ -1678,7 +1841,7 @@ exports.cerrarCitasWebDiarias = onSchedule(
    - codigo web correlativo por dia
    ========================= */
 
-exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Debe iniciar sesión para agendar.");
   }
@@ -1739,6 +1902,24 @@ exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION }, async (request)
   const counterRef = db.collection("contadoresWeb").doc(counterId);
 
   try {
+    await assertRateLimit({
+      endpoint: "agendarCitaWebLock",
+      scope: "uid",
+      keyParts: [request.auth.uid],
+      limit: 6,
+      windowMs: 15 * 60 * 1000,
+      message: "Demasiados intentos de agendamiento. Intente nuevamente en unos minutos.",
+    });
+
+    await assertRateLimit({
+      endpoint: "agendarCitaWebLock",
+      scope: "document",
+      keyParts: [dniStr],
+      limit: 4,
+      windowMs: 15 * 60 * 1000,
+      message: "Demasiados intentos de agendamiento para este documento. Intente nuevamente en unos minutos.",
+    });
+
     const result = await db.runTransaction(async (tx) => {
       const nowTs = Timestamp.now();
       await assertActiveRecordLockAvailable(tx, activeRecordLockRef);
@@ -1961,7 +2142,7 @@ exports.releaseKioskTurnoLockOnTurnoDeleted = onDocumentDeleted(
 // Paso 7 (Reabrir / Editar citas cerradas)
 // =========================
 
-exports.adminUpdateClosedCita = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.adminUpdateClosedCita = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   try {
     const { auth, data } = request;
     if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
@@ -1974,6 +2155,15 @@ exports.adminUpdateClosedCita = onCall({ region: SANTIAGO_REGION }, async (reque
     if (!["admin", "agente"].includes(rol)) {
       throw new HttpsError("permission-denied", "No tienes permisos para editar citas cerradas.");
     }
+
+    await assertRateLimit({
+      endpoint: "adminUpdateClosedCita",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 20,
+      windowMs: 5 * 60 * 1000,
+      message: "Demasiadas ediciones de citas cerradas. Intente nuevamente en unos minutos.",
+    });
 
     const { citaId, comentariosAgente = "", observacion = "" } = data || {};
     if (!citaId) throw new HttpsError("invalid-argument", "Falta citaId.");
@@ -2003,7 +2193,7 @@ exports.adminUpdateClosedCita = onCall({ region: SANTIAGO_REGION }, async (reque
   }
 });
 
-exports.adminReopenCita = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.adminReopenCita = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   try {
     const { auth, data } = request;
     if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
@@ -2016,6 +2206,15 @@ exports.adminReopenCita = onCall({ region: SANTIAGO_REGION }, async (request) =>
     if (!["admin", "agente"].includes(rol)) {
       throw new HttpsError("permission-denied", "No tienes permisos para reabrir citas.");
     }
+
+    await assertRateLimit({
+      endpoint: "adminReopenCita",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 10,
+      windowMs: 5 * 60 * 1000,
+      message: "Demasiadas reaperturas de citas. Intente nuevamente en unos minutos.",
+    });
 
     const { citaId } = data || {};
     if (!citaId) throw new HttpsError("invalid-argument", "Falta citaId.");
@@ -2076,12 +2275,21 @@ exports.adminReopenCita = onCall({ region: SANTIAGO_REGION }, async (request) =>
    PASO 10: ADMIN EDITA AGENTES (datos + email + contraseña)
    ========================= */
 
-exports.adminUpdateAgente = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.adminUpdateAgente = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   try {
     const { auth, data } = request;
     if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
 
     await requireAdmin(auth.uid);
+
+    await assertRateLimit({
+      endpoint: "adminUpdateAgente",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 12,
+      windowMs: 10 * 60 * 1000,
+      message: "Demasiadas actualizaciones de agentes. Intente nuevamente en unos minutos.",
+    });
 
     const {
       uid,                 // uid del agente a editar
@@ -2286,7 +2494,7 @@ async function pickNextCandidate({ nowTs, dateISO, allowedTramites }) {
 
   return null;
 }
-exports.agentCallNext = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.agentCallNext = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   try {
     const { auth, data } = request;
     if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
@@ -2298,6 +2506,15 @@ exports.agentCallNext = onCall({ region: SANTIAGO_REGION }, async (request) => {
     if (!["admin", "agente"].includes(rol)) {
       throw new HttpsError("permission-denied", "No autorizado.");
     }
+
+    await assertRateLimit({
+      endpoint: "agentCallNext",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 30,
+      windowMs: 60 * 1000,
+      message: "Demasiados llamados consecutivos. Espere un momento e intente nuevamente.",
+    });
 let modulo = null;
 
 // Para agente: el módulo sale del perfil (no se recibe del cliente).
@@ -2484,11 +2701,20 @@ async function requireAdmin(uid) {
 // LEGACY / compatibilidad:
 // El frontend actual usa `adminUpdateAgente`.
 // Mantener este callable mientras no se confirme que no hay consumidores externos.
-exports.adminUpdateAgent = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.adminUpdateAgent = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   try {
     const { auth, data } = request;
     if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
     await requireAdmin(auth.uid);
+
+    await assertRateLimit({
+      endpoint: "adminUpdateAgent",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 12,
+      windowMs: 10 * 60 * 1000,
+      message: "Demasiadas actualizaciones de agentes. Intente nuevamente en unos minutos.",
+    });
 
     const agentUid = String(data?.agentUid || "").trim();
     if (!agentUid) throw new HttpsError("invalid-argument", "Falta agentUid.");
@@ -2554,6 +2780,7 @@ exports.adminUpdateAgent = onCall({ region: SANTIAGO_REGION }, async (request) =
 exports.adminSendPasswordReset = onCall(
   {
     region: SANTIAGO_REGION,
+    enforceAppCheck: true,
     secrets: [SMTP_USER, SMTP_PASS, MAIL_FROM, APP_PUBLIC_URL],
   },
   async (request) => {
@@ -2561,6 +2788,15 @@ exports.adminSendPasswordReset = onCall(
       const { auth, data } = request;
       if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
       await requireAdmin(auth.uid);
+
+      await assertRateLimit({
+        endpoint: "adminSendPasswordReset",
+        scope: "uid",
+        keyParts: [auth.uid],
+        limit: 6,
+        windowMs: 10 * 60 * 1000,
+        message: "Demasiados envios de recuperacion de contrasena. Intente nuevamente en unos minutos.",
+      });
 
       const agentUid = String(data?.agentUid || "").trim();
       if (!agentUid) throw new HttpsError("invalid-argument", "Falta agentUid.");

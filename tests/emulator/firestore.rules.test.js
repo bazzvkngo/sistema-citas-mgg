@@ -67,6 +67,27 @@ async function seedBasicDocs() {
       dni: "12345678K",
       tramiteID: "tramite_demo",
     });
+    await setDoc(doc(db, "estadoSistema", "llamadaActual"), {
+      codigoLlamado: "A-001",
+      modulo: 1,
+    });
+    await setDoc(doc(db, "estadoSistema", "tramite_demo"), {
+      codigoLlamado: "A-001",
+      modulo: 1,
+    });
+    await setDoc(doc(db, "estadoSistema", "interno_privado"), {
+      secreto: true,
+    });
+    await setDoc(doc(db, "config", "pantallaTV"), {
+      enabled: true,
+      url: "https://example.com/ad.mp4",
+    });
+    await setDoc(doc(db, "usuarios", "pantalla_1"), {
+      rol: "pantalla",
+    });
+    await setDoc(doc(db, "usuarios", "admin_1"), {
+      rol: "admin",
+    });
   });
 }
 
@@ -93,4 +114,21 @@ test("deniega leer turnos publicamente", async () => {
   await seedBasicDocs();
   const db = testEnv.unauthenticatedContext().firestore();
   await assertFails(getDoc(doc(db, "turnos", "turno_1")));
+});
+
+test("permite leer llamadaActual y tramite_* publicamente, pero no otros docs de estadoSistema", async () => {
+  await seedBasicDocs();
+  const db = testEnv.unauthenticatedContext().firestore();
+  await assertSucceeds(getDoc(doc(db, "estadoSistema", "llamadaActual")));
+  await assertSucceeds(getDoc(doc(db, "estadoSistema", "tramite_demo")));
+  await assertFails(getDoc(doc(db, "estadoSistema", "interno_privado")));
+  await assertFails(getDocs(query(collection(db, "estadoSistema"))));
+});
+
+test("deniega config publicamente y permite lectura a pantalla autenticada", async () => {
+  await seedBasicDocs();
+  const publicDb = testEnv.unauthenticatedContext().firestore();
+  const pantallaDb = testEnv.authenticatedContext("pantalla_1").firestore();
+  await assertFails(getDoc(doc(publicDb, "config", "pantallaTV")));
+  await assertSucceeds(getDoc(doc(pantallaDb, "config", "pantallaTV")));
 });

@@ -39,6 +39,10 @@ service cloud.firestore {
       return authRole() == 'pantalla';
     }
 
+    function isPublicEstadoSistemaDoc(docId) {
+      return docId == 'llamadaActual' || docId.matches('^tramite_.+$');
+    }
+
     // Sólo permitir que un usuario se edite a sí mismo campos NO sensibles.
     // (evita que se auto-asigne admin, cambie módulo/habilidades, etc.)
     function isSafeSelfUserUpdate() {
@@ -116,7 +120,7 @@ match /usuarios/{userId} {
     // tramites
     // -----------------------------
     match /tramites/{tramiteId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isAdmin();
     }
 
@@ -211,7 +215,8 @@ match /usuarios/{userId} {
     // estadoSistema (solo CF escribe)
     // -----------------------------
     match /estadoSistema/{docId} {
-      allow read: if true;
+      allow get: if isPublicEstadoSistemaDoc(docId) || isPantalla() || isAgente();
+      allow list: if false;
       allow write: if false;
     }
 
@@ -219,7 +224,8 @@ match /usuarios/{userId} {
     // config (Pantalla TV + sistema)
     // -----------------------------
     match /config/{docId} {
-      allow read: if true;
+      allow get: if isAdmin() || isPantalla();
+      allow list: if false;
       allow write: if isAdmin();
     }
 

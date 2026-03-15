@@ -1,14 +1,37 @@
 import test, { after, afterEach, before } from "node:test";
 import assert from "node:assert/strict";
-import { initializeApp, deleteApp } from "firebase/app";
+import { initializeServerApp, deleteApp } from "firebase/app";
 import { getFunctions, connectFunctionsEmulator, httpsCallable } from "firebase/functions";
 import { collection, getDocs } from "firebase/firestore";
 import { initializeTestEnvironment } from "@firebase/rules-unit-testing";
 
 const projectId = "sistema-de-citas-mgg";
 const region = "southamerica-west1";
+const appId = "1:demo:web:demo";
 let testEnv;
 let app;
+
+function toBase64Url(value) {
+  return Buffer.from(JSON.stringify(value))
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function buildEmulatorAppCheckToken(subject = appId) {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const header = { alg: "none", typ: "JWT" };
+  const payload = {
+    iss: "https://firebaseappcheck.googleapis.com/demo-emulator",
+    aud: projectId,
+    sub: subject,
+    iat: nowSeconds,
+    exp: nowSeconds + 60 * 60,
+  };
+
+  return `${toBase64Url(header)}.${toBase64Url(payload)}.emulator-signature`;
+}
 
 before(async () => {
   testEnv = await initializeTestEnvironment({
@@ -19,11 +42,16 @@ before(async () => {
     },
   });
 
-  app = initializeApp({
-    projectId,
-    apiKey: "demo-api-key",
-    appId: "1:demo:web:demo",
-  }, "emulator-smoke-tests");
+  app = initializeServerApp(
+    {
+      projectId,
+      apiKey: "demo-api-key",
+      appId,
+    },
+    {
+      appCheckToken: buildEmulatorAppCheckToken(),
+    }
+  );
 });
 
 afterEach(async () => {
