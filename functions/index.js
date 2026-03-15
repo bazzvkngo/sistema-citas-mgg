@@ -19,6 +19,13 @@ const {
   normalizeRequesterDocumentServer,
   isValidRequesterDocumentServer,
 } = require("./arcoUtils");
+const {
+  AUDIT_LOG_RETENTION_DAYS,
+  buildAuditLogRetentionFields,
+  buildServiceAuditMetadata,
+  normalizeAuditExportInput,
+  serializeAuditValue,
+} = require("./auditPolicy");
 
 const SANTIAGO_REGION = "southamerica-west1";
 const CRON_JOB_REGION = "us-central1";
@@ -27,6 +34,8 @@ const TZ_OFFSET = "-03:00";
 const TRACKING_PUBLIC_ACTIVE_TURNO_TTL_MS = 24 * 60 * 60 * 1000;
 const TRACKING_PUBLIC_ACTIVE_CITA_TTL_MS = 24 * 60 * 60 * 1000;
 const TRACKING_PUBLIC_FINALIZED_TTL_MS = 6 * 60 * 60 * 1000;
+const TRACKING_PUBLIC_CLEANUP_BATCH_LIMIT = 200;
+const TRACKING_PUBLIC_CLEANUP_MAX_BATCHES = 5;
 const RATE_LIMIT_COLLECTION = "rateLimits";
 const DEFAULT_RATE_LIMIT_MESSAGE = "Demasiadas solicitudes. Intente nuevamente en unos minutos.";
 const ACTIVE_RECORD_EXISTS_MESSAGE = "Ya existe un registro activo para este trámite.";
@@ -169,15 +178,17 @@ async function writeAuditLog({
   summary,
   metadata = null,
 }) {
+  const nowTs = Timestamp.now();
   const payload = {
     action: safeStr(action),
     entityType: safeStr(entityType),
     entityId: safeStr(entityId),
     actorUid: actorUid ? safeStr(actorUid) : null,
     actorRole: actorRole ? safeStr(actorRole) : null,
-    timestamp: Timestamp.now(),
+    timestamp: nowTs,
     source: safeStr(source),
     summary: safeStr(summary),
+    ...buildAuditLogRetentionFields(nowTs),
   };
 
   if (metadata && typeof metadata === "object") {
@@ -431,6 +442,7 @@ async function writeServiceAuditIfNeeded({ sourceCollection, sourceId, beforeDat
   const agenteEmail = await resolveAgenteEmail(agenteID);
 
   const modulo = safeStr(afterData?.modulo || afterData?.moduloAsignado);
+  const auditCreatedAt = Timestamp.now();
 
   const payload = {
     sourceCollection,
@@ -466,14 +478,49 @@ async function writeServiceAuditIfNeeded({ sourceCollection, sourceId, beforeDat
     dayKey,
     monthKey,
 
-    audit: {
-      version: 1,
-      createdAt: Timestamp.now(),
-      createdBy: "CF_TRIGGER",
-    },
+    audit: buildServiceAuditMetadata(auditCreatedAt),
   };
 
   await auditRef.set(payload, { merge: false });
+}
+
+async function deleteCollectionDocsByTimestamp({
+  collectionName,
+  dateField,
+  cutoff,
+  batchLimit = TRACKING_PUBLIC_CLEANUP_BATCH_LIMIT,
+  maxBatches = TRACKING_PUBLIC_CLEANUP_MAX_BATCHES,
+}) {
+  let deletedCount = 0;
+  let batchesRun = 0;
+
+  while (batchesRun < maxBatches) {
+    const snapshot = await db
+      .collection(collectionName)
+      .where(dateField, "<=", cutoff)
+      .orderBy(dateField, "asc")
+      .limit(batchLimit)
+      .get();
+
+    if (snapshot.empty) break;
+
+    const batch = db.batch();
+    snapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+    await batch.commit();
+
+    deletedCount += snapshot.size;
+    batchesRun++;
+
+    if (snapshot.size < batchLimit) {
+      return { deletedCount, batchesRun, hasMore: false };
+    }
+  }
+
+  return {
+    deletedCount,
+    batchesRun,
+    hasMore: batchesRun === maxBatches,
+  };
 }
 
 function buildLocalRange(startDateISO, endDateISO) {
@@ -931,6 +978,53 @@ exports.marcarCitasAusentes = onSchedule(
       console.error("Error en 'marcarCitasAusentes':", error);
       throw new HttpsError("internal", "Error al procesar citas ausentes.");
     }
+  }
+);
+
+/* =========================
+   RETENCION: TRACKING PUBLICO Y AUDIT LOGS
+   ========================= */
+
+exports.cleanupTrackingPublic = onSchedule(
+  {
+    region: CRON_JOB_REGION,
+    schedule: "every 30 minutes",
+    timeZone: CHILE_TZ,
+  },
+  async () => {
+    const result = await deleteCollectionDocsByTimestamp({
+      collectionName: "trackingPublic",
+      dateField: "expiresAt",
+      cutoff: Timestamp.now(),
+    });
+
+    if (result.deletedCount > 0 || result.hasMore) {
+      console.info("cleanupTrackingPublic result", result);
+    }
+
+    return null;
+  }
+);
+
+exports.cleanupAuditLogs = onSchedule(
+  {
+    region: CRON_JOB_REGION,
+    schedule: "30 3 * * *",
+    timeZone: CHILE_TZ,
+  },
+  async () => {
+    const cutoff = Timestamp.fromMillis(Date.now() - AUDIT_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const result = await deleteCollectionDocsByTimestamp({
+      collectionName: "auditLogs",
+      dateField: "timestamp",
+      cutoff,
+    });
+
+    if (result.deletedCount > 0 || result.hasMore) {
+      console.info("cleanupAuditLogs result", result);
+    }
+
+    return null;
   }
 );
 
@@ -2697,6 +2791,90 @@ async function requireAdmin(uid) {
   if (rol !== "admin") throw new HttpsError("permission-denied", "Solo admin.");
   return u;
 }
+
+exports.adminExportAuditRecords = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
+  try {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+    await requireAdmin(auth.uid);
+
+    await assertRateLimit({
+      endpoint: "adminExportAuditRecords",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 6,
+      windowMs: 10 * 60 * 1000,
+      message: "Demasiados exportes de auditoria. Intente nuevamente en unos minutos.",
+    });
+
+    let exportInput;
+    try {
+      exportInput = normalizeAuditExportInput(data || {}, new Date());
+    } catch (error) {
+      throw new HttpsError("invalid-argument", error.message || "Parametros de export no validos.");
+    }
+
+    const { collectionName, policy, startDateISO, endDateISO, rangeDays, limit } = exportInput;
+    const { start, end } = buildLocalRange(startDateISO, endDateISO);
+
+    const snapshot = await db
+      .collection(collectionName)
+      .where(policy.dateField, ">=", start)
+      .where(policy.dateField, "<=", end)
+      .orderBy(policy.dateField, "desc")
+      .limit(limit)
+      .get();
+
+    const records = snapshot.docs.map((docSnap) => ({
+      id: docSnap.id,
+      ...serializeAuditValue(docSnap.data() || {}),
+    }));
+
+    await writeAuditLogSafe({
+      action: "export_audit_records",
+      entityType: collectionName,
+      entityId: `${collectionName}_${startDateISO}_${endDateISO}`,
+      actorUid: auth.uid,
+      actorRole: "admin",
+      source: "callable:adminExportAuditRecords",
+      summary: `Export de ${snapshot.size} registro(s) desde ${collectionName}.`,
+      metadata: {
+        collectionName,
+        startDateISO,
+        endDateISO,
+        rangeDays,
+        limit,
+        returnedCount: snapshot.size,
+        truncated: snapshot.size === limit,
+        policyName: policy.policyName,
+      },
+    });
+
+    return {
+      ok: true,
+      collectionName,
+      startDateISO,
+      endDateISO,
+      rangeDays,
+      count: snapshot.size,
+      limit,
+      truncated: snapshot.size === limit,
+      fileName: `${collectionName}_${startDateISO}_${endDateISO}.json`,
+      policy: {
+        policyName: policy.policyName,
+        retentionDays: policy.retentionDays,
+        exportScope: policy.exportScope,
+        exportFormats: policy.exportFormats,
+        autoCleanup: policy.autoCleanup,
+      },
+      records,
+    };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error("adminExportAuditRecords error:", error);
+    throw new HttpsError("internal", "Error al exportar auditoria.");
+  }
+});
 
 // LEGACY / compatibilidad:
 // El frontend actual usa `adminUpdateAgente`.
