@@ -101,15 +101,33 @@ function parseCodigoNum(codigo) {
   return Number.isFinite(n) ? n : null;
 }
 
+function getTimestampMillis(ts) {
+  if (!ts) return null;
+  if (typeof ts.toMillis === 'function') return ts.toMillis();
+  if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+  if (ts instanceof Date) return ts.getTime();
+  const parsed = new Date(ts);
+  return Number.isFinite(parsed.getTime()) ? parsed.getTime() : null;
+}
+
+function isExpiredTracking(data) {
+  const expiresAtMs = getTimestampMillis(data?.expiresAt);
+  if (expiresAtMs == null) return false;
+  return expiresAtMs <= Date.now();
+}
+
+function normalizeTrackingState(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
 export default function TicketTracking() {
   const [searchParams] = useSearchParams();
 
-  // ✅ Aceptar turnoId (kiosko) o citaId (citas)
+  const trackingToken = searchParams.get('t');
   const turnoId = searchParams.get('turnoId');
   const citaId = searchParams.get('citaId');
-
-  // ✅ Usar el primero que venga
-  const documentoId = turnoId || citaId;
+  const legacyCitaId = !trackingToken ? citaId : '';
+  const legacyTurnoId = !trackingToken ? turnoId : '';
 
   const [miTurno, setMiTurno] = useState(null);
   const [nombreTramite, setNombreTramite] = useState('...');
@@ -117,6 +135,7 @@ export default function TicketTracking() {
 
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [notFoundMessage, setNotFoundMessage] = useState('El enlace de seguimiento no es válido o ha expirado.');
 
   // ✅ Saber si lo encontrado es una CITA (para ocultar "Faltan")
   const [sourceCollection, setSourceCollection] = useState(null); // 'turnos' | 'citas'
@@ -124,9 +143,22 @@ export default function TicketTracking() {
   const estadoDocUnsubRef = useRef(null);
 
   useEffect(() => {
-    if (!documentoId) {
+    const genericNotFoundMessage = 'El enlace de seguimiento no es válido o ha expirado.';
+    const legacyTurnoMessage = 'Este enlace antiguo de turno ya no está disponible. Use un enlace nuevo o escanee un QR actualizado.';
+    const legacyCitaMessage = 'Este enlace antiguo de cita solo funciona con acceso autorizado. Inicie sesión para verla desde su cuenta o use un enlace actualizado.';
+
+    setNotFoundMessage(genericNotFoundMessage);
+
+    if (!trackingToken && !legacyCitaId && !legacyTurnoId) {
       setLoading(false);
       setNotFound(true);
+      return;
+    }
+
+    if (!trackingToken && legacyTurnoId) {
+      setLoading(false);
+      setNotFound(true);
+      setNotFoundMessage(legacyTurnoMessage);
       return;
     }
 
@@ -169,12 +201,14 @@ export default function TicketTracking() {
       );
     };
 
-    const setupListeners = async (docSnap, collectionName) => {
-      const data = docSnap.data();
+    const setupListeners = async (data, collectionName, docId) => {
       if (!isMounted) return;
 
-      setMiTurno({ id: docSnap.id, ...data });
-      setSourceCollection(collectionName); // ✅ guardar origen
+      const effectiveCollection =
+        collectionName === 'trackingPublic' ? (data?.sourceCollection || null) : collectionName;
+
+      setMiTurno({ id: docId, ...data });
+      setSourceCollection(effectiveCollection);
 
       const tramiteID = data.tramiteID;
 
@@ -182,7 +216,7 @@ export default function TicketTracking() {
         const tramiteDoc = await getDoc(doc(db, 'tramites', tramiteID));
         if (!isMounted) return;
         setNombreTramite(tramiteDoc.exists() ? tramiteDoc.data().nombre : tramiteID);
-      } catch (e) {
+      } catch {
         if (!isMounted) return;
         setNombreTramite(tramiteID);
       }
@@ -191,8 +225,52 @@ export default function TicketTracking() {
       setLoading(false);
     };
 
-    const listenDoc = (collectionName) => {
-      const ref = doc(db, collectionName, documentoId);
+    if (trackingToken) {
+      const trackingRef = doc(db, 'trackingPublic', trackingToken);
+      const unsub = onSnapshot(
+        trackingRef,
+        (snap) => {
+          if (!isMounted) return;
+
+          if (!snap.exists()) {
+            setMiTurno(null);
+            setLoading(false);
+            setNotFound(true);
+            return;
+          }
+
+          const data = snap.data() || {};
+          if (isExpiredTracking(data)) {
+            setMiTurno(null);
+            setLoading(false);
+            setNotFound(true);
+            return;
+          }
+
+          setNotFound(false);
+          setupListeners(data, 'trackingPublic', snap.id);
+        },
+        () => {
+          if (!isMounted) return;
+          setLoading(false);
+          setNotFound(true);
+        }
+      );
+
+      unsubscribes.push(unsub);
+
+      return () => {
+        isMounted = false;
+        unsubscribes.forEach((u) => u());
+        if (estadoDocUnsubRef.current) {
+          estadoDocUnsubRef.current();
+          estadoDocUnsubRef.current = null;
+        }
+      };
+    }
+
+    const listenDoc = (collectionName, documentId) => {
+      const ref = doc(db, collectionName, documentId);
       const unsub = onSnapshot(
         ref,
         (snap) => {
@@ -211,13 +289,12 @@ export default function TicketTracking() {
             found = true;
             foundCollection = collectionName;
 
-            // ✅ importante: pasar collectionName
-            setupListeners(snap, collectionName);
+            setupListeners(snap.data() || {}, collectionName, snap.id);
             return;
           }
 
           if (collectionName === foundCollection) {
-            setupListeners(snap, collectionName);
+            setupListeners(snap.data() || {}, collectionName, snap.id);
           }
         },
         () => {
@@ -227,8 +304,10 @@ export default function TicketTracking() {
       unsubscribes.push(unsub);
     };
 
-    listenDoc('turnos');
-    listenDoc('citas');
+    if (legacyCitaId) {
+      setNotFoundMessage(legacyCitaMessage);
+      listenDoc('citas', legacyCitaId);
+    }
 
     const timer = setTimeout(() => {
       if (!isMounted) return;
@@ -247,28 +326,38 @@ export default function TicketTracking() {
         estadoDocUnsubRef.current = null;
       }
     };
-  }, [documentoId]);
+  }, [trackingToken, legacyCitaId, legacyTurnoId]);
 
   const renderEstado = () => {
     if (!miTurno) return null;
 
+    const estado = normalizeTrackingState(miTurno.estado);
     const currentCode = turnoActualTramite?.codigoLlamado || null;
 
-    if (miTurno.estado === 'llamado' && currentCode && currentCode === miTurno.codigo) {
+    if (estado === 'llamado' && currentCode && currentCode === miTurno.codigo) {
+      const moduloTexto = miTurno.modulo || turnoActualTramite?.modulo || '-';
       return (
         <div style={styles.statusLlamado}>
           ES SU TURNO
           <br />
-          Diríjase al Módulo {miTurno.modulo}
+          Diríjase al Módulo {moduloTexto}
         </div>
       );
     }
 
-    if (miTurno.estado === 'completado') {
+    if (estado === 'completado' || estado === 'cerrado') {
       return <p style={styles.statusCompletado}>Su atención ha finalizado. Gracias.</p>;
     }
 
-    if (miTurno.estado === 'en-espera' || miTurno.estado === 'activa') {
+    if (estado === 'cancelado') {
+      return <p style={styles.statusPasado}>Este turno fue cancelado.</p>;
+    }
+
+    if (estado === 'expirado') {
+      return <p style={styles.statusPasado}>Este enlace de seguimiento ha expirado.</p>;
+    }
+
+    if (estado === 'en-espera' || estado === 'activa') {
       // ✅ Si es CITA (no kiosko), ocultar el contador "Faltan"
       const esCitaAgendada = sourceCollection === 'citas';
 
@@ -297,14 +386,14 @@ export default function TicketTracking() {
       );
     }
 
-    if (miTurno.estado === 'llamado') {
+    if (estado === 'llamado') {
       return <p style={styles.statusPasado}>Su turno ya fue llamado (ausente).</p>;
     }
 
     return null;
   };
 
-  if (miTurno?.estado === 'completado') {
+  if (['completado', 'cerrado'].includes(normalizeTrackingState(miTurno?.estado))) {
     return (
       <div style={styles.container}>
         <div style={styles.card}>
@@ -328,7 +417,7 @@ export default function TicketTracking() {
   if (notFound || !miTurno) {
     return (
       <p style={{ textAlign: 'center', fontSize: '24px', marginTop: '40px', color: 'red' }}>
-        El ID del turno no es válido o ha expirado.
+        {notFoundMessage}
       </p>
     );
   }

@@ -11,10 +11,10 @@ import {
   query,
   serverTimestamp,
   setDoc,
-  where
 } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { useAuth } from '../context/AuthContext';
-import { db } from '../firebase';
+import { db, functions } from '../firebase';
 import {
   buildCitizenFullName,
   buildCitizenPayload,
@@ -117,24 +117,12 @@ const styles = {
   recentLine: { fontSize: '12px', color: '#555' }
 };
 
-// ✅ intenta encontrar el usuario ciudadano por dni (y fallback por rut si tu data lo usa así)
+const lookupCitizenUserByDoc = httpsCallable(functions, 'lookupCitizenUserByDoc');
+
 async function findCitizenUserByDoc(docNorm) {
-  // 1) usuarios donde dni == docNorm
-  let q = query(collection(db, 'usuarios'), where('dni', '==', docNorm), limit(1));
-  let snap = await getDocs(q);
-  if (!snap.empty) return snap.docs[0];
-
-  // 2) algunos proyectos guardan rut en otro campo:
-  q = query(collection(db, 'usuarios'), where('rut', '==', docNorm), limit(1));
-  snap = await getDocs(q);
-  if (!snap.empty) return snap.docs[0];
-
-  // 3) si guardan docNorm explícito:
-  q = query(collection(db, 'usuarios'), where('docNorm', '==', docNorm), limit(1));
-  snap = await getDocs(q);
-  if (!snap.empty) return snap.docs[0];
-
-  return null;
+  const result = await lookupCitizenUserByDoc({ doc: docNorm });
+  const payload = result?.data || {};
+  return payload?.found ? payload.user || null : null;
 }
 
 export default function CitizenProfile() {
@@ -242,10 +230,9 @@ export default function CitizenProfile() {
       }
 
       // 2) fallback a usuarios (registro)
-      const userDoc = await findCitizenUserByDoc(idNorm);
-      if (userDoc) {
-        const u = userDoc.data() || {};
-        const mapped = mapUserBootstrapToForm(idNorm, u);
+      const userData = await findCitizenUserByDoc(idNorm);
+      if (userData) {
+        const mapped = mapUserBootstrapToForm(idNorm, userData);
         setDocIdInput(mapped.docIdInput);
         setTipoDoc(mapped.tipoDoc);
         setNombres(mapped.nombres);
@@ -281,7 +268,7 @@ export default function CitizenProfile() {
       return;
     }
 
-    const idNorm = normalizeDocId(docIdInput);
+    const idNorm = normalizeCitizenDoc(docIdInput);
     if (!idNorm) {
       setStatusMsg('Ingresa un DNI/RUT válido.');
       return;
@@ -343,7 +330,7 @@ export default function CitizenProfile() {
       return;
     }
 
-    const idNorm = normalizeDocId(docIdInput);
+    const idNorm = normalizeCitizenDoc(docIdInput);
     if (!exists || !idNorm) {
       setStatusMsg('No hay perfil cargado para eliminar.');
       return;

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   collection,
@@ -53,8 +53,27 @@ function capitalizeText(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
+function buildTrackingUrl(citaId, trackingToken) {
+  if (trackingToken) {
+    return `${window.location.origin}/qr-seguimiento?t=${trackingToken}`;
+  }
+  return `${window.location.origin}/qr-seguimiento?citaId=${citaId}`;
+}
+
+function getCallableErrorMessage(error, fallback) {
+  const raw = error?.details || error?.message || '';
+  const cleaned = String(raw)
+    .replace(/^FirebaseError:\s*/i, '')
+    .replace(/^Error:\s*/i, '')
+    .trim();
+  return cleaned || fallback;
+}
+
+const PRIVACY_CONSENT_VERSION = '2026-03-15';
+
 export default function Appointments() {
   const { currentUser } = useAuth();
+  const agendarInFlightRef = useRef(false);
   const [loading, setLoading] = useState(false);
 
   const [tramites, setTramites] = useState([]);
@@ -73,6 +92,8 @@ export default function Appointments() {
   const [agendarError, setAgendarError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   const [successCode, setSuccessCode] = useState('');
+  const [successTrackingUrl, setSuccessTrackingUrl] = useState('');
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   const [copied, setCopied] = useState(false);
 
@@ -209,9 +230,11 @@ export default function Appointments() {
 
   const handleAgendarCita = async (e) => {
     e.preventDefault();
+    if (loading || agendarInFlightRef.current) return;
     setAgendarError(null);
     setSuccessMessage(null);
     setSuccessCode('');
+    setSuccessTrackingUrl('');
     setCopied(false);
 
     if (!selectedSlot) {
@@ -224,6 +247,11 @@ export default function Appointments() {
       return;
     }
 
+    if (!privacyAccepted) {
+      setAgendarError('Debe aceptar el aviso de privacidad antes de confirmar la cita.');
+      return;
+    }
+
     const auth = getAuth(app);
     const uid = auth.currentUser?.uid || currentUser?.uid;
 
@@ -232,6 +260,7 @@ export default function Appointments() {
       return;
     }
 
+    agendarInFlightRef.current = true;
     setLoading(true);
 
     try {
@@ -246,30 +275,31 @@ export default function Appointments() {
         slot: selectedSlot,
         dni: currentUser.dni,
         userNombre: currentUser.nombre || currentUser.displayName || '',
-        userEmail: currentUser.email || ''
+        userEmail: currentUser.email || '',
+        privacyConsentAccepted: true,
+        privacyConsentVersion: PRIVACY_CONSENT_VERSION
       });
 
+      const citaId = resp?.data?.citaId || '';
       const codigo = resp?.data?.codigo || '';
+      const trackingToken = resp?.data?.trackingToken || '';
       const mensajeFinal = 'Cita agendada con exito.\nRecuerde estar 10 minutos antes.';
       setSuccessMessage(mensajeFinal);
       setSuccessCode(codigo);
+      setSuccessTrackingUrl(citaId ? buildTrackingUrl(citaId, trackingToken) : '');
 
       setSelectedTramiteId('');
       setSelectedDate(undefined);
       setAvailableSlots([]);
       setSelectedSlot('');
+      setPrivacyAccepted(false);
     } catch (error) {
       console.error('Error al agendar la cita: ', error);
-
-      const msg =
-        error?.message ||
-        error?.details ||
-        'No se pudo agendar. Intente nuevamente.';
-
-      setAgendarError(msg);
+      setAgendarError(getCallableErrorMessage(error, 'No se pudo agendar. Intente nuevamente.'));
+    } finally {
+      agendarInFlightRef.current = false;
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleCancelCita = async (citaId) => {
@@ -319,6 +349,13 @@ export default function Appointments() {
         ) : null}
 
         <div className="cp-alert-body">{successMessage}</div>
+        {successTrackingUrl ? (
+          <div className="cp-alert-body">
+            <a className="cp-link" href={successTrackingUrl} target="_blank" rel="noopener noreferrer">
+              Ver mi turno en tiempo real
+            </a>
+          </div>
+        ) : null}
       </div>
     );
   };
@@ -333,9 +370,9 @@ export default function Appointments() {
     const esLlamada = cita.estado === 'llamado';
     const estadoTexto = esLlamada
       ? 'Llamada (el consulado ya esta listo para atenderle)'
-      : 'Activa (su cita sigue registrada y en espera)';
+      : 'En espera (su cita sigue registrada y en espera)';
 
-    const qrUrl = `${window.location.origin}/qr-seguimiento?turnoId=${cita.id}`;
+    const qrUrl = buildTrackingUrl(cita.id, cita.trackingToken || '');
     const fechaTexto = citaDate ? format(citaDate, 'dd/MM/yyyy HH:mm') : 'Fecha no disponible';
     const fechaDiaTexto = citaDate
       ? capitalizeText(format(citaDate, "EEEE d 'de' MMMM", { locale: es }))
@@ -505,6 +542,8 @@ export default function Appointments() {
                     setAgendarError(null);
                     setSuccessMessage(null);
                     setSuccessCode('');
+                    setSuccessTrackingUrl('');
+                    setPrivacyAccepted(false);
                     setCopied(false);
                   }}
                   required
@@ -533,6 +572,8 @@ export default function Appointments() {
                         setAgendarError(null);
                         setSuccessMessage(null);
                         setSuccessCode('');
+                        setSuccessTrackingUrl('');
+                        setPrivacyAccepted(false);
                         setCopied(false);
                       }}
                       locale={es}
@@ -590,16 +631,54 @@ export default function Appointments() {
                   </div>
                 ) : null}
 
+                <div className="cp-form-row">
+                  <label className="cp-label" htmlFor="privacy-consent">
+                    4. Privacidad
+                  </label>
+                  <label
+                    htmlFor="privacy-consent"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '10px',
+                      padding: '12px 14px',
+                      borderRadius: '14px',
+                      border: '1px solid rgba(15, 23, 42, 0.14)',
+                      background: '#f8fafc'
+                    }}
+                  >
+                    <input
+                      id="privacy-consent"
+                      type="checkbox"
+                      checked={privacyAccepted}
+                      onChange={(e) => setPrivacyAccepted(e.target.checked)}
+                      style={{ marginTop: '2px' }}
+                    />
+                    <span className="cp-small" style={{ color: 'var(--appt-text)' }}>
+                      He leido y acepto el aviso de privacidad para usar mis datos en la gestion de la
+                      cita, su confirmacion y su seguimiento operativo.{' '}
+                      <a
+                        className="cp-link"
+                        href="/privacidad"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        Ver politica de privacidad
+                      </a>
+                    </span>
+                  </label>
+                </div>
+
                 <button
                   type="submit"
                   className="cp-btn cp-btn-primary cp-btn-full"
-                  disabled={!selectedSlot || loadingSlots || loadingMyCitas || !currentUser || loading}
+                  disabled={!selectedSlot || !privacyAccepted || loadingSlots || loadingMyCitas || !currentUser || loading}
                 >
                   {loading || loadingSlots ? 'Cargando...' : 'Confirmar cita'}
                 </button>
 
                 <div className="cp-footnote">
-                  Recomendacion: llegue con 10 minutos de anticipacion.
+                  Recomendacion: llegue con 10 minutos de anticipacion. La aceptacion queda registrada al confirmar la cita.
                 </div>
               </>
             )}

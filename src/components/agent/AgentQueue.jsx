@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { db, functions } from '../../firebase';
 import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -19,6 +19,7 @@ function buildDayRangeISO(dateISO) {
 }
 
 export default function AgentQueue({ atencionActual, moduloEfectivo }) {
+  const callInFlightRef = useRef(false);
   const [nowMs, setNowMs] = useState(Date.now());
 
   const [pendingTurnos, setPendingTurnos] = useState(0);
@@ -129,11 +130,12 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
   }, [turnosList, citasList, nowMs]);
 
   const callNext = async () => {
-    if (loadingCall) return;
+    if (loadingCall || callInFlightRef.current) return;
 
     if (!moduloEfectivo) return alert('Asigna un modulo para poder llamar.');
     if (atencionActual) return alert('Ya hay una atencion activa. Finaliza primero.');
 
+    callInFlightRef.current = true;
     setLoadingCall(true);
     try {
       const fn = httpsCallable(functions, 'agentCallNext');
@@ -143,6 +145,7 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
     } catch (e) {
       alert(e?.message || 'Error llamando siguiente.');
     } finally {
+      callInFlightRef.current = false;
       setLoadingCall(false);
     }
   };

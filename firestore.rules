@@ -59,14 +59,30 @@ service cloud.firestore {
         'createdAt', 'fechaCreacion',
         'codigo', 'codigoCorrelativo',
         'origen', 'source',
-        'slotLockId'
+        'slotLockId', 'userSlotLockId',
+        'trackingToken',
+        'activeRecordLockId',
+        'privacyConsentAccepted',
+        'privacyConsentAcceptedAt',
+        'privacyConsentVersion',
+        'privacyConsentSource',
+        'cierreMasivo', 'cierreMotivo',
+        'cerradoPor', 'cerradoAt',
+        'reopenedAt', 'reopenedBy'
       ];
       return isAgente() && !(request.resource.data.diff(resource.data).changedKeys().hasAny(forbidden));
     }
 
     // Para turnos: staff puede actualizar estado; no permitir que cambie codigo/createdAt desde cliente.
     function isSafeTurnoUpdateByStaff() {
-      let forbidden = ['codigo', 'createdAt'];
+      let forbidden = [
+        'codigo', 'createdAt',
+        'dni', 'tramiteID',
+        'fechaHoraGenerado',
+        'trackingToken',
+        'activeRecordLockId',
+        'kioskTurnoLockId'
+      ];
       return isAgente() && !(request.resource.data.diff(resource.data).changedKeys().hasAny(forbidden));
     }
 
@@ -120,6 +136,13 @@ match /usuarios/{userId} {
     }
 
     // -----------------------------
+    // kioskTurnoLocks (solo CF)
+    // -----------------------------
+    match /kioskTurnoLocks/{lockId} {
+      allow read, write: if false;
+    }
+
+    // -----------------------------
     // contadores (solo CF)
     // -----------------------------
     match /contadores/{docId} {
@@ -159,11 +182,11 @@ match /usuarios/{userId} {
     // turnos (kiosko)
     // -----------------------------
     match /turnos/{turnoId} {
-      // kiosko puede crear turnos
-      allow create: if true;
+      // se crean solo por Cloud Function (generarTurnoKiosko)
+      allow create: if false;
 
-      // pantalla tv necesita leer
-      allow get: if true;
+      // lectura directa solo staff
+      allow get: if isAgente();
 
       // list: solo staff
       allow list: if isAgente();
@@ -172,6 +195,16 @@ match /usuarios/{userId} {
       allow update: if isSafeTurnoUpdateByStaff();
 
       allow delete: if false;
+    }
+
+    // -----------------------------
+    // trackingPublic (seguimiento publico saneado)
+    // -----------------------------
+    match /trackingPublic/{token} {
+      // solo lectura puntual por token; no permitir listar
+      allow get: if true;
+      allow list: if false;
+      allow create, update, delete: if false;
     }
 
     // -----------------------------
@@ -204,6 +237,13 @@ match /usuarios/{userId} {
     match /serviceAudit/{docId} {
       allow read: if isAgente() || isAdmin();
       allow create, update, delete: if false;
+    }
+
+    // -----------------------------
+    // auditLogs (solo backend)
+    // -----------------------------
+    match /auditLogs/{docId} {
+      allow read, create, update, delete: if false;
     }
   }
 }

@@ -270,8 +270,18 @@ const styles = {
   },
 };
 
+function getCallableErrorMessage(error, fallback) {
+  const raw = error?.details || error?.message || "";
+  const cleaned = String(raw)
+    .replace(/^FirebaseError:\s*/i, "")
+    .replace(/^Error:\s*/i, "")
+    .trim();
+  return cleaned || fallback;
+}
+
 export default function Kiosk() {
   const rootRef = useRef(null);
+  const generateInFlightRef = useRef(false);
   const { toggleFullscreen } = useImmersiveFullscreen(rootRef, {
     styleId: "cp-kiosk-fullscreen-style",
     bodyClassName: "cp-kiosk-fullscreen",
@@ -332,12 +342,14 @@ export default function Kiosk() {
 
   const handleGenerarTurno = async (e) => {
     e.preventDefault();
+    if (loading || generateInFlightRef.current) return;
 
     if (dniLimpio.trim().length < 7) {
       setError("Por favor, ingrese un DNI/RUT válido.");
       return;
     }
 
+    generateInFlightRef.current = true;
     setLoading(true);
     setError(null);
 
@@ -347,8 +359,8 @@ export default function Kiosk() {
         tramiteId: selectedTramite.id,
       });
 
-      const { id, codigo, nombre } = result.data;
-      const qrUrl = `${window.location.origin}/qr-seguimiento?turnoId=${id}`;
+      const { codigo, nombre, trackingToken } = result.data;
+      const qrUrl = `${window.location.origin}/qr-seguimiento?t=${trackingToken}`;
 
       setGeneratedTicket({
         codigo,
@@ -360,17 +372,12 @@ export default function Kiosk() {
     } catch (err) {
       console.error("Error al generar turno:", err);
 
-      let userMessage = "Error al generar su turno.\nIntente de nuevo.";
-      if (err.message && err.message.includes("FirebaseError: ")) {
-        userMessage = err.message.replace("FirebaseError: ", "").replace(":", "");
-      } else if (err.code) {
-        userMessage = `Error de servidor (${err.code}). Por favor, intente más tarde.`;
-      }
-
+      const userMessage = getCallableErrorMessage(err, "Error al generar su turno.\nIntente de nuevo.");
       setError(userMessage);
+    } finally {
+      generateInFlightRef.current = false;
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const resetKiosk = () => {

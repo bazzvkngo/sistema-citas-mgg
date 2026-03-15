@@ -1,5 +1,5 @@
 // src/pages/AgentPanel.jsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import AgentQueue from '../components/agent/AgentQueue';
 import FinishServiceModal from '../components/agent/FinishServiceModal';
@@ -288,6 +288,7 @@ function useIsNarrow(breakpointPx = 980) {
 
 export default function AgentPanel() {
   const { currentUser } = useAuth();
+  const closingDayRef = useRef(false);
   const [closingDay, setClosingDay] = useState(false);
 
   const [calledTurno, setCalledTurno] = useState(null);
@@ -382,13 +383,14 @@ export default function AgentPanel() {
   }, [atencionActual?.id]);
 
   const cerrarJornada = async () => {
-    if (closingDay) return;
+    if (closingDay || closingDayRef.current) return;
 
     const ok = window.confirm(
       'Esto cerrará todas las citas y turnos activos del día y los marcará como NO_SE_PRESENTO.\n¿Desea continuar?'
     );
     if (!ok) return;
 
+    closingDayRef.current = true;
     setClosingDay(true);
     try {
       const functions = getFunctions(app, FUNCTIONS_REGION);
@@ -405,6 +407,7 @@ export default function AgentPanel() {
       console.error('Error al cerrar jornada:', err);
       alert(getFriendlyFirebaseError(err));
     } finally {
+      closingDayRef.current = false;
       setClosingDay(false);
     }
   };

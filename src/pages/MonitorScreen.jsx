@@ -1,12 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  collection,
   doc,
-  getDocs,
-  limit,
   onSnapshot,
-  query,
-  where,
 } from "firebase/firestore";
 import { db } from "../firebase";
 import useImmersiveFullscreen from "../hooks/useImmersiveFullscreen";
@@ -327,26 +322,6 @@ const styles = {
   },
 };
 
-function cleanDoc(s) {
-  return (s || "")
-    .toString()
-    .trim()
-    .replace(/\s+/g, "")
-    .toUpperCase()
-    .replace(/\./g, "")
-    .replace(/-/g, "");
-}
-
-function trimName(name) {
-  const s = (name || "").toString().trim();
-  if (!s) return "";
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0];
-  const first = parts[0];
-  const last = parts[parts.length - 1];
-  return `${first[0].toUpperCase()}. ${last}`;
-}
-
 const DIGIT_WORDS_ES = {
   0: "cero",
   1: "uno",
@@ -449,49 +424,14 @@ function announceTurn({ codigo, modulo }) {
   }
 }
 
-function pickDni(call) {
-  const candidates = [call?.dni, call?.dniCiudadano, call?.rut, call?.documento];
-  const found = candidates.find((x) => (x || "").toString().trim());
-  return (found || "").toString().trim();
-}
+function buildPublicContext(call) {
+  const tipo = (call?.tipo || "").toString().trim();
+  const tramiteID = (call?.tramiteID || "").toString().trim();
 
-function pickNombre(call) {
-  const candidates = [
-    call?.userNombre,
-    call?.nombre,
-    call?.nombreCiudadano,
-    call?.ciudadanoNombre,
-  ];
-  const found = candidates.find((x) => (x || "").toString().trim());
-  return (found || "").toString().trim();
-}
-
-async function lookupNombreEnUsuariosPorDni(dniRaw) {
-  try {
-    const dniClean = cleanDoc(dniRaw);
-    if (!dniClean) return "";
-
-    const variants = Array.from(new Set([dniRaw, dniClean, dniClean.slice(0, -1)])).filter(Boolean);
-
-    for (const v of variants) {
-      const q1 = query(
-        collection(db, "usuarios"),
-        where("rol", "==", "ciudadano"),
-        where("dni", "==", v),
-        limit(1)
-      );
-      const qs1 = await getDocs(q1);
-      if (!qs1.empty) {
-        const d = qs1.docs[0].data() || {};
-        return (d.nombre || d.nombreCompleto || d.fullName || "").toString().trim();
-      }
-    }
-
-    return "";
-  } catch (e) {
-    console.error("lookupNombreEnUsuariosPorDni error:", e);
-    return "";
-  }
+  if (tipo && tramiteID) return `${tipo} · ${tramiteID}`;
+  if (tipo) return tipo;
+  if (tramiteID) return `Tramite ${tramiteID}`;
+  return "";
 }
 
 export default function MonitorScreen() {
@@ -501,8 +441,6 @@ export default function MonitorScreen() {
     bodyClassName: "cp-tv-fullscreen",
   });
 
-  const [llamadaActual, setLlamadaActual] = useState(null);
-  const [nombreCiudadano, setNombreCiudadano] = useState("");
   const [history, setHistory] = useState([]);
   const lastCodeRef = useRef("");
   const lastAnnouncedCallRef = useRef("");
@@ -518,7 +456,6 @@ export default function MonitorScreen() {
     const ref = doc(db, "estadoSistema", "llamadaActual");
     const unsubscribe = onSnapshot(ref, (snap) => {
       if (!snap.exists()) {
-        setLlamadaActual(null);
         return;
       }
 
@@ -533,12 +470,9 @@ export default function MonitorScreen() {
       if (firstSnap) {
         firstSnap = false;
         if (tsMs && tsMs < mountedAt) {
-          setLlamadaActual(null);
           return;
         }
       }
-
-      setLlamadaActual(data);
 
       const codigo = (data.codigoLlamado || data.codigo || "").toString().trim();
       if (!codigo) return;
@@ -548,8 +482,7 @@ export default function MonitorScreen() {
       const item = {
         codigo,
         modulo: (data.modulo || "").toString(),
-        dni: pickDni(data),
-        displayName: pickNombre(data) || "",
+        contextLabel: buildPublicContext(data),
         ts: Date.now(),
       };
 
@@ -568,53 +501,6 @@ export default function MonitorScreen() {
 
     return () => unsubscribe();
   }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function run() {
-      if (!llamadaActual) {
-        setNombreCiudadano("");
-        return;
-      }
-
-      const nombreDirecto = pickNombre(llamadaActual);
-      if (nombreDirecto) {
-        setNombreCiudadano(nombreDirecto);
-
-        const codigo = (llamadaActual.codigoLlamado || llamadaActual.codigo || "").toString().trim();
-        if (codigo) {
-          setHistory((prev) =>
-            prev.map((h) => (h.codigo === codigo ? { ...h, displayName: nombreDirecto } : h))
-          );
-        }
-        return;
-      }
-
-      const dniRaw = pickDni(llamadaActual);
-      if (!dniRaw) {
-        setNombreCiudadano("");
-        return;
-      }
-
-      const found = await lookupNombreEnUsuariosPorDni(dniRaw);
-      if (cancelled) return;
-
-      setNombreCiudadano(found || "");
-
-      const codigo = (llamadaActual.codigoLlamado || llamadaActual.codigo || "").toString().trim();
-      if (codigo && found) {
-        setHistory((prev) =>
-          prev.map((h) => (h.codigo === codigo ? { ...h, displayName: found } : h))
-        );
-      }
-    }
-
-    run();
-    return () => {
-      cancelled = true;
-    };
-  }, [llamadaActual]);
 
   useEffect(() => {
     const ref = doc(db, "config", "pantallaTV");
@@ -681,7 +567,7 @@ export default function MonitorScreen() {
                   <div style={styles.heroLabel}>Turno actual</div>
                   <div style={styles.heroTurno}>{currentCall.codigo}</div>
                   <div style={styles.heroContext}>
-                    {trimName(nombreCiudadano || currentCall.displayName || "") || "Esperando identificacion"}
+                    {currentCall.contextLabel || "Seguimiento publico"}
                   </div>
                 </div>
 
@@ -709,14 +595,14 @@ export default function MonitorScreen() {
                 Aun no hay historial. En cuanto llamen un turno, aparecera aqui.
               </div>
             ) : (
-              previous.map((it, i) => (
-                <div key={it.codigo + "_" + i} style={styles.row}>
-                  <div style={styles.rowStack}>
-                    <div style={styles.rowTurno}>{it.codigo}</div>
-                    <div style={styles.rowName}>{trimName(it.displayName) || "-"}</div>
+                previous.map((it, i) => (
+                  <div key={it.codigo + "_" + i} style={styles.row}>
+                    <div style={styles.rowStack}>
+                      <div style={styles.rowTurno}>{it.codigo}</div>
+                      <div style={styles.rowName}>{it.contextLabel || "-"}</div>
+                    </div>
+                    <div style={styles.rowModulo}>Mod. {it.modulo || "-"}</div>
                   </div>
-                  <div style={styles.rowModulo}>Mod. {it.modulo || "-"}</div>
-                </div>
               ))
             )}
           </div>

@@ -121,6 +121,7 @@ export default function AdminClosedAppointments() {
   const [editComentarios, setEditComentarios] = useState('');
   const [editObs, setEditObs] = useState('');
   const [saving, setSaving] = useState(false);
+  const [reopeningId, setReopeningId] = useState('');
 
   useEffect(() => {
     (async () => {
@@ -190,7 +191,7 @@ export default function AdminClosedAppointments() {
   };
 
   const handleSave = async () => {
-    if (!selected) return;
+    if (!selected || saving) return;
 
     setSaving(true);
     try {
@@ -211,9 +212,12 @@ export default function AdminClosedAppointments() {
   };
 
   const handleReopen = async (r) => {
+    if (!r?.id || reopeningId === r.id) return;
+
     const ok = window.confirm(`Reabrir la cita ${r.codigo || r.id} y dejarla ACTIVA?`);
     if (!ok) return;
 
+    setReopeningId(r.id);
     try {
       const fn = httpsCallable(functions, 'adminReopenCita');
       await fn({ citaId: r.id });
@@ -221,6 +225,8 @@ export default function AdminClosedAppointments() {
     } catch (e) {
       console.error(e);
       alert(e?.message || 'Error reabriendo.');
+    } finally {
+      setReopeningId('');
     }
   };
 
@@ -275,8 +281,12 @@ export default function AdminClosedAppointments() {
                 <button style={{ ...styles.btn, ...styles.btnWarn }} onClick={() => openEdit(r)}>
                   Editar
                 </button>
-                <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={() => handleReopen(r)}>
-                  Reabrir
+                <button
+                  style={{ ...styles.btn, ...styles.btnPrimary }}
+                  onClick={() => handleReopen(r)}
+                  disabled={reopeningId === r.id}
+                >
+                  {reopeningId === r.id ? 'Reabriendo...' : 'Reabrir'}
                 </button>
               </td>
             </tr>

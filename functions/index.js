@@ -4,14 +4,23 @@ const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { FieldPath, FieldValue, getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth"); //  NUEVO (Paso 10)
+const crypto = require("crypto");
 const nodemailer = require("nodemailer");
 
 const SANTIAGO_REGION = "southamerica-west1";
 const CRON_JOB_REGION = "us-central1";
 const CHILE_TZ = "America/Santiago";
 const TZ_OFFSET = "-03:00";
+const TRACKING_PUBLIC_ACTIVE_TURNO_TTL_MS = 24 * 60 * 60 * 1000;
+const TRACKING_PUBLIC_ACTIVE_CITA_TTL_MS = 24 * 60 * 60 * 1000;
+const TRACKING_PUBLIC_FINALIZED_TTL_MS = 6 * 60 * 60 * 1000;
+const ACTIVE_RECORD_EXISTS_MESSAGE = "Ya existe un registro activo para este trámite.";
+const INVALID_TRAMITE_LOOKUP_MESSAGE = "Faltan datos válidos para consultar horarios.";
+const INVALID_KIOSK_INPUT_MESSAGE = "Documento o trámite no válidos.";
+const INVALID_APPOINTMENT_INPUT_MESSAGE = "Faltan datos válidos para agendar la cita.";
+const INVALID_SLOT_SELECTION_MESSAGE = "El horario seleccionado no es válido.";
 
 initializeApp();
 const db = getFirestore();
@@ -52,11 +61,216 @@ function safeStr(v) {
   return String(v);
 }
 
+async function writeAuditLog({
+  action,
+  entityType,
+  entityId,
+  actorUid = null,
+  actorRole = null,
+  source,
+  summary,
+  metadata = null,
+}) {
+  const payload = {
+    action: safeStr(action),
+    entityType: safeStr(entityType),
+    entityId: safeStr(entityId),
+    actorUid: actorUid ? safeStr(actorUid) : null,
+    actorRole: actorRole ? safeStr(actorRole) : null,
+    timestamp: Timestamp.now(),
+    source: safeStr(source),
+    summary: safeStr(summary),
+  };
+
+  if (metadata && typeof metadata === "object") {
+    payload.metadata = metadata;
+  }
+
+  await db.collection("auditLogs").add(payload);
+}
+
+async function writeAuditLogSafe(entry) {
+  try {
+    await writeAuditLog(entry);
+  } catch (error) {
+    console.error("writeAuditLog error:", error);
+  }
+}
+
 function normalizeCitizenDocServer(raw) {
   return safeStr(raw)
     .trim()
     .toUpperCase()
     .replace(/[^0-9K]/g, "");
+}
+
+function isValidCitizenDocServer(docNorm) {
+  return /^[0-9]{6,8}[0-9K]$/.test(safeStr(docNorm));
+}
+
+function normalizeTramiteIdServer(raw) {
+  return safeStr(raw).trim();
+}
+
+function isValidTramiteIdServer(tramiteId) {
+  const id = safeStr(tramiteId);
+  return !!id && id.length <= 120 && !id.includes("/");
+}
+
+function buildKioskTurnoLockId(dniLimpio, tramiteId) {
+  const docNorm = normalizeCitizenDocServer(dniLimpio);
+  const tramiteNorm = normalizeTramiteIdServer(tramiteId);
+  return `${docNorm}__${Buffer.from(tramiteNorm).toString("base64url")}`;
+}
+
+function getActiveRecordLockId(data) {
+  return safeStr(data?.activeRecordLockId || data?.kioskTurnoLockId).trim();
+}
+
+function getActiveRecordLockSource(data) {
+  return {
+    sourceCollection: safeStr(data?.sourceCollection).trim(),
+    sourceId: safeStr(data?.sourceId || data?.turnoId || data?.citaId).trim(),
+  };
+}
+
+function isBlockingActiveRecordState(sourceCollection, estado) {
+  const col = safeStr(sourceCollection).trim();
+  const state = safeStr(estado).trim();
+  return (col === "turnos" && state === "en-espera") || (col === "citas" && state === "activa");
+}
+
+async function assertActiveRecordLockAvailable(tx, lockRef) {
+  const lockSnap = await tx.get(lockRef);
+  if (!lockSnap.exists) return;
+
+  const lockData = lockSnap.data() || {};
+  const { sourceCollection, sourceId } = getActiveRecordLockSource(lockData);
+
+  if (!sourceCollection || !sourceId || !["turnos", "citas"].includes(sourceCollection)) {
+    tx.delete(lockRef);
+    return;
+  }
+
+  const sourceRef = db.collection(sourceCollection).doc(sourceId);
+  const sourceSnap = await tx.get(sourceRef);
+  if (!sourceSnap.exists) {
+    tx.delete(lockRef);
+    return;
+  }
+
+  const sourceData = sourceSnap.data() || {};
+  if (!isBlockingActiveRecordState(sourceCollection, sourceData.estado)) {
+    tx.delete(lockRef);
+    return;
+  }
+
+  throw new HttpsError("already-exists", ACTIVE_RECORD_EXISTS_MESSAGE);
+}
+
+function generateTrackingPublicToken() {
+  return crypto.randomBytes(24).toString("base64url");
+}
+
+function buildTrackingPublicDoc({
+  sourceCollection,
+  sourceId,
+  codigo,
+  estado,
+  tramiteID,
+  modulo = null,
+  createdAt,
+  updatedAt,
+  expiresAt,
+}) {
+  const created = createdAt || Timestamp.now();
+  return {
+    sourceCollection: safeStr(sourceCollection),
+    sourceId: safeStr(sourceId),
+    codigo: safeStr(codigo),
+    estado: safeStr(estado),
+    tramiteID: safeStr(tramiteID),
+    modulo: modulo === undefined || modulo === "" ? null : modulo,
+    createdAt: created,
+    updatedAt: updatedAt || created,
+    expiresAt: expiresAt || created,
+  };
+}
+
+function addMsToTimestamp(ts, ms) {
+  const baseMs = getTsMillis(ts);
+  if (baseMs === null) return Timestamp.now();
+  return Timestamp.fromMillis(baseMs + ms);
+}
+
+function computeTrackingPublicExpiresAt({
+  sourceCollection,
+  estado,
+  createdAt,
+  updatedAt,
+  scheduledAt,
+}) {
+  const estadoNorm = safeStr(estado).trim().toLowerCase();
+  const isFinalState = ["completado", "cerrado", "cancelado", "expirado"].includes(estadoNorm);
+
+  if (isFinalState) {
+    return addMsToTimestamp(updatedAt || createdAt || Timestamp.now(), TRACKING_PUBLIC_FINALIZED_TTL_MS);
+  }
+
+  if (sourceCollection === "citas") {
+    return addMsToTimestamp(scheduledAt || createdAt || Timestamp.now(), TRACKING_PUBLIC_ACTIVE_CITA_TTL_MS);
+  }
+
+  return addMsToTimestamp(createdAt || updatedAt || Timestamp.now(), TRACKING_PUBLIC_ACTIVE_TURNO_TTL_MS);
+}
+
+function normalizeTrackingPublicModulo(value) {
+  return value === undefined || value === null || value === "" ? null : value;
+}
+
+function pickTrackingPublicModulo(sourceCollection, data) {
+  if (sourceCollection === "citas") {
+    return normalizeTrackingPublicModulo(data?.moduloAsignado ?? data?.modulo);
+  }
+  return normalizeTrackingPublicModulo(data?.modulo ?? data?.moduloAsignado);
+}
+
+async function syncTrackingPublicStatus({
+  sourceCollection,
+  sourceId,
+  beforeData,
+  afterData,
+}) {
+  const trackingToken = safeStr(afterData?.trackingToken || beforeData?.trackingToken).trim();
+  if (!trackingToken) return;
+
+  const beforeEstado = safeStr(beforeData?.estado);
+  const afterEstado = safeStr(afterData?.estado);
+  const beforeModulo = pickTrackingPublicModulo(sourceCollection, beforeData);
+  const afterModulo = pickTrackingPublicModulo(sourceCollection, afterData);
+  const expiresAt = computeTrackingPublicExpiresAt({
+    sourceCollection,
+    estado: afterEstado,
+    createdAt: afterData?.fechaHoraGenerado || beforeData?.fechaHoraGenerado || Timestamp.now(),
+    updatedAt: afterData?.fechaHoraAtencionFin || afterData?.llamadoAt || Timestamp.now(),
+    scheduledAt: afterData?.fechaHora || beforeData?.fechaHora || null,
+  });
+
+  if (beforeEstado === afterEstado && String(beforeModulo ?? "") === String(afterModulo ?? "")) {
+    return;
+  }
+
+  await db.collection("trackingPublic").doc(trackingToken).set(
+    {
+      sourceCollection,
+      sourceId,
+      estado: afterEstado,
+      modulo: afterModulo,
+      updatedAt: Timestamp.now(),
+      expiresAt,
+    },
+    { merge: true }
+  );
 }
 
 async function resolveTramiteNombre(tramiteID, fallback = "") {
@@ -273,7 +487,10 @@ exports.emailOnCitaCreated = onDocumentCreated(
     }
 
     const baseUrl = (APP_PUBLIC_URL.value() || "").replace(/\/+$/, "");
-    const trackingUrl = `${baseUrl}/qr-seguimiento?citaId=${citaId}`;
+    const trackingToken = safeStr(cita.trackingToken).trim();
+    const trackingUrl = trackingToken
+      ? `${baseUrl}/qr-seguimiento?t=${trackingToken}`
+      : `${baseUrl}/qr-seguimiento?citaId=${citaId}`;
 
     const fechaStr = cita.fechaHora ? formatFechaChile(cita.fechaHora) : "Fecha no disponible";
 
@@ -306,9 +523,9 @@ exports.emailOnCitaCreated = onDocumentCreated(
    UTILIDAD: DNI EXISTE
    ========================= */
 
-exports.checkDniExists = onCall({ region: SANTIAGO_REGION }, async (request) => {
-  const dni = request.data?.dni;
-  if (!dni || String(dni).length < 7) {
+exports.checkDniExists = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
+  const dni = normalizeCitizenDocServer(request.data?.dni);
+  if (!isValidCitizenDocServer(dni)) {
     throw new HttpsError("invalid-argument", "El DNI proporcionado no es válido.");
   }
 
@@ -416,6 +633,19 @@ exports.marcarCitasAusentes = onSchedule(
       });
 
       await batch.commit();
+      await writeAuditLogSafe({
+        action: "auto_complete_expired_citas",
+        entityType: "citas",
+        entityId: getChileDateISO(new Date()),
+        actorUid: "system",
+        actorRole: "system",
+        source: "schedule:marcarCitasAusentes",
+        summary: `Cierre automático de ${snapshot.size} cita(s) por ausencia.`,
+        metadata: {
+          affectedCount: snapshot.size,
+          toleranceMinutes: MARGEN_TOLERANCIA_MIN,
+        },
+      });
       return null;
     } catch (error) {
       console.error("Error en 'marcarCitasAusentes':", error);
@@ -428,11 +658,11 @@ exports.marcarCitasAusentes = onSchedule(
    DISPONIBILIDAD DE HORAS
    ========================= */
 
-exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION }, async (request) => {
+exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   const { tramiteId, fechaISO } = request.data || {};
 
   if (!tramiteId || !fechaISO) {
-    throw new HttpsError("invalid-argument", "tramiteId y fechaISO son requeridos.");
+    throw new HttpsError("invalid-argument", INVALID_TRAMITE_LOOKUP_MESSAGE);
   }
 
   const formatHoraChile = (dateObj) => {
@@ -529,11 +759,12 @@ exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION }, async (request) 
    TURNO KIOSKO (PRESENCIAL)
    ========================= */
 
-exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION }, async (request) => {
-  const { dniLimpio, tramiteId } = request.data || {};
+exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
+  const dniLimpio = normalizeCitizenDocServer(request.data?.dniLimpio);
+  const tramiteId = normalizeTramiteIdServer(request.data?.tramiteId);
 
-  if (!dniLimpio || !tramiteId) {
-    throw new HttpsError("invalid-argument", "dniLimpio y tramiteId son requeridos.");
+  if (!isValidCitizenDocServer(dniLimpio) || !isValidTramiteIdServer(tramiteId)) {
+    throw new HttpsError("invalid-argument", INVALID_KIOSK_INPUT_MESSAGE);
   }
 
   try {
@@ -541,22 +772,24 @@ exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION }, async (request)
       .collection("citas")
       .where("dni", "==", dniLimpio)
       .where("tramiteID", "==", tramiteId)
-      .where("estado", "==", "activa");
+      .where("estado", "==", "activa")
+      .limit(1);
 
     const citasSnap = await qCitas.get();
     if (!citasSnap.empty) {
-      throw new HttpsError("already-exists", "Error: Usted ya tiene una CITA activa para este trámite.");
+      throw new HttpsError("already-exists", ACTIVE_RECORD_EXISTS_MESSAGE);
     }
 
     const qTurnos = db
       .collection("turnos")
       .where("dni", "==", dniLimpio)
       .where("tramiteID", "==", tramiteId)
-      .where("estado", "==", "en-espera");
+      .where("estado", "==", "en-espera")
+      .limit(1);
 
     const turnosSnap = await qTurnos.get();
     if (!turnosSnap.empty) {
-      throw new HttpsError("already-exists", "Error: Usted ya tiene un TURNO en espera para este trámite.");
+      throw new HttpsError("already-exists", ACTIVE_RECORD_EXISTS_MESSAGE);
     }
 
     const tramiteDoc = await db.collection("tramites").doc(tramiteId).get();
@@ -575,8 +808,15 @@ exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION }, async (request)
 
     const contadorRef = db.collection("contadores").doc(tramiteId);
     const turnoRef = db.collection("turnos").doc();
+    const turnoLockId = buildKioskTurnoLockId(dniLimpio, tramiteId);
+    const turnoLockRef = db.collection("kioskTurnoLocks").doc(turnoLockId);
+    const trackingToken = generateTrackingPublicToken();
+    const trackingRef = db.collection("trackingPublic").doc(trackingToken);
 
     const nuevoCodigo = await db.runTransaction(async (transaction) => {
+      const nowTs = Timestamp.now();
+      await assertActiveRecordLockAvailable(transaction, turnoLockRef);
+
       const contadorDoc = await transaction.get(contadorRef);
 
       let nuevoValor = 1;
@@ -592,18 +832,66 @@ exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION }, async (request)
         dni: dniLimpio,
         tramiteID: tramiteId,
         codigo: codigoGenerado,
-        fechaHoraGenerado: Timestamp.now(),
+        fechaHoraGenerado: nowTs,
         estado: "en-espera",
+        trackingToken,
+        activeRecordLockId: turnoLockId,
+        kioskTurnoLockId: turnoLockId,
       });
+
+      transaction.set(turnoLockRef, {
+        dni: dniLimpio,
+        tramiteID: tramiteId,
+        turnoId: turnoRef.id,
+        sourceCollection: "turnos",
+        sourceId: turnoRef.id,
+        createdAt: nowTs,
+      });
+
+      transaction.set(
+        trackingRef,
+        buildTrackingPublicDoc({
+          sourceCollection: "turnos",
+          sourceId: turnoRef.id,
+          codigo: codigoGenerado,
+          estado: "en-espera",
+          tramiteID: tramiteId,
+          modulo: null,
+          createdAt: nowTs,
+          updatedAt: nowTs,
+          expiresAt: computeTrackingPublicExpiresAt({
+            sourceCollection: "turnos",
+            estado: "en-espera",
+            createdAt: nowTs,
+            updatedAt: nowTs,
+            scheduledAt: null,
+          }),
+        })
+      );
 
       return codigoGenerado;
     });
 
-    return {
+    const response = {
       id: turnoRef.id,
       codigo: nuevoCodigo,
       nombre: tramiteNombre,
+      trackingToken,
     };
+    await writeAuditLogSafe({
+      action: "create_turno_kiosko",
+      entityType: "turnos",
+      entityId: turnoRef.id,
+      actorUid: null,
+      actorRole: "kiosko_publico",
+      source: "callable:generarTurnoKiosko",
+      summary: `Turno kiosko generado para trámite ${tramiteId}.`,
+      metadata: {
+        tramiteID: tramiteId,
+        codigo: nuevoCodigo,
+      },
+    });
+    return response;
   } catch (error) {
     if (error instanceof HttpsError) throw error;
 
@@ -616,11 +904,12 @@ exports.generarTurnoKiosko = onCall({ region: SANTIAGO_REGION }, async (request)
    CHECK DUPLICADOS
    ========================= */
 
-exports.checkDuplicados = onCall({ region: SANTIAGO_REGION }, async (request) => {
-  const { dniLimpio, tramiteId } = request.data || {};
+exports.checkDuplicados = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
+  const dniLimpio = normalizeCitizenDocServer(request.data?.dniLimpio);
+  const tramiteId = normalizeTramiteIdServer(request.data?.tramiteId);
 
-  if (!dniLimpio || !tramiteId) {
-    throw new HttpsError("invalid-argument", "dniLimpio y tramiteId son requeridos.");
+  if (!isValidCitizenDocServer(dniLimpio) || !isValidTramiteIdServer(tramiteId)) {
+    throw new HttpsError("invalid-argument", INVALID_KIOSK_INPUT_MESSAGE);
   }
 
   try {
@@ -628,22 +917,24 @@ exports.checkDuplicados = onCall({ region: SANTIAGO_REGION }, async (request) =>
       .collection("citas")
       .where("dni", "==", dniLimpio)
       .where("tramiteID", "==", tramiteId)
-      .where("estado", "==", "activa");
+      .where("estado", "==", "activa")
+      .limit(1);
 
     const citasSnap = await qCitas.get();
     if (!citasSnap.empty) {
-      throw new HttpsError("already-exists", "Error: Usted ya tiene una CITA activa.");
+      throw new HttpsError("already-exists", ACTIVE_RECORD_EXISTS_MESSAGE);
     }
 
     const qTurnos = db
       .collection("turnos")
       .where("dni", "==", dniLimpio)
       .where("tramiteID", "==", tramiteId)
-      .where("estado", "==", "en-espera");
+      .where("estado", "==", "en-espera")
+      .limit(1);
 
     const turnosSnap = await qTurnos.get();
     if (!turnosSnap.empty) {
-      throw new HttpsError("already-exists", "Error: Usted ya tiene un TURNO en espera.");
+      throw new HttpsError("already-exists", ACTIVE_RECORD_EXISTS_MESSAGE);
     }
 
     return { exists: false };
@@ -990,21 +1281,21 @@ exports.resetPantallaTvDiaria = onSchedule(
       const llamadaActualRef = estadoColRef.doc("llamadaActual");
       const historialRef = estadoColRef.doc("historialLlamadas");
 
-      const estadoSnap = await estadoColRef.get();
+      const estadoSnap = await estadoColRef
+        .where(FieldPath.documentId(), ">=", "tramite_")
+        .where(FieldPath.documentId(), "<=", "tramite_\uf8ff")
+        .get();
       const batch = db.batch();
 
       batch.set(llamadaActualRef, {}, { merge: true });
       batch.set(historialRef, { ultimos: [] }, { merge: true });
 
       estadoSnap.forEach((docSnap) => {
-        const docId = docSnap.id;
-        if (docId.startsWith("tramite_")) {
-          batch.set(
-            docSnap.ref,
-            { codigoLlamado: null, modulo: null, timestamp: null },
-            { merge: true }
-          );
-        }
+        batch.set(
+          docSnap.ref,
+          { codigoLlamado: null, modulo: null, timestamp: null },
+          { merge: true }
+        );
       });
 
       await batch.commit();
@@ -1031,16 +1322,13 @@ async function cerrarJornadaPorFechaISO({ dateISO, motivo, cerradoPorUid = "sist
 
   let citasCerradas = 0;
   for (const st of estadosCitas) {
-    const snap = await db.collection("citas").where("estado", "==", st).get();
+    const snap = await db.collection("citas")
+      .where("estado", "==", st)
+      .where("fechaHora", ">=", start)
+      .where("fechaHora", "<=", end)
+      .get();
 
     snap.forEach((docSnap) => {
-      const data = docSnap.data() || {};
-      const ts = data.fechaHora;
-      if (!ts || typeof ts.toMillis !== "function") return;
-
-      const ms = ts.toMillis();
-      if (ms < start.toMillis() || ms > end.toMillis()) return;
-
       citasCerradas++;
       writer.update(docSnap.ref, {
         estado: "completado",
@@ -1057,16 +1345,13 @@ async function cerrarJornadaPorFechaISO({ dateISO, motivo, cerradoPorUid = "sist
 
   let turnosCerrados = 0;
   for (const st of estadosTurnos) {
-    const snap = await db.collection("turnos").where("estado", "==", st).get();
+    const snap = await db.collection("turnos")
+      .where("estado", "==", st)
+      .where("fechaHoraGenerado", ">=", start)
+      .where("fechaHoraGenerado", "<=", end)
+      .get();
 
     snap.forEach((docSnap) => {
-      const data = docSnap.data() || {};
-      const ts = data.fechaHoraGenerado;
-      if (!ts || typeof ts.toMillis !== "function") return;
-
-      const ms = ts.toMillis();
-      if (ms < start.toMillis() || ms > end.toMillis()) return;
-
       turnosCerrados++;
       writer.update(docSnap.ref, {
         estado: "completado",
@@ -1082,7 +1367,12 @@ async function cerrarJornadaPorFechaISO({ dateISO, motivo, cerradoPorUid = "sist
   }
 
   await writer.close();
-  return { ok: true, citasCerradas, turnosCerrados };
+  return {
+    ok: true,
+    citasCerradas,
+    turnosCerrados,
+    noop: citasCerradas === 0 && turnosCerrados === 0,
+  };
 }
 
 exports.cerrarJornadaMasiva = onCall({ region: SANTIAGO_REGION }, async (request) => {
@@ -1100,11 +1390,28 @@ exports.cerrarJornadaMasiva = onCall({ region: SANTIAGO_REGION }, async (request
     const { dateISO, motivo = "cierre_contingencia" } = data || {};
     if (!dateISO) throw new HttpsError("invalid-argument", "Falta dateISO (YYYY-MM-DD)");
 
-    return await cerrarJornadaPorFechaISO({
+    const result = await cerrarJornadaPorFechaISO({
       dateISO,
       motivo,
       cerradoPorUid: auth.uid,
     });
+    if (!result?.noop) {
+      await writeAuditLogSafe({
+        action: "mass_close_jornada",
+        entityType: "jornada",
+        entityId: safeStr(dateISO),
+        actorUid: auth.uid,
+        actorRole: rol,
+        source: "callable:cerrarJornadaMasiva",
+        summary: `Cierre masivo ejecutado para ${dateISO}.`,
+        metadata: {
+          motivo: safeStr(motivo),
+          citasCerradas: result.citasCerradas || 0,
+          turnosCerrados: result.turnosCerrados || 0,
+        },
+      });
+    }
+    return result;
   } catch (err) {
     if (err instanceof HttpsError) throw err;
     console.error("cerrarJornadaMasiva error:", err);
@@ -1131,17 +1438,13 @@ async function cerrarCitasWebPorFechaISO({ dateISO, motivo, cerradoPorUid = "sis
 
   let citasCerradas = 0;
   for (const st of estadosCitas) {
-    const snap = await db.collection("citas").where("estado", "==", st).get();
+    const snap = await db.collection("citas")
+      .where("estado", "==", st)
+      .where("fechaHora", ">=", start)
+      .where("fechaHora", "<=", end)
+      .get();
 
     snap.forEach((docSnap) => {
-      const data = docSnap.data() || {};
-      const ts = data.fechaHora;
-      if (!ts || typeof ts.toMillis !== "function") return;
-
-      // Solo citas WEB: tienen fechaHora (programada). (Turnos kiosko usan fechaHoraGenerado)
-      const ms = ts.toMillis();
-      if (ms < start.toMillis() || ms > end.toMillis()) return;
-
       citasCerradas++;
       writer.update(docSnap.ref, {
         estado: "completado",
@@ -1157,7 +1460,7 @@ async function cerrarCitasWebPorFechaISO({ dateISO, motivo, cerradoPorUid = "sis
   }
 
   await writer.close();
-  return { ok: true, citasCerradas };
+  return { ok: true, citasCerradas, noop: citasCerradas === 0 };
 }
 
 // Cierra citas web automáticamente cada día a las 22:00 Chile
@@ -1170,11 +1473,26 @@ exports.cerrarCitasWebDiarias = onSchedule(
   async () => {
     try {
       const dateISO = getChileDateISO(new Date());
-      await cerrarCitasWebPorFechaISO({
+      const result = await cerrarCitasWebPorFechaISO({
         dateISO,
         motivo: "cierre_diario",
         cerradoPorUid: "sistema",
       });
+      if (!result?.noop) {
+        await writeAuditLogSafe({
+          action: "daily_close_citas_web",
+          entityType: "citas",
+          entityId: safeStr(dateISO),
+          actorUid: "system",
+          actorRole: "system",
+          source: "schedule:cerrarCitasWebDiarias",
+          summary: `Cierre diario automático de citas web para ${dateISO}.`,
+          metadata: {
+            citasCerradas: result.citasCerradas || 0,
+            motivo: "cierre_diario",
+          },
+        });
+      }
       return null;
     } catch (error) {
       console.error("Error en 'cerrarCitasWebDiarias':", error);
@@ -1196,15 +1514,33 @@ exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION }, async (request)
     throw new HttpsError("unauthenticated", "Debe iniciar sesión para agendar.");
   }
 
-  const { tramiteId, fechaISO, slot, dni, userNombre = "", userEmail = "" } = request.data || {};
+  const {
+    tramiteId,
+    fechaISO,
+    slot,
+    dni,
+    userNombre = "",
+    userEmail = "",
+    privacyConsentAccepted = false,
+    privacyConsentVersion = "",
+  } = request.data || {};
 
   if (!tramiteId || !fechaISO || !slot || !dni) {
-    throw new HttpsError("invalid-argument", "tramiteId, fechaISO, slot y dni son requeridos.");
+    throw new HttpsError("invalid-argument", INVALID_APPOINTMENT_INPUT_MESSAGE);
   }
 
   const slotMatch = String(slot).match(/^([01]\d|2[0-3]):([0-5]\d)$/);
   if (!slotMatch) {
-    throw new HttpsError("invalid-argument", "El horario (slot) no es válido.");
+    throw new HttpsError("invalid-argument", INVALID_SLOT_SELECTION_MESSAGE);
+  }
+
+  if (privacyConsentAccepted !== true) {
+    throw new HttpsError("failed-precondition", "Debe aceptar el aviso de privacidad para agendar.");
+  }
+
+  const consentVersion = safeStr(privacyConsentVersion).trim();
+  if (!consentVersion) {
+    throw new HttpsError("invalid-argument", "Falta la versión del aviso de privacidad.");
   }
 
   const fechaKey = getChileDateISO(new Date(fechaISO));
@@ -1218,8 +1554,12 @@ exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION }, async (request)
   const dniStr = String(dni).trim();
   const userLockId = `u_${dniStr}_${fechaKey}_${hhmmCompact}`;
   const userLockRef = db.collection("slotLocks").doc(userLockId);
+  const activeRecordLockId = buildKioskTurnoLockId(dniStr, tramiteId);
+  const activeRecordLockRef = db.collection("kioskTurnoLocks").doc(activeRecordLockId);
 
   const citaRef = db.collection("citas").doc();
+  const trackingToken = generateTrackingPublicToken();
+  const trackingRef = db.collection("trackingPublic").doc(trackingToken);
   const uid = request.auth.uid;
 
   const fechaHoraDate = new Date(`${fechaKey}T${slot}:00.000${TZ_OFFSET}`);
@@ -1231,6 +1571,9 @@ exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION }, async (request)
 
   try {
     const result = await db.runTransaction(async (tx) => {
+      const nowTs = Timestamp.now();
+      await assertActiveRecordLockAvailable(tx, activeRecordLockRef);
+
       const lockSnap = await tx.get(lockRef);
       if (lockSnap.exists) {
         throw new HttpsError("already-exists", "Ese horario ya fue tomado para este trámite. Seleccione otro.");
@@ -1268,7 +1611,7 @@ exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION }, async (request)
         fechaISO: fechaKey,
         slot: String(slot),
         citaId: citaRef.id,
-        createdAt: Timestamp.now(),
+        createdAt: nowTs,
       });
 
       tx.set(userLockRef, {
@@ -1277,7 +1620,16 @@ exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION }, async (request)
         fechaISO: fechaKey,
         slot: String(slot),
         citaId: citaRef.id,
-        createdAt: Timestamp.now(),
+        createdAt: nowTs,
+      });
+
+      tx.set(activeRecordLockRef, {
+        dni: dniStr,
+        tramiteID: tramiteId,
+        citaId: citaRef.id,
+        sourceCollection: "citas",
+        sourceId: citaRef.id,
+        createdAt: nowTs,
       });
 
       tx.set(citaRef, {
@@ -1287,16 +1639,56 @@ exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION }, async (request)
         userEmail,
         tramiteID: tramiteId,
         fechaHora: fechaHoraTs,
-        fechaHoraGenerado: Timestamp.now(),
+        fechaHoraGenerado: nowTs,
         codigo,
         estado: "activa",
         slotLockId: lockId,
         userSlotLockId: userLockId,
+        activeRecordLockId,
+        trackingToken,
+        privacyConsentAccepted: true,
+        privacyConsentAcceptedAt: nowTs,
+        privacyConsentVersion: consentVersion,
+        privacyConsentSource: "web",
       });
 
-      return { citaId: citaRef.id, codigo };
+      tx.set(
+        trackingRef,
+        buildTrackingPublicDoc({
+          sourceCollection: "citas",
+          sourceId: citaRef.id,
+          codigo,
+          estado: "activa",
+          tramiteID: tramiteId,
+          modulo: null,
+          createdAt: nowTs,
+          updatedAt: nowTs,
+          expiresAt: computeTrackingPublicExpiresAt({
+            sourceCollection: "citas",
+            estado: "activa",
+            createdAt: nowTs,
+            updatedAt: nowTs,
+            scheduledAt: fechaHoraTs,
+          }),
+        })
+      );
+
+      return { citaId: citaRef.id, codigo, trackingToken };
     });
 
+    await writeAuditLogSafe({
+      action: "create_cita_web",
+      entityType: "citas",
+      entityId: safeStr(result.citaId),
+      actorUid: uid,
+      actorRole: "ciudadano",
+      source: "callable:agendarCitaWebLock",
+      summary: `Cita web agendada para trámite ${tramiteId}.`,
+      metadata: {
+        tramiteID: tramiteId,
+        codigo: safeStr(result.codigo),
+      },
+    });
     return result;
   } catch (error) {
     if (error instanceof HttpsError) throw error;
@@ -1314,14 +1706,84 @@ exports.releaseSlotLockOnCitaDeleted = onDocumentDeleted(
     const data = snap.data() || {};
     const lockId = data.slotLockId;
     const userLockId = data.userSlotLockId;
+    const activeRecordLockId = getActiveRecordLockId(data);
 
     try {
       const deletes = [];
       if (lockId) deletes.push(db.collection("slotLocks").doc(lockId).delete());
       if (userLockId) deletes.push(db.collection("slotLocks").doc(userLockId).delete());
+      if (activeRecordLockId) deletes.push(db.collection("kioskTurnoLocks").doc(activeRecordLockId).delete());
       if (deletes.length) await Promise.allSettled(deletes);
     } catch (err) {
       console.error("Error liberando slotLocks:", err);
+    }
+  }
+);
+
+exports.releaseActiveRecordLockOnCitaUpdated = onDocumentUpdated(
+  { document: "citas/{citaId}", region: SANTIAGO_REGION },
+  async (event) => {
+    const before = event.data?.before;
+    const after = event.data?.after;
+    if (!before || !after) return;
+
+    const beforeData = before.data() || {};
+    const afterData = after.data() || {};
+    const beforeEstado = safeStr(beforeData.estado);
+    const afterEstado = safeStr(afterData.estado);
+
+    if (beforeEstado !== "activa" || afterEstado === "activa") return;
+
+    const lockId = getActiveRecordLockId(afterData) || getActiveRecordLockId(beforeData);
+    if (!lockId) return;
+
+    try {
+      await db.collection("kioskTurnoLocks").doc(lockId).delete();
+    } catch (err) {
+      console.error("Error liberando activeRecordLock de cita:", err);
+    }
+  }
+);
+
+exports.releaseKioskTurnoLockOnTurnoUpdated = onDocumentUpdated(
+  { document: "turnos/{turnoId}", region: SANTIAGO_REGION },
+  async (event) => {
+    const before = event.data?.before;
+    const after = event.data?.after;
+    if (!before || !after) return;
+
+    const beforeData = before.data() || {};
+    const afterData = after.data() || {};
+    const beforeEstado = safeStr(beforeData.estado);
+    const afterEstado = safeStr(afterData.estado);
+
+    if (beforeEstado !== "en-espera" || afterEstado === "en-espera") return;
+
+    const lockId = getActiveRecordLockId(afterData) || getActiveRecordLockId(beforeData);
+    if (!lockId) return;
+
+    try {
+      await db.collection("kioskTurnoLocks").doc(lockId).delete();
+    } catch (err) {
+      console.error("Error liberando kioskTurnoLock:", err);
+    }
+  }
+);
+
+exports.releaseKioskTurnoLockOnTurnoDeleted = onDocumentDeleted(
+  { document: "turnos/{turnoId}", region: SANTIAGO_REGION },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) return;
+
+    const data = snap.data() || {};
+    const lockId = getActiveRecordLockId(data);
+    if (!lockId) return;
+
+    try {
+      await db.collection("kioskTurnoLocks").doc(lockId).delete();
+    } catch (err) {
+      console.error("Error liberando kioskTurnoLock al borrar turno:", err);
     }
   }
 );
@@ -1390,28 +1852,48 @@ exports.adminReopenCita = onCall({ region: SANTIAGO_REGION }, async (request) =>
     if (!citaId) throw new HttpsError("invalid-argument", "Falta citaId.");
 
     const ref = db.collection("citas").doc(String(citaId));
-    const snap = await ref.get();
-    if (!snap.exists) throw new HttpsError("not-found", "La cita no existe.");
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new HttpsError("not-found", "La cita no existe.");
 
-    const cita = snap.data() || {};
+      const cita = snap.data() || {};
 
-    // Solo reabrir si está cerrada
-    if (cita.estado !== "completado") {
-      throw new HttpsError("failed-precondition", "Solo se pueden reabrir citas en estado 'completado'.");
-    }
+      // Solo reabrir si está cerrada
+      if (cita.estado !== "completado") {
+        throw new HttpsError("failed-precondition", "Solo se pueden reabrir citas en estado 'completado'.");
+      }
 
-    await ref.update({
-      estado: "activa",
-      clasificacion: null,
-      comentariosAgente: null,
-      fechaHoraAtencionFin: null,
-      cierreMasivo: false,
-      cierreMotivo: null,
-      cerradoPor: null,
-      cerradoAt: null,
-      reopenedAt: Timestamp.now(),
-      reopenedBy: auth.uid,
+      tx.update(ref, {
+        estado: "activa",
+        clasificacion: null,
+        comentariosAgente: null,
+        fechaHoraAtencionFin: null,
+        cierreMasivo: false,
+        cierreMotivo: null,
+        cerradoPor: null,
+        cerradoAt: null,
+        reopenedAt: Timestamp.now(),
+        reopenedBy: auth.uid,
+      });
+
+      return { reopened: true };
     });
+
+    if (result?.reopened) {
+      await writeAuditLogSafe({
+        action: "reopen_cita",
+        entityType: "citas",
+        entityId: safeStr(citaId),
+        actorUid: auth.uid,
+        actorRole: rol,
+        source: "callable:adminReopenCita",
+        summary: `Cita reabierta y devuelta a estado activa.`,
+        metadata: {
+          previousEstado: "completado",
+          newEstado: "activa",
+        },
+      });
+    }
 
     return { ok: true };
   } catch (err) {
@@ -1530,6 +2012,13 @@ exports.auditCitasCompletadas = onDocumentUpdated(
       beforeData,
       afterData,
     });
+
+    await syncTrackingPublicStatus({
+      sourceCollection: "citas",
+      sourceId,
+      beforeData,
+      afterData,
+    });
   }
 );
 
@@ -1545,6 +2034,13 @@ exports.auditTurnosCompletados = onDocumentUpdated(
     const sourceId = event.params?.turnoId || after.id;
 
     await writeServiceAuditIfNeeded({
+      sourceCollection: "turnos",
+      sourceId,
+      beforeData,
+      afterData,
+    });
+
+    await syncTrackingPublicStatus({
       sourceCollection: "turnos",
       sourceId,
       beforeData,
@@ -1712,9 +2208,6 @@ if (rol === "agente") {
 
       const codigo = String(d.codigo || d.codigoTurno || "");
       const tramiteID = String(d.tramiteID || "");
-      const dni = String(d.dni || "");
-      const userNombre = String(d.userNombre || d.nombre || "");
-
       // Marca como llamado (manteniendo compatibilidad con tu UI actual)
       if (sourceCol === "turnos") {
         tx.update(ref, {
@@ -1737,14 +2230,16 @@ if (rol === "agente") {
         codigoLlamado: codigo,
         codigo, // fallback
         modulo: modulo,
-        dni: dni,
-        userNombre: userNombre,
         tipo: sourceCol === "turnos" ? "KIOSKO" : "WEB",
         tramiteID: tramiteID,
+        estado: "llamado",
         timestamp: now,
-        agenteID: auth.uid,
-        sourceId: fresh.id,
-        sourceCollection: sourceCol
+        updatedAt: now,
+        dni: FieldValue.delete(),
+        userNombre: FieldValue.delete(),
+        agenteID: FieldValue.delete(),
+        sourceId: FieldValue.delete(),
+        sourceCollection: FieldValue.delete(),
       }, { merge: true });
 
       // estadoSistema/tramite_{tramiteId} (panel lateral por trámite)
@@ -1753,7 +2248,10 @@ if (rol === "agente") {
         tx.set(tramiteEstadoRef, {
           codigoLlamado: codigo,
           modulo: modulo,
-          timestamp: now
+          tramiteID: tramiteID,
+          estado: "llamado",
+          timestamp: now,
+          updatedAt: now,
         }, { merge: true });
       }
 
@@ -1766,6 +2264,23 @@ if (rol === "agente") {
         modulo
       };
     });
+
+    if (result?.called) {
+      await writeAuditLogSafe({
+        action: "call_next",
+        entityType: safeStr(result.source),
+        entityId: safeStr(result.id),
+        actorUid: auth.uid,
+        actorRole: rol,
+        source: "callable:agentCallNext",
+        summary: `Se llamó ${safeStr(result.codigo)} para trámite ${safeStr(result.tramiteID)}.`,
+        metadata: {
+          tramiteID: safeStr(result.tramiteID),
+          codigo: safeStr(result.codigo),
+          modulo: result.modulo ?? null,
+        },
+      });
+    }
 
     return result;
   } catch (err) {
