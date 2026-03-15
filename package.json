@@ -6,6 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test": "npm run test:src && npm run test:functions",
+    "test:src": "node --test src/utils/*.test.js",
+    "test:functions": "npm --prefix functions test",
+    "test:emulators": "npm run test:emulators:rules && npm run test:emulators:smoke",
+    "test:emulators:rules": "firebase emulators:exec --only firestore \"node --test tests/emulator/firestore.rules.test.js\"",
+    "test:emulators:smoke": "firebase emulators:exec --only firestore,functions \"node --test tests/emulator/createArcoRequest.smoke.test.js\"",
     "lint": "eslint .",
     "preview": "vite preview"
   },
@@ -27,6 +33,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
     "@eslint/js": "^9.36.0",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",

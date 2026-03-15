@@ -240,6 +240,14 @@ match /usuarios/{userId} {
     }
 
     // -----------------------------
+    // arcoRequests (solo backend crea / admin gestiona)
+    // -----------------------------
+    match /arcoRequests/{requestId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // -----------------------------
     // auditLogs (solo backend)
     // -----------------------------
     match /auditLogs/{docId} {

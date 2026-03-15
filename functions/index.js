@@ -8,6 +8,17 @@ const { FieldPath, FieldValue, getFirestore, Timestamp } = require("firebase-adm
 const { getAuth } = require("firebase-admin/auth"); //  NUEVO (Paso 10)
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const {
+  normalizeEmailServer,
+  isValidEmailServer,
+  normalizeSingleLineTextServer,
+  normalizeMultilineTextServer,
+  normalizeArcoTypeServer,
+  normalizeArcoStatusServer,
+  isArcoFinalStatus,
+  normalizeRequesterDocumentServer,
+  isValidRequesterDocumentServer,
+} = require("./arcoUtils");
 
 const SANTIAGO_REGION = "southamerica-west1";
 const CRON_JOB_REGION = "us-central1";
@@ -21,6 +32,9 @@ const INVALID_TRAMITE_LOOKUP_MESSAGE = "Faltan datos válidos para consultar hor
 const INVALID_KIOSK_INPUT_MESSAGE = "Documento o trámite no válidos.";
 const INVALID_APPOINTMENT_INPUT_MESSAGE = "Faltan datos válidos para agendar la cita.";
 const INVALID_SLOT_SELECTION_MESSAGE = "El horario seleccionado no es válido.";
+
+const INVALID_ARCO_REQUEST_MESSAGE = "Faltan datos validos para registrar la solicitud.";
+const INVALID_ARCO_ADMIN_UPDATE_MESSAGE = "Faltan datos validos para actualizar la solicitud.";
 
 initializeApp();
 const db = getFirestore();
@@ -592,6 +606,161 @@ exports.lookupCitizenUserByDoc = onCall({ region: SANTIAGO_REGION }, async (requ
     console.error("lookupCitizenUserByDoc error:", error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", "Error interno al buscar ciudadano.");
+  }
+});
+
+exports.createArcoRequest = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
+  try {
+    const type = normalizeArcoTypeServer(request.data?.type);
+    const requesterName = normalizeSingleLineTextServer(request.data?.requesterName, 180);
+    const requesterEmail = normalizeEmailServer(request.data?.requesterEmail);
+    const requesterDocument = normalizeRequesterDocumentServer(request.data?.requesterDocument);
+    const details = normalizeMultilineTextServer(request.data?.details, 4000);
+    const privacyAccepted = request.data?.privacyAccepted === true;
+    const requesterUid = request.auth?.uid || null;
+
+    if (
+      !type ||
+      !requesterName ||
+      !isValidEmailServer(requesterEmail) ||
+      !isValidRequesterDocumentServer(requesterDocument) ||
+      details.length < 10 ||
+      !privacyAccepted
+    ) {
+      throw new HttpsError("invalid-argument", INVALID_ARCO_REQUEST_MESSAGE);
+    }
+
+    const nowTs = Timestamp.now();
+    const arcoRef = db.collection("arcoRequests").doc();
+
+    await arcoRef.set({
+      type,
+      status: "pendiente",
+      createdAt: nowTs,
+      updatedAt: nowTs,
+      requesterName,
+      requesterEmail,
+      requesterDocument,
+      requesterUid,
+      details,
+      privacyAccepted: true,
+      privacyAcceptedAt: nowTs,
+      source: "web",
+      resolutionNotes: "",
+      resolvedAt: null,
+      resolvedByUid: null,
+    });
+
+    await writeAuditLogSafe({
+      action: "create_arco_request",
+      entityType: "arcoRequests",
+      entityId: arcoRef.id,
+      actorUid: requesterUid,
+      actorRole: requesterUid ? "ciudadano" : "publico_web",
+      source: "callable:createArcoRequest",
+      summary: `Solicitud ARCO ${type} registrada.`,
+      metadata: {
+        type,
+        status: "pendiente",
+      },
+    });
+
+    return { ok: true, requestId: arcoRef.id };
+  } catch (error) {
+    console.error("createArcoRequest error:", error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Error al registrar la solicitud ARCO.");
+  }
+});
+
+exports.adminUpdateArcoRequest = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
+  try {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+
+    await requireAdmin(auth.uid);
+
+    const requestId = normalizeSingleLineTextServer(data?.requestId, 120);
+    const requestedStatus = data?.status === undefined ? null : normalizeArcoStatusServer(data?.status);
+    const resolutionNotes = normalizeMultilineTextServer(data?.resolutionNotes, 4000);
+
+    if (!requestId || (data?.status !== undefined && !requestedStatus)) {
+      throw new HttpsError("invalid-argument", INVALID_ARCO_ADMIN_UPDATE_MESSAGE);
+    }
+
+    const arcoRef = db.collection("arcoRequests").doc(requestId);
+    const result = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(arcoRef);
+      if (!snap.exists) throw new HttpsError("not-found", "La solicitud ARCO no existe.");
+
+      const before = snap.data() || {};
+      const beforeStatus = normalizeArcoStatusServer(before.status) || "pendiente";
+      const nextStatus = requestedStatus || beforeStatus;
+      const nowTs = Timestamp.now();
+      const becameResolved = !isArcoFinalStatus(beforeStatus) && isArcoFinalStatus(nextStatus);
+
+      const patch = {
+        status: nextStatus,
+        resolutionNotes,
+        updatedAt: nowTs,
+      };
+
+      if (isArcoFinalStatus(nextStatus)) {
+        patch.resolvedAt = becameResolved ? nowTs : (before.resolvedAt || nowTs);
+        patch.resolvedByUid = auth.uid;
+      } else {
+        patch.resolvedAt = null;
+        patch.resolvedByUid = null;
+      }
+
+      tx.set(arcoRef, patch, { merge: true });
+
+      return {
+        beforeStatus,
+        nextStatus,
+        becameResolved,
+        type: normalizeArcoTypeServer(before.type),
+      };
+    });
+
+    if (result.beforeStatus !== result.nextStatus) {
+      await writeAuditLogSafe({
+        action: "update_arco_request_status",
+        entityType: "arcoRequests",
+        entityId: requestId,
+        actorUid: auth.uid,
+        actorRole: "admin",
+        source: "callable:adminUpdateArcoRequest",
+        summary: `Solicitud ARCO cambió de ${result.beforeStatus} a ${result.nextStatus}.`,
+        metadata: {
+          type: result.type,
+          previousStatus: result.beforeStatus,
+          newStatus: result.nextStatus,
+        },
+      });
+    }
+
+    if (result.becameResolved) {
+      await writeAuditLogSafe({
+        action: "resolve_arco_request",
+        entityType: "arcoRequests",
+        entityId: requestId,
+        actorUid: auth.uid,
+        actorRole: "admin",
+        source: "callable:adminUpdateArcoRequest",
+        summary: `Solicitud ARCO marcada como ${result.nextStatus}.`,
+        metadata: {
+          type: result.type,
+          status: result.nextStatus,
+        },
+      });
+    }
+
+    return { ok: true, status: result.nextStatus };
+  } catch (error) {
+    console.error("adminUpdateArcoRequest error:", error);
+    if (error instanceof HttpsError) throw error;
+    throw new HttpsError("internal", "Error al actualizar la solicitud ARCO.");
   }
 });
 

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../firebase';
+import { isExpiredTrackingRecord } from '../utils/tracking';
 
 const styles = {
   container: {
@@ -99,21 +100,6 @@ function parseCodigoNum(codigo) {
   if (parts.length < 2) return null;
   const n = parseInt(parts[1], 10);
   return Number.isFinite(n) ? n : null;
-}
-
-function getTimestampMillis(ts) {
-  if (!ts) return null;
-  if (typeof ts.toMillis === 'function') return ts.toMillis();
-  if (typeof ts.seconds === 'number') return ts.seconds * 1000;
-  if (ts instanceof Date) return ts.getTime();
-  const parsed = new Date(ts);
-  return Number.isFinite(parsed.getTime()) ? parsed.getTime() : null;
-}
-
-function isExpiredTracking(data) {
-  const expiresAtMs = getTimestampMillis(data?.expiresAt);
-  if (expiresAtMs == null) return false;
-  return expiresAtMs <= Date.now();
 }
 
 function normalizeTrackingState(value) {
@@ -240,7 +226,7 @@ export default function TicketTracking() {
           }
 
           const data = snap.data() || {};
-          if (isExpiredTracking(data)) {
+          if (isExpiredTrackingRecord(data)) {
             setMiTurno(null);
             setLoading(false);
             setNotFound(true);

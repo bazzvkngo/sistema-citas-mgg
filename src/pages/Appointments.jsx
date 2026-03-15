@@ -17,6 +17,7 @@ import 'react-day-picker/dist/style.css';
 import { format, addDays, getDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import './Appointments.css';
+import { buildCitaTrackingUrl } from '../utils/tracking';
 
 const functions = getFunctions(app, 'southamerica-west1');
 const getAvailableSlots = httpsCallable(functions, 'getAvailableSlots');
@@ -51,13 +52,6 @@ function getChileHHmm(dateObj) {
 function capitalizeText(value) {
   if (!value) return '';
   return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function buildTrackingUrl(citaId, trackingToken) {
-  if (trackingToken) {
-    return `${window.location.origin}/qr-seguimiento?t=${trackingToken}`;
-  }
-  return `${window.location.origin}/qr-seguimiento?citaId=${citaId}`;
 }
 
 function getCallableErrorMessage(error, fallback) {
@@ -286,7 +280,7 @@ export default function Appointments() {
       const mensajeFinal = 'Cita agendada con exito.\nRecuerde estar 10 minutos antes.';
       setSuccessMessage(mensajeFinal);
       setSuccessCode(codigo);
-      setSuccessTrackingUrl(citaId ? buildTrackingUrl(citaId, trackingToken) : '');
+      setSuccessTrackingUrl(citaId ? buildCitaTrackingUrl(window.location.origin, citaId, trackingToken) : '');
 
       setSelectedTramiteId('');
       setSelectedDate(undefined);
@@ -372,7 +366,7 @@ export default function Appointments() {
       ? 'Llamada (el consulado ya esta listo para atenderle)'
       : 'En espera (su cita sigue registrada y en espera)';
 
-    const qrUrl = buildTrackingUrl(cita.id, cita.trackingToken || '');
+    const qrUrl = buildCitaTrackingUrl(window.location.origin, cita.id, cita.trackingToken || '');
     const fechaTexto = citaDate ? format(citaDate, 'dd/MM/yyyy HH:mm') : 'Fecha no disponible';
     const fechaDiaTexto = citaDate
       ? capitalizeText(format(citaDate, "EEEE d 'de' MMMM", { locale: es }))

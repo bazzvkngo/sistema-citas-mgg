@@ -6,6 +6,7 @@ import { useAuth } from "../context/AuthContext";
 import AdminServices from "../components/admin/AdminServices";
 import AdminAgents from "../components/admin/AdminAgents";
 import AdminHolidays from "../components/admin/AdminHolidays";
+import AdminArcoRequests from "../components/admin/AdminArcoRequests";
 
 const styles = {
   adminContainer: { padding: "20px" },
@@ -47,6 +48,7 @@ function mapAdminTabToLocal(adminTab) {
   if (key === "tramites" || key === "services") return "services";
   if (key === "agentes" || key === "agents") return "agents";
   if (key === "feriados" || key === "holidays") return "holidays";
+  if (key === "arco" || key === "arco-requests") return "arco";
   return null;
 }
 
@@ -116,12 +118,24 @@ export default function AdminPanel() {
         >
           Días Bloqueados / Feriados
         </button>
+        <button
+          style={{
+            ...styles.tab,
+            ...(activeTab === "arco" ? styles.activeTab : {}),
+            ...(!isAdmin ? styles.disabledTab : {})
+          }}
+          onClick={() => isAdmin && setActiveTab("arco")}
+          disabled={!isAdmin}
+        >
+          Solicitudes ARCO
+        </button>
       </nav>
 
       <div style={{ marginTop: "20px" }}>
         {activeTab === "services" && <AdminServices />}
         {activeTab === "agents" && isAdmin && <AdminAgents />}
         {activeTab === "holidays" && isAdmin && <AdminHolidays />}
+        {activeTab === "arco" && isAdmin && <AdminArcoRequests />}
       </div>
     </div>
   );

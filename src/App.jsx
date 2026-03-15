@@ -20,6 +20,7 @@ import Kiosk from './pages/Kiosk';
 import MonitorScreen from './pages/MonitorScreen';
 import TicketTracking from './pages/TicketTracking';
 import PrivacyPolicy from './pages/PrivacyPolicy';
+import ArcoRequests from './pages/ArcoRequests';
 import Dashboard from './pages/Dashboard';
 import Appointments from './pages/Appointments';
 import UserProfile from './pages/UserProfile';
@@ -83,6 +84,7 @@ export default function App() {
 
         <Route path="/qr-seguimiento" element={<TicketTracking />} />
         <Route path="/privacidad" element={<PrivacyPolicy />} />
+        <Route path="/derechos-arco" element={<ArcoRequests />} />
         <Route
           path="/verificar-correo"
           element={

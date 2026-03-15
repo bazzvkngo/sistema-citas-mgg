@@ -5,6 +5,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { db, app } from "../firebase";
 import useImmersiveFullscreen from "../hooks/useImmersiveFullscreen";
 import logoConsulado from "../assets/logo-consulado.png";
+import { buildTurnoTrackingUrl } from "../utils/tracking";
 
 const functions = getFunctions(app, "southamerica-west1");
 const generarTurnoKiosko = httpsCallable(functions, "generarTurnoKiosko");
@@ -360,7 +361,7 @@ export default function Kiosk() {
       });
 
       const { codigo, nombre, trackingToken } = result.data;
-      const qrUrl = `${window.location.origin}/qr-seguimiento?t=${trackingToken}`;
+      const qrUrl = buildTurnoTrackingUrl(window.location.origin, trackingToken);
 
       setGeneratedTicket({
         codigo,

@@ -55,6 +55,17 @@ export default function PrivacyPolicy() {
             datos necesarios en la gestion de su solicitud.
           </p>
         </section>
+
+        <section style={{ marginTop: '16px' }}>
+          <h2 style={{ margin: '0 0 8px', fontSize: '20px' }}>Derechos ARCO</h2>
+          <p style={{ margin: 0, lineHeight: 1.7 }}>
+            Si necesitas ejercer tus derechos de acceso, rectificacion, cancelacion u oposicion,
+            puedes ingresar una solicitud desde{' '}
+            <a href="/derechos-arco" style={{ color: '#c8102e', fontWeight: 800 }}>
+              este canal ARCO
+            </a>.
+          </p>
+        </section>
       </div>
     </div>
   );
