@@ -1,12 +1,50 @@
-export function buildTurnoTrackingUrl(origin, trackingToken) {
-  return `${origin}/qr-seguimiento?t=${trackingToken}`;
+const CONFIGURED_PUBLIC_APP_URL = import.meta.env?.VITE_PUBLIC_APP_URL || "";
+const ROUTER_BASE_URL = import.meta.env?.BASE_URL || "/";
+
+function stripTrailingSlashes(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
 }
 
-export function buildCitaTrackingUrl(origin, citaId, trackingToken) {
-  if (trackingToken) {
-    return buildTurnoTrackingUrl(origin, trackingToken);
+function normalizeBasePath(value) {
+  const trimmed = stripTrailingSlashes(value);
+  if (!trimmed || trimmed === "/") return "";
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+function buildTrackingPath(paramName, paramValue) {
+  return `/qr-seguimiento?${paramName}=${encodeURIComponent(String(paramValue || "").trim())}`;
+}
+
+export function resolvePublicAppUrl(explicitBaseUrl) {
+  const configuredBaseUrl = stripTrailingSlashes(explicitBaseUrl || CONFIGURED_PUBLIC_APP_URL);
+  if (configuredBaseUrl) {
+    if (/^https?:\/\//i.test(configuredBaseUrl)) {
+      return configuredBaseUrl;
+    }
+
+    if (configuredBaseUrl.startsWith("/") && typeof window !== "undefined" && window.location?.origin) {
+      return `${window.location.origin}${normalizeBasePath(configuredBaseUrl)}`;
+    }
+
+    return normalizeBasePath(configuredBaseUrl);
   }
-  return `${origin}/qr-seguimiento?citaId=${citaId}`;
+
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return `${window.location.origin}${normalizeBasePath(ROUTER_BASE_URL)}`;
+  }
+
+  return normalizeBasePath(ROUTER_BASE_URL);
+}
+
+export function buildTurnoTrackingUrl(baseUrl, trackingToken) {
+  return `${resolvePublicAppUrl(baseUrl)}${buildTrackingPath("t", trackingToken)}`;
+}
+
+export function buildCitaTrackingUrl(baseUrl, citaId, trackingToken) {
+  if (trackingToken) {
+    return buildTurnoTrackingUrl(baseUrl, trackingToken);
+  }
+  return `${resolvePublicAppUrl(baseUrl)}${buildTrackingPath("citaId", citaId)}`;
 }
 
 export function getTrackingTimestampMillis(ts) {

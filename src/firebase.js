@@ -16,14 +16,25 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-const appCheckSiteKey = import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY;
-const appCheckDebugToken = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN;
+const appCheckSiteKey = String(import.meta.env.VITE_FIREBASE_APPCHECK_SITE_KEY || "").trim();
+const appCheckDebugToken = String(import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN || "").trim();
+const isBrowser = typeof window !== "undefined";
+const isLocalhost =
+  isBrowser && ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+const isLocalAppCheckEnvironment = import.meta.env.DEV || isLocalhost;
 
-if (typeof window !== "undefined" && appCheckDebugToken) {
+if (isBrowser && appCheckDebugToken && !isLocalAppCheckEnvironment) {
+  console.warn("[App Check] Ignorando debug token fuera de localhost/desarrollo.");
+}
+
+if (isBrowser && appCheckDebugToken && isLocalAppCheckEnvironment) {
   window.FIREBASE_APPCHECK_DEBUG_TOKEN =
     appCheckDebugToken === "true" ? true : appCheckDebugToken;
 }
 
+if (!appCheckSiteKey && import.meta.env.PROD) {
+  console.warn("[App Check] Falta VITE_FIREBASE_APPCHECK_SITE_KEY en produccion.");
+}
 
 export const appCheck = appCheckSiteKey
   ? initializeAppCheck(app, {

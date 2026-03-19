@@ -101,11 +101,9 @@ export default function AdminServices() {
   const [isEditing, setIsEditing] = useState(false);
   const [currentTramiteId, setCurrentTramiteId] = useState(null);
   
-  const tramitesCollectionRef = collection(db, "tramites");
-
   useEffect(() => {
     setLoading(true);
-    const q = query(tramitesCollectionRef);
+    const q = query(collection(db, "tramites"));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const tramitesData = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTramites(tramitesData);
@@ -137,7 +135,7 @@ export default function AdminServices() {
           duracionMin: Number(duracion)
         });
       } else {
-        await addDoc(tramitesCollectionRef, {
+        await addDoc(collection(db, "tramites"), {
           nombre: nombre,
           prefijo: prefijoUpper,
           duracionMin: Number(duracion)

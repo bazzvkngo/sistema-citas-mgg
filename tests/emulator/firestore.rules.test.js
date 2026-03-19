@@ -82,8 +82,23 @@ async function seedBasicDocs() {
       enabled: true,
       url: "https://example.com/ad.mp4",
     });
+    await setDoc(doc(db, "serviceAudit", "audit_1"), {
+      sourceCollection: "turnos",
+      sourceId: "turno_1",
+      codigo: "A-001",
+      fechaHoraAtencionFin: new Date("2026-03-15T00:30:00.000Z"),
+    });
+    await setDoc(doc(db, "auditLogs", "log_1"), {
+      action: "create_turno_kiosko",
+      entityType: "turnos",
+      entityId: "turno_1",
+      timestamp: new Date("2026-03-15T00:40:00.000Z"),
+    });
     await setDoc(doc(db, "usuarios", "pantalla_1"), {
       rol: "pantalla",
+    });
+    await setDoc(doc(db, "usuarios", "agente_1"), {
+      rol: "agente",
     });
     await setDoc(doc(db, "usuarios", "admin_1"), {
       rol: "admin",
@@ -131,4 +146,25 @@ test("deniega config publicamente y permite lectura a pantalla autenticada", asy
   const pantallaDb = testEnv.authenticatedContext("pantalla_1").firestore();
   await assertFails(getDoc(doc(publicDb, "config", "pantallaTV")));
   await assertSucceeds(getDoc(doc(pantallaDb, "config", "pantallaTV")));
+});
+
+test("permite leer serviceAudit a agente y admin, pero no publicamente", async () => {
+  await seedBasicDocs();
+  const publicDb = testEnv.unauthenticatedContext().firestore();
+  const agenteDb = testEnv.authenticatedContext("agente_1").firestore();
+  const adminDb = testEnv.authenticatedContext("admin_1").firestore();
+
+  await assertFails(getDoc(doc(publicDb, "serviceAudit", "audit_1")));
+  await assertSucceeds(getDoc(doc(agenteDb, "serviceAudit", "audit_1")));
+  await assertSucceeds(getDoc(doc(adminDb, "serviceAudit", "audit_1")));
+});
+
+test("deniega auditLogs incluso para admin y agente", async () => {
+  await seedBasicDocs();
+  const agenteDb = testEnv.authenticatedContext("agente_1").firestore();
+  const adminDb = testEnv.authenticatedContext("admin_1").firestore();
+
+  await assertFails(getDoc(doc(agenteDb, "auditLogs", "log_1")));
+  await assertFails(getDoc(doc(adminDb, "auditLogs", "log_1")));
+  await assertFails(getDocs(query(collection(adminDb, "auditLogs"))));
 });

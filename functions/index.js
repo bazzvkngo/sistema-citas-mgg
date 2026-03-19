@@ -26,11 +26,18 @@ const {
   normalizeAuditExportInput,
   serializeAuditValue,
 } = require("./auditPolicy");
+const {
+  CHILE_TZ,
+  buildChileDateTime,
+  buildChileDayRange,
+  formatChileHHmm,
+  getChileDateISO,
+  getChileDayOfWeek,
+  normalizeChileDateKey,
+} = require("./chileTime");
 
 const SANTIAGO_REGION = "southamerica-west1";
 const CRON_JOB_REGION = "us-central1";
-const CHILE_TZ = "America/Santiago";
-const TZ_OFFSET = "-03:00";
 const TRACKING_PUBLIC_ACTIVE_TURNO_TTL_MS = 24 * 60 * 60 * 1000;
 const TRACKING_PUBLIC_ACTIVE_CITA_TTL_MS = 24 * 60 * 60 * 1000;
 const TRACKING_PUBLIC_FINALIZED_TTL_MS = 6 * 60 * 60 * 1000;
@@ -524,8 +531,8 @@ async function deleteCollectionDocsByTimestamp({
 }
 
 function buildLocalRange(startDateISO, endDateISO) {
-  const startDate = new Date(`${startDateISO}T00:00:00.000${TZ_OFFSET}`);
-  const endDate = new Date(`${endDateISO}T23:59:59.999${TZ_OFFSET}`);
+  const { startDate } = buildChileDayRange(startDateISO);
+  const { endDate } = buildChileDayRange(endDateISO);
 
   return {
     start: Timestamp.fromDate(startDate),
@@ -533,25 +540,30 @@ function buildLocalRange(startDateISO, endDateISO) {
   };
 }
 
-function getChileDateISO(date = new Date()) {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: CHILE_TZ,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-function addDaysISOChile(baseISO, days) {
-  const base = new Date(`${baseISO}T00:00:00.000${TZ_OFFSET}`);
-  const moved = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
-  return getChileDateISO(moved);
-}
-
 const SMTP_USER = defineSecret("SMTP_USER");
 const SMTP_PASS = defineSecret("SMTP_PASS");
 const MAIL_FROM = defineSecret("MAIL_FROM");
 const APP_PUBLIC_URL = defineSecret("APP_PUBLIC_URL");
+
+function normalizePublicAppUrl(value) {
+  return safeStr(value).trim().replace(/\/+$/, "");
+}
+
+function buildTrackingPublicUrl(baseUrl, citaId, trackingToken) {
+  const normalizedBaseUrl = normalizePublicAppUrl(baseUrl);
+  const safeToken = safeStr(trackingToken).trim();
+  const safeCitaId = safeStr(citaId).trim();
+
+  if (!normalizedBaseUrl) {
+    throw new Error("APP_PUBLIC_URL no esta configurado para construir enlaces publicos.");
+  }
+
+  if (safeToken) {
+    return `${normalizedBaseUrl}/qr-seguimiento?t=${encodeURIComponent(safeToken)}`;
+  }
+
+  return `${normalizedBaseUrl}/qr-seguimiento?citaId=${encodeURIComponent(safeCitaId)}`;
+}
 
 function formatFechaChile(ts) {
   try {
@@ -628,14 +640,12 @@ exports.emailOnCitaCreated = onDocumentCreated(
           const tData = tSnap.data() || {};
           tramiteNombre = tData.nombre || tramiteNombre;
         }
-      } catch (_) {}
+      } catch {
+        // No-op: si falla el lookup del tramite, se mantiene el fallback.
+      }
     }
 
-    const baseUrl = (APP_PUBLIC_URL.value() || "").replace(/\/+$/, "");
-    const trackingToken = safeStr(cita.trackingToken).trim();
-    const trackingUrl = trackingToken
-      ? `${baseUrl}/qr-seguimiento?t=${trackingToken}`
-      : `${baseUrl}/qr-seguimiento?citaId=${citaId}`;
+    const trackingUrl = buildTrackingPublicUrl(APP_PUBLIC_URL.value(), citaId, cita.trackingToken);
 
     const fechaStr = cita.fechaHora ? formatFechaChile(cita.fechaHora) : "Fecha no disponible";
 
@@ -1039,27 +1049,12 @@ exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
     throw new HttpsError("invalid-argument", INVALID_TRAMITE_LOOKUP_MESSAGE);
   }
 
-  const formatHoraChile = (dateObj) => {
-    const parts = new Intl.DateTimeFormat("en-GB", {
-      timeZone: CHILE_TZ,
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-    }).formatToParts(dateObj);
-
-    const hh = parts.find((p) => p.type === "hour")?.value ?? "00";
-    const mm = parts.find((p) => p.type === "minute")?.value ?? "00";
-    return `${hh}:${mm}`;
-  };
-
-  const getDayInChile = (dateObj) => {
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: CHILE_TZ,
-      weekday: "short",
-    }).formatToParts(dateObj);
-    const w = parts.find((p) => p.type === "weekday")?.value || "";
-    return w;
-  };
+  let fechaKey;
+  try {
+    fechaKey = normalizeChileDateKey(fechaISO);
+  } catch {
+    throw new HttpsError("invalid-argument", INVALID_TRAMITE_LOOKUP_MESSAGE);
+  }
 
   try {
     await assertRateLimit({
@@ -1071,11 +1066,8 @@ exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
       message: "Demasiadas consultas de horarios disponibles. Intente nuevamente en unos minutos.",
     });
 
-    const baseDate = new Date(fechaISO);
-    const fechaKey = getChileDateISO(baseDate);
-
-    const weekday = getDayInChile(baseDate).toLowerCase();
-    if (weekday.startsWith("sat") || weekday.startsWith("sun")) {
+    const weekday = getChileDayOfWeek(fechaKey);
+    if (weekday === 0 || weekday === 6) {
       return { slots: [] };
     }
 
@@ -1097,8 +1089,7 @@ exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
     const tramiteData = tramiteDoc.data() || {};
     const duracion = tramiteData.duracionMin || 15;
 
-    const inicioDiaChile = Timestamp.fromDate(new Date(`${fechaKey}T00:00:00.000${TZ_OFFSET}`));
-    const finDiaChile = Timestamp.fromDate(new Date(`${fechaKey}T23:59:59.999${TZ_OFFSET}`));
+    const { start: inicioDiaChile, end: finDiaChile } = buildChileDayRange(fechaKey);
 
     const q = db
       .collection("citas")
@@ -1113,11 +1104,11 @@ exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
       citasSnapshot.docs
         .map((d) => d.data()?.fechaHora)
         .filter(Boolean)
-        .map((ts) => formatHoraChile(ts.toDate()))
+        .map((ts) => formatChileHHmm(ts.toDate()))
     );
 
-    const startTime = new Date(`${fechaKey}T09:00:00.000${TZ_OFFSET}`);
-    const endTime = new Date(`${fechaKey}T12:30:00.000${TZ_OFFSET}`);
+    const startTime = buildChileDateTime(fechaKey, "09:00");
+    const endTime = buildChileDateTime(fechaKey, "12:30");
 
     const allSlots = [];
     let currentTime = new Date(startTime.getTime());
@@ -1128,7 +1119,7 @@ exports.getAvailableSlots = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
     }
 
     const available = allSlots
-      .map((slotDate) => formatHoraChile(slotDate))
+      .map((slotDate) => formatChileHHmm(slotDate))
       .filter((hhmm) => !bookedSlots.has(hhmm));
 
     return { slots: available };
@@ -1969,7 +1960,12 @@ exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION, enforceAppCheck: 
     throw new HttpsError("invalid-argument", "Falta la versión del aviso de privacidad.");
   }
 
-  const fechaKey = getChileDateISO(new Date(fechaISO));
+  let fechaKey;
+  try {
+    fechaKey = normalizeChileDateKey(fechaISO);
+  } catch {
+    throw new HttpsError("invalid-argument", INVALID_APPOINTMENT_INPUT_MESSAGE);
+  }
   const hhmmCompact = String(slot).replace(":", "");
 
   // Lock por trámite+fecha+hora (Objetivo 3)
@@ -1988,7 +1984,7 @@ exports.agendarCitaWebLock = onCall({ region: SANTIAGO_REGION, enforceAppCheck: 
   const trackingRef = db.collection("trackingPublic").doc(trackingToken);
   const uid = request.auth.uid;
 
-  const fechaHoraDate = new Date(`${fechaKey}T${slot}:00.000${TZ_OFFSET}`);
+  const fechaHoraDate = buildChileDateTime(fechaKey, `${slot}:00`);
   const fechaHoraTs = Timestamp.fromDate(fechaHoraDate);
 
   // Contador WEB por tramite + día (Objetivo 8)
@@ -2537,13 +2533,6 @@ function normalizeModuloServer(v) {
   if (!s) return null;
   const n = parseInt(s.replace(/\D/g, ""), 10);
   return Number.isFinite(n) ? n : s; // si no es numérico, devuelve string (por si usan "AP")
-}
-
-function sameModulo(a, b) {
-  const na = normalizeModuloServer(a);
-  const nb = normalizeModuloServer(b);
-  if (na === null || nb === null) return false;
-  return String(na) === String(nb);
 }
 
 async function pickNextCandidate({ nowTs, dateISO, allowedTramites }) {

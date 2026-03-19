@@ -323,7 +323,6 @@ export default function AgentPanel() {
     if (!isAdmin) return;
 
     if (moduloAsignado) setModuloFiltro(moduloAsignado);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, isAdmin, moduloAsignado]);
 
   useEffect(() => {

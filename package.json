@@ -6,13 +6,20 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "test": "npm run test:src && npm run test:functions",
+    "test": "npm run test:frontend && npm run test:functions",
+    "test:frontend": "npm run test:src",
     "test:src": "node --test src/utils/*.test.js",
-    "test:functions": "npm --prefix functions test",
+    "test:functions": "npm --prefix functions run test:unit",
     "test:emulators": "npm run test:emulators:rules && npm run test:emulators:smoke",
     "test:emulators:rules": "firebase emulators:exec --only firestore \"node --test tests/emulator/firestore.rules.test.js\"",
     "test:emulators:smoke": "firebase emulators:exec --only firestore,functions \"node --test tests/emulator/createArcoRequest.smoke.test.js\"",
-    "lint": "eslint .",
+    "lint": "npm run lint:frontend && npm run lint:functions",
+    "lint:frontend": "eslint src tests eslint.config.js vite.config.js",
+    "lint:functions": "eslint functions",
+    "emulators:start": "firebase emulators:start --only firestore,functions",
+    "deploy:hosting": "npm run build && firebase deploy --only hosting",
+    "deploy:functions": "firebase deploy --only functions",
+    "deploy:firestore": "firebase deploy --only firestore:rules,firestore:indexes",
     "preview": "vite preview"
   },
   "dependencies": {

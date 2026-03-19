@@ -5,24 +5,36 @@ import {
   buildCitaTrackingUrl,
   getTrackingTimestampMillis,
   isExpiredTrackingRecord,
+  resolvePublicAppUrl,
 } from "./tracking.js";
 
-test("buildTurnoTrackingUrl usa token publico", () => {
+test("buildTurnoTrackingUrl usa token publico y respeta subruta publica", () => {
   assert.equal(
-    buildTurnoTrackingUrl("https://app.example.com", "tok_123"),
-    "https://app.example.com/qr-seguimiento?t=tok_123"
+    buildTurnoTrackingUrl("https://app.example.com/sistema-citas", "tok_123"),
+    "https://app.example.com/sistema-citas/qr-seguimiento?t=tok_123"
   );
 });
 
 test("buildCitaTrackingUrl prioriza token y mantiene fallback legacy", () => {
   assert.equal(
-    buildCitaTrackingUrl("https://app.example.com", "cita_1", "tok_456"),
-    "https://app.example.com/qr-seguimiento?t=tok_456"
+    buildCitaTrackingUrl("https://app.example.com/sistema-citas", "cita_1", "tok_456"),
+    "https://app.example.com/sistema-citas/qr-seguimiento?t=tok_456"
   );
   assert.equal(
-    buildCitaTrackingUrl("https://app.example.com", "cita_1", ""),
-    "https://app.example.com/qr-seguimiento?citaId=cita_1"
+    buildCitaTrackingUrl("https://app.example.com/sistema-citas", "cita_1", ""),
+    "https://app.example.com/sistema-citas/qr-seguimiento?citaId=cita_1"
   );
+});
+
+test("resolvePublicAppUrl combina origin actual con una subruta publica relativa", () => {
+  const originalWindow = global.window;
+  global.window = { location: { origin: "http://localhost:5173" } };
+
+  try {
+    assert.equal(resolvePublicAppUrl("/sistema-citas"), "http://localhost:5173/sistema-citas");
+  } finally {
+    global.window = originalWindow;
+  }
 });
 
 test("getTrackingTimestampMillis soporta Timestamp-like, Date e ISO string", () => {

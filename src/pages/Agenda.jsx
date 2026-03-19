@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { collection, onSnapshot, orderBy, query, where, Timestamp } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -52,9 +52,11 @@ export default function Agenda() {
   const isAdmin = rol === 'admin';
 
   const moduloAsignado = currentUser?.moduloAsignado ?? null;
-  const habilidades = Array.isArray(currentUser?.habilidades)
-    ? currentUser.habilidades.map((x) => String(x || '').trim()).filter(Boolean)
-    : [];
+  const habilidades = useMemo(() => (
+    Array.isArray(currentUser?.habilidades)
+      ? currentUser.habilidades.map((x) => String(x || '').trim()).filter(Boolean)
+      : []
+  ), [currentUser?.habilidades]);
 
   const [tab, setTab] = useState('citas'); // 'citas' | 'turnos'
   const [monthsAhead, setMonthsAhead] = useState(2);
@@ -167,7 +169,7 @@ export default function Agenda() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [currentRows]);
 
-  const passesFilters = (item) => {
+  const passesFilters = useCallback((item) => {
     // Restricciones por agente (módulo + habilidades)
     if (isAgent) {
       if (habilidades.length > 0) {
@@ -200,18 +202,20 @@ export default function Agenda() {
     }
 
     return true;
-  };
+  }, [
+    habilidades,
+    isAdmin,
+    isAgent,
+    moduleFilter,
+    moduloAsignado,
+    search,
+    statusFilter,
+    tramitesMap,
+  ]);
 
   const rows = useMemo(() => currentRows.filter(passesFilters), [
     currentRows,
-    tab,
-    statusFilter,
-    moduleFilter,
-    search,
-    rol,
-    moduloAsignado,
-    tramitesMap,
-    habilidades,
+    passesFilters,
   ]);
 
   const subtitle = useMemo(() => {

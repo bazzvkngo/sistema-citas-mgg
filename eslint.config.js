@@ -4,26 +4,60 @@ import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
+const sharedRules = {
+  'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+}
+
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'functions/node_modules']),
   {
-    files: ['**/*.{js,jsx}'],
+    files: ['src/**/*.{js,jsx}'],
+    ignores: ['src/**/*.test.js'],
     extends: [
       js.configs.recommended,
       reactHooks.configs['recommended-latest'],
       reactRefresh.configs.vite,
     ],
     languageOptions: {
-      ecmaVersion: 2020,
-      globals: globals.browser,
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.browser,
+      },
       parserOptions: {
-        ecmaVersion: 'latest',
         ecmaFeatures: { jsx: true },
-        sourceType: 'module',
       },
     },
+    rules: sharedRules,
+  },
+  {
+    files: ['src/**/*.test.js', 'tests/**/*.js', 'vite.config.js', 'eslint.config.js'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: sharedRules,
+  },
+  {
+    files: ['functions/**/*.js'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'commonjs',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: sharedRules,
+  },
+  {
+    files: ['src/context/AuthContext.jsx'],
     rules: {
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      'react-refresh/only-export-components': 'off',
     },
   },
 ])

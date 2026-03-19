@@ -17,7 +17,7 @@ import 'react-day-picker/dist/style.css';
 import { format, addDays, getDay } from 'date-fns';
 import { es } from 'date-fns/locale';
 import './Appointments.css';
-import { buildCitaTrackingUrl } from '../utils/tracking';
+import { buildCitaTrackingUrl, resolvePublicAppUrl } from '../utils/tracking';
 
 const functions = getFunctions(app, 'southamerica-west1');
 const getAvailableSlots = httpsCallable(functions, 'getAvailableSlots');
@@ -192,7 +192,7 @@ export default function Appointments() {
       try {
         const result = await getAvailableSlots({
           tramiteId: selectedTramiteId,
-          fechaISO: selectedDate.toISOString()
+          fechaISO: getChileDateISO(selectedDate)
         });
 
         const slots = Array.isArray(result?.data?.slots) ? result.data.slots : [];
@@ -265,7 +265,7 @@ export default function Appointments() {
 
       const resp = await agendarCitaWebLock({
         tramiteId: selectedTramiteId,
-        fechaISO: selectedDate.toISOString(),
+        fechaISO: getChileDateISO(selectedDate),
         slot: selectedSlot,
         dni: currentUser.dni,
         userNombre: currentUser.nombre || currentUser.displayName || '',
@@ -280,7 +280,7 @@ export default function Appointments() {
       const mensajeFinal = 'Cita agendada con exito.\nRecuerde estar 10 minutos antes.';
       setSuccessMessage(mensajeFinal);
       setSuccessCode(codigo);
-      setSuccessTrackingUrl(citaId ? buildCitaTrackingUrl(window.location.origin, citaId, trackingToken) : '');
+      setSuccessTrackingUrl(citaId ? buildCitaTrackingUrl(resolvePublicAppUrl(), citaId, trackingToken) : '');
 
       setSelectedTramiteId('');
       setSelectedDate(undefined);
@@ -366,7 +366,7 @@ export default function Appointments() {
       ? 'Llamada (el consulado ya esta listo para atenderle)'
       : 'En espera (su cita sigue registrada y en espera)';
 
-    const qrUrl = buildCitaTrackingUrl(window.location.origin, cita.id, cita.trackingToken || '');
+    const qrUrl = buildCitaTrackingUrl(resolvePublicAppUrl(), cita.id, cita.trackingToken || '');
     const fechaTexto = citaDate ? format(citaDate, 'dd/MM/yyyy HH:mm') : 'Fecha no disponible';
     const fechaDiaTexto = citaDate
       ? capitalizeText(format(citaDate, "EEEE d 'de' MMMM", { locale: es }))

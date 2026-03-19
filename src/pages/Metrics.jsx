@@ -1,5 +1,5 @@
 // src/pages/Metrics.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { app, db } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -815,15 +815,15 @@ export default function Metrics() {
     return first ? { label: first.key, value: first.count } : { label: "Sin datos", value: 0 };
   }, [byModulo]);
 
-  const getAgentLabel = (uid) => {
+  const getAgentLabel = useCallback((uid) => {
     const ag = agentsMap?.[uid] || {};
     return ag.nombreCompleto || ag.email || (uid === "SIN_AGENTE" ? "SIN AGENTE" : uid);
-  };
+  }, [agentsMap]);
 
   const topAgente = useMemo(() => {
     const first = byAgente[0];
     return first ? { label: getAgentLabel(first.key), value: first.count } : { label: "Sin datos", value: 0 };
-  }, [byAgente, agentsMap]);
+  }, [byAgente, getAgentLabel]);
 
   const byEstado = useMemo(() => {
     return countBy(filteredRecords, (r) => {
@@ -930,9 +930,9 @@ export default function Metrics() {
     if (agenteFilter !== "ALL") items.push(`Agente: ${getAgentLabel(agenteFilter)}`);
     if (searchText.trim()) items.push(`Búsqueda: ${searchText.trim()}`);
     return items;
-  }, [startDateISO, endDateISO, originFilter, tramiteFilter, moduloFilter, agenteFilter, searchText, agentsMap]);
+  }, [startDateISO, endDateISO, originFilter, tramiteFilter, moduloFilter, agenteFilter, searchText, getAgentLabel]);
 
-  const fetchAgentsInfo = async (uids) => {
+  const fetchAgentsInfo = useCallback(async (uids) => {
     try {
       const chunkSize = 10;
       const all = {};
@@ -950,7 +950,7 @@ export default function Metrics() {
     } catch (err) {
       console.warn("No se pudo cargar info agentes (usuarios):", err);
     }
-  };
+  }, []);
 
   const openDetails = (record) => {
     setSelectedRecord(record);
@@ -975,7 +975,7 @@ export default function Metrics() {
     setTramiteModalRecords([]);
   };
 
-  const fetchMetrics = async () => {
+  const fetchMetrics = useCallback(async () => {
     if (!startDateISO || !endDateISO) {
       alert("Selecciona un rango de fechas.");
       return;
@@ -1007,11 +1007,11 @@ export default function Metrics() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [endDateISO, fetchAgentsInfo, startDateISO]);
 
   useEffect(() => {
     if (isAdmin) fetchMetrics();
-  }, [isAdmin]);
+  }, [fetchMetrics, isAdmin]);
 
   const canExport = !!stats && !loading;
 
@@ -1108,7 +1108,7 @@ export default function Metrics() {
       value: row.count,
       hint: "Casos asignados en el filtro actual",
     }));
-  }, [byAgente, agentsMap]);
+  }, [byAgente, getAgentLabel]);
 
   const topTramiteRows = useMemo(() => {
     return byTramiteStats.slice(0, 6).map((row) => ({

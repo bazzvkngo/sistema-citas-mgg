@@ -273,7 +273,6 @@ export default function CitizenProfile({ role = "agente" }) {
   const [email, setEmail] = useState("");
 
   const [exists, setExists] = useState(false);
-  const [source, setSource] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [recientes, setRecientes] = useState([]);
@@ -286,7 +285,6 @@ export default function CitizenProfile({ role = "agente" }) {
     setTelefono("");
     setEmail("");
     setExists(false);
-    setSource("");
   };
 
   useEffect(() => {
@@ -344,7 +342,6 @@ export default function CitizenProfile({ role = "agente" }) {
         setTelefono(mapped.telefono);
         setEmail(mapped.email);
         setExists(mapped.exists);
-        setSource(mapped.source);
         setMsg("Registro encontrado en ciudadanos.");
         return;
       }
@@ -361,7 +358,6 @@ export default function CitizenProfile({ role = "agente" }) {
           setTelefono(mapped.telefono);
           setEmail(mapped.email);
           setExists(mapped.exists);
-          setSource(mapped.source);
           setMsg("Datos base cargados desde usuarios.");
           return;
         }
@@ -370,7 +366,6 @@ export default function CitizenProfile({ role = "agente" }) {
       resetForm();
       setDniRaw(formatCitizenDocument(dniNorm));
       setExists(false);
-      setSource("");
       setMsg("No existe. Puedes crear el registro.");
     } catch (e) {
       console.error(e);
@@ -413,7 +408,6 @@ export default function CitizenProfile({ role = "agente" }) {
 
       setDniRaw(formatCitizenDocument(dniRaw));
       setExists(true);
-      setSource("ciudadanos");
       setMsg("Guardado en ciudadanos.");
     } catch (e) {
       console.error(e);
