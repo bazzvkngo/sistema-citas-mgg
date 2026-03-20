@@ -38,6 +38,7 @@ function getHomeRouteByRole(rolRaw) {
   if (rol === 'ciudadano') return '/citas';
   if (rol === 'agente' || rol === 'agent') return '/panel-agente';
   if (rol === 'admin') return '/panel-agente';
+  if (rol === 'superadmin') return '/administrador';
   if (rol === 'pantalla') return '/pantalla-tv';
   if (rol === 'kiosko') return '/kiosko';
   return '/citas';

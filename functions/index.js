@@ -50,6 +50,11 @@ const INVALID_TRAMITE_LOOKUP_MESSAGE = "Faltan datos válidos para consultar hor
 const INVALID_KIOSK_INPUT_MESSAGE = "Documento o trámite no válidos.";
 const INVALID_APPOINTMENT_INPUT_MESSAGE = "Faltan datos válidos para agendar la cita.";
 const INVALID_SLOT_SELECTION_MESSAGE = "El horario seleccionado no es válido.";
+const DEMO_RESET_CONFIRMATION_TEXT = "ELIMINAR TODO";
+const DEMO_RESET_DEFAULT_SCOPE = "operational_demo";
+const DEMO_RESET_FULL_SCOPE = "full_demo";
+const DEMO_RESET_FULL_ENABLED = false;
+const DEMO_RESET_BATCH_LIMIT = 200;
 
 const INVALID_ARCO_REQUEST_MESSAGE = "Faltan datos validos para registrar la solicitud.";
 const INVALID_ARCO_ADMIN_UPDATE_MESSAGE = "Faltan datos validos para actualizar la solicitud.";
@@ -2773,13 +2778,219 @@ function pickAllowed(obj, allowedKeys) {
   return out;
 }
 
-async function requireAdmin(uid) {
+function resolveUserRoleServer(userData) {
+  const rawRole = userData?.rol || userData?.role || userData?.tipoUsuario || userData?.perfil || "";
+  return String(rawRole || "").trim().toLowerCase();
+}
+
+async function requireRole(uid, allowedRoles, errorMessage) {
   const uSnap = await db.collection("usuarios").doc(uid).get();
   const u = uSnap.exists ? (uSnap.data() || {}) : null;
-  const rol = u?.rol || u?.role || "user";
-  if (rol !== "admin") throw new HttpsError("permission-denied", "Solo admin.");
+  const role = resolveUserRoleServer(u);
+
+  if (!allowedRoles.includes(role)) {
+    throw new HttpsError("permission-denied", errorMessage);
+  }
+
   return u;
 }
+
+async function requireAdmin(uid) {
+  return requireRole(uid, ["admin", "superadmin"], "Solo admin o superadmin.");
+}
+
+async function requireSuperadmin(uid) {
+  return requireRole(uid, ["superadmin"], "Solo superadmin.");
+}
+
+function getDemoResetPlan(scope) {
+  const operationalCollections = [
+    "citas",
+    "turnos",
+    "trackingPublic",
+    "slotLocks",
+    "kioskTurnoLocks",
+    "contadores",
+    "contadoresWeb",
+  ];
+
+  if (scope === DEMO_RESET_DEFAULT_SCOPE) {
+    return {
+      scope,
+      collections: operationalCollections,
+      tempStateDocIds: ["llamadaActual"],
+      tempStatePrefixes: ["tramite_"],
+      mode: "safe_operational",
+    };
+  }
+
+  if (scope === DEMO_RESET_FULL_SCOPE) {
+    if (!DEMO_RESET_FULL_ENABLED) {
+      throw new HttpsError(
+        "failed-precondition",
+        "El wipe total está deshabilitado. Habilítelo explícitamente en el backend antes de usarlo."
+      );
+    }
+
+    return {
+      scope,
+      collections: operationalCollections,
+      tempStateDocIds: ["llamadaActual"],
+      tempStatePrefixes: ["tramite_"],
+      mode: "full_demo",
+    };
+  }
+
+  throw new HttpsError("invalid-argument", "Scope de limpieza no válido.");
+}
+
+async function deleteCollectionDocs(collectionName, batchLimit = DEMO_RESET_BATCH_LIMIT) {
+  let deletedCount = 0;
+
+  while (true) {
+    const snapshot = await db.collection(collectionName).limit(batchLimit).get();
+    if (snapshot.empty) break;
+
+    const batch = db.batch();
+    snapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+    await batch.commit();
+    deletedCount += snapshot.size;
+
+    if (snapshot.size < batchLimit) break;
+  }
+
+  return deletedCount;
+}
+
+async function deleteDocsByIdRange(collectionName, prefix, batchLimit = DEMO_RESET_BATCH_LIMIT) {
+  let deletedCount = 0;
+
+  while (true) {
+    const snapshot = await db
+      .collection(collectionName)
+      .where(FieldPath.documentId(), ">=", prefix)
+      .where(FieldPath.documentId(), "<=", `${prefix}\uf8ff`)
+      .orderBy(FieldPath.documentId())
+      .limit(batchLimit)
+      .get();
+
+    if (snapshot.empty) break;
+
+    const batch = db.batch();
+    snapshot.forEach((docSnap) => batch.delete(docSnap.ref));
+    await batch.commit();
+    deletedCount += snapshot.size;
+
+    if (snapshot.size < batchLimit) break;
+  }
+
+  return deletedCount;
+}
+
+async function deleteNamedDoc(collectionName, docId) {
+  const ref = db.collection(collectionName).doc(docId);
+  const snap = await ref.get();
+  if (!snap.exists) return 0;
+  await ref.delete();
+  return 1;
+}
+
+async function executeDemoReset(plan) {
+  const deleted = {};
+  let totalDeleted = 0;
+
+  for (const collectionName of plan.collections) {
+    const count = await deleteCollectionDocs(collectionName);
+    deleted[collectionName] = count;
+    totalDeleted += count;
+  }
+
+  for (const docId of plan.tempStateDocIds) {
+    const key = `estadoSistema/${docId}`;
+    const count = await deleteNamedDoc("estadoSistema", docId);
+    deleted[key] = count;
+    totalDeleted += count;
+  }
+
+  for (const prefix of plan.tempStatePrefixes) {
+    const key = `estadoSistema/${prefix}*`;
+    const count = await deleteDocsByIdRange("estadoSistema", prefix);
+    deleted[key] = count;
+    totalDeleted += count;
+  }
+
+  return {
+    scope: plan.scope,
+    mode: plan.mode,
+    deleted,
+    totalDeleted,
+    affectedCollections: Object.keys(deleted),
+  };
+}
+
+exports.adminResetDemoData = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
+  try {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+
+    const actor = await requireSuperadmin(auth.uid);
+
+    await assertRateLimit({
+      endpoint: "adminResetDemoData",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 2,
+      windowMs: 15 * 60 * 1000,
+      message: "Demasiadas limpiezas de demo. Espere antes de volver a intentarlo.",
+    });
+
+    const scope = safeStr(data?.scope || DEMO_RESET_DEFAULT_SCOPE).trim().toLowerCase();
+    const confirmationText = safeStr(data?.confirmationText).trim();
+
+    if (confirmationText !== DEMO_RESET_CONFIRMATION_TEXT) {
+      throw new HttpsError(
+        "failed-precondition",
+        `Debe escribir exactamente "${DEMO_RESET_CONFIRMATION_TEXT}" para ejecutar esta acción.`
+      );
+    }
+
+    const plan = getDemoResetPlan(scope);
+    const result = await executeDemoReset(plan);
+
+    await writeAuditLogSafe({
+      action: "admin_reset_demo_data",
+      entityType: "demo_reset",
+      entityId: `${scope}_${Date.now()}`,
+      actorUid: auth.uid,
+      actorRole: resolveUserRoleServer(actor),
+      source: "callable:adminResetDemoData",
+      summary: `Limpieza de demo ejecutada (${scope}).`,
+      metadata: {
+        scope,
+        mode: result.mode,
+        totalDeleted: result.totalDeleted,
+        affectedCollections: result.affectedCollections,
+        deleted: result.deleted,
+        fullDemoEnabled: DEMO_RESET_FULL_ENABLED,
+      },
+    });
+
+    return {
+      ok: true,
+      scope,
+      mode: result.mode,
+      totalDeleted: result.totalDeleted,
+      affectedCollections: result.affectedCollections,
+      deleted: result.deleted,
+      fullDemoEnabled: DEMO_RESET_FULL_ENABLED,
+      confirmationTextRequired: DEMO_RESET_CONFIRMATION_TEXT,
+    };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error("adminResetDemoData error:", error);
+    throw new HttpsError("internal", "Error al limpiar los datos demo.");
+  }
+});
 
 exports.adminExportAuditRecords = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
   try {

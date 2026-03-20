@@ -6,12 +6,13 @@ import resolveUserRole from '../../utils/resolveUserRole';
 export default function AdminRoute({ children }) {
   const { currentUser, loading } = useAuth();
   const rol = resolveUserRole(currentUser);
+  const isAllowed = rol === 'admin' || rol === 'superadmin';
 
   if (loading) {
     return <p className="page-container">Verificando permisos...</p>;
   }
 
-  if (!currentUser || rol !== 'admin') {
+  if (!currentUser || !isAllowed) {
     return <Navigate to="/inicio" />;
   }
 
