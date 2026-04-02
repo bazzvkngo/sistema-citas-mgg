@@ -358,7 +358,7 @@ export default function Navbar() {
                           className="navbar__dropdownItem"
                           role="menuitem"
                         >
-                          Trámites
+                          Catálogo
                         </button>
                         <button
                           type="button"
@@ -424,7 +424,7 @@ export default function Navbar() {
                               className="navbar__mobileSubLink"
                               onClick={() => goAdminTab("tramites")}
                             >
-                              Trámites
+                              Catálogo
                             </button>
                             <button
                               type="button"

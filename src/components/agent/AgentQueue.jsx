@@ -30,6 +30,7 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
 
   const [loadingCall, setLoadingCall] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [callFeedback, setCallFeedback] = useState('');
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
@@ -132,23 +133,36 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
   const callNext = async () => {
     if (loadingCall || callInFlightRef.current) return;
 
-    if (!moduloEfectivo) return alert('Asigna un modulo para poder llamar.');
-    if (atencionActual) return alert('Ya hay una atencion activa. Finaliza primero.');
+    if (!moduloEfectivo) {
+      setCallFeedback('Debes asignar un modulo antes de llamar al siguiente turno.');
+      return;
+    }
+    if (atencionActual) {
+      setCallFeedback('Debes finalizar la atencion actual antes de llamar al siguiente turno.');
+      return;
+    }
 
     callInFlightRef.current = true;
     setLoadingCall(true);
+    setCallFeedback('');
     try {
       const fn = httpsCallable(functions, 'agentCallNext');
       const res = await fn({ modulo: moduloEfectivo || null });
 
-      if (!res?.data?.called) alert(res?.data?.message || 'No se pudo llamar el siguiente.');
+      if (!res?.data?.called) setCallFeedback(res?.data?.message || 'No se pudo llamar el siguiente.');
     } catch (e) {
-      alert(e?.message || 'Error llamando siguiente.');
+      setCallFeedback(e?.message || 'Error llamando siguiente.');
     } finally {
       callInFlightRef.current = false;
       setLoadingCall(false);
     }
   };
+
+  useEffect(() => {
+    if (!callFeedback) return undefined;
+    const timeoutId = window.setTimeout(() => setCallFeedback(''), 3500);
+    return () => window.clearTimeout(timeoutId);
+  }, [callFeedback]);
 
   const callDisabled = loadingCall || !moduloEfectivo || !!atencionActual;
 
@@ -190,7 +204,7 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
           type="button"
           onClick={callNext}
           disabled={callDisabled}
-          title={!moduloEfectivo ? 'Asigna un modulo para poder llamar.' : atencionActual ? 'Finaliza la atencion actual.' : ''}
+          title={!moduloEfectivo ? 'Asigna un modulo para poder llamar.' : atencionActual ? 'Debes finalizar la atencion actual.' : ''}
           style={{
             ...styles.callBtn,
             opacity: callDisabled ? 0.6 : 1,
@@ -199,6 +213,12 @@ export default function AgentQueue({ atencionActual, moduloEfectivo }) {
         >
           {loadingCall ? 'Llamando...' : 'Llamar siguiente'}
         </button>
+
+        {callFeedback ? (
+          <div style={styles.feedbackBox}>
+            {callFeedback}
+          </div>
+        ) : null}
 
         <button type="button" onClick={() => setShowDetail((v) => !v)} style={styles.detailBtn}>
           {showDetail ? 'Ocultar detalle' : 'Ver detalle'}
@@ -348,6 +368,17 @@ const styles = {
     fontWeight: 800,
     color: '#334155',
     cursor: 'pointer'
+  },
+  feedbackBox: {
+    marginTop: 10,
+    padding: '10px 12px',
+    borderRadius: 14,
+    border: '1px solid rgba(245, 158, 11, 0.28)',
+    background: 'linear-gradient(180deg, #fff9eb 0%, #fff4d6 100%)',
+    color: '#92400e',
+    fontSize: 12,
+    fontWeight: 800,
+    lineHeight: 1.45
   },
 
   detailBox: {

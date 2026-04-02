@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 import Navbar from './components/common/Navbar';
 import Footer from './components/common/Footer';
@@ -30,6 +30,7 @@ import Metrics from './pages/Metrics';
 import VerifyEmail from './pages/VerifyEmail';
 import Agenda from './pages/Agenda';
 import CitizenProfile from './pages/CitizenProfile';
+import ConfirmCitizenEmailChange from './pages/ConfirmCitizenEmailChange';
 
 import './App.css';
 
@@ -52,9 +53,19 @@ function HomeRedirect() {
 }
 
 export default function App() {
+  const location = useLocation();
+  const normalizedPathname = location.pathname.replace(/\/+$/, '');
+  const isPublicTrackingRoute =
+    normalizedPathname === '/qr-seguimiento' ||
+    normalizedPathname.endsWith('/qr-seguimiento');
+  const isPublicCitizenEmailConfirmRoute =
+    normalizedPathname === '/confirmar-cambio-correo' ||
+    normalizedPathname.endsWith('/confirmar-cambio-correo');
+  const hideChrome = isPublicTrackingRoute || isPublicCitizenEmailConfirmRoute;
+
   return (
     <>
-      <Navbar />
+      {!hideChrome ? <Navbar /> : null}
 
       <Routes>
         <Route path="/ingreso" element={<Login />} />
@@ -84,6 +95,7 @@ export default function App() {
         />
 
         <Route path="/qr-seguimiento" element={<TicketTracking />} />
+        <Route path="/confirmar-cambio-correo" element={<ConfirmCitizenEmailChange />} />
         <Route path="/privacidad" element={<PrivacyPolicy />} />
         <Route path="/derechos-arco" element={<ArcoRequests />} />
         <Route
@@ -193,7 +205,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/ingreso" replace />} />
       </Routes>
 
-      <Footer />
+      {!hideChrome ? <Footer /> : null}
     </>
   );
 }

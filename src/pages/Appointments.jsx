@@ -461,9 +461,6 @@ export default function Appointments() {
             <strong className="appointments-hero-statValue">{activeAppointmentsCount}</strong>
           </div>
 
-          <a className="appointments-hero-link" href="#agendar-cita">
-            Ir a agendar nueva cita
-          </a>
         </div>
       </header>
 
@@ -699,9 +696,6 @@ export default function Appointments() {
               <div className="cp-empty-body">
                 Cuando agendes una cita, la veras aqui con su fecha, estado y acceso al seguimiento.
               </div>
-              <a className="cp-btn cp-btn-primary cp-empty-cta" href="#agendar-cita">
-                Agendar mi primera cita
-              </a>
             </div>
           ) : (
             <ul className="cp-citas-list">

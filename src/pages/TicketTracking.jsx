@@ -1,84 +1,184 @@
 // src/pages/TicketTracking.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { doc, onSnapshot, getDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { isExpiredTrackingRecord } from '../utils/tracking';
+import logoConsulado from '../assets/logo-consulado.png';
 
 const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    padding: '20px',
+    padding: '28px 18px 40px',
     fontFamily: 'Arial, sans-serif',
-    backgroundColor: '#f3f4f6',
-    minHeight: '100vh'
+    background:
+      'radial-gradient(circle at top, rgba(200, 16, 46, 0.08), transparent 26%), linear-gradient(180deg, #f8f4ef 0%, #f4f6fa 100%)',
+    minHeight: '100vh',
+    color: '#10233d'
+  },
+  publicHeader: {
+    width: '100%',
+    maxWidth: '760px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    marginBottom: '16px'
+  },
+  logoWrap: {
+    width: '64px',
+    height: '64px',
+    borderRadius: '18px',
+    backgroundColor: 'rgba(255,255,255,0.94)',
+    boxShadow: '0 12px 24px rgba(15,23,42,0.08)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0
+  },
+  logo: {
+    width: '42px',
+    height: '42px',
+    objectFit: 'contain'
+  },
+  publicHeaderCopy: {
+    display: 'grid',
+    gap: '4px'
+  },
+  publicEyebrow: {
+    fontSize: '12px',
+    fontWeight: '900',
+    letterSpacing: '0.14em',
+    textTransform: 'uppercase',
+    color: '#c8102e'
+  },
+  publicTitle: {
+    margin: 0,
+    fontSize: '30px',
+    fontWeight: '900',
+    letterSpacing: '-0.04em',
+    lineHeight: 1.05
+  },
+  publicSubtitle: {
+    margin: 0,
+    fontSize: '14px',
+    lineHeight: 1.5,
+    color: '#475569'
   },
   card: {
-    border: '2px solid #C8102E',
-    borderRadius: '16px',
-    padding: '30px 40px',
+    border: '1px solid rgba(15,23,42,0.08)',
+    borderRadius: '24px',
+    padding: '30px 28px',
     width: '90%',
-    maxWidth: '600px',
+    maxWidth: '760px',
     textAlign: 'center',
-    boxShadow: '0 8px 30px rgba(0,0,0,0.1)',
-    backgroundColor: 'white'
+    boxShadow: '0 18px 40px rgba(15,23,42,0.1)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    backdropFilter: 'blur(12px)'
   },
   header: {
-    color: '#C8102E',
-    fontSize: '30px',
-    fontWeight: 'bold',
-    marginBottom: '20px'
+    color: '#c8102e',
+    fontSize: '14px',
+    fontWeight: '900',
+    letterSpacing: '0.14em',
+    textTransform: 'uppercase',
+    marginBottom: '16px'
   },
   myTurnLabel: {
-    fontSize: '20px',
-    color: '#555',
-    marginTop: '15px'
+    fontSize: '13px',
+    color: '#64748b',
+    marginTop: '8px',
+    marginBottom: '6px',
+    fontWeight: '800',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase'
   },
   myTurnNumber: {
     fontSize: '72px',
-    fontWeight: 'bold',
+    fontWeight: '900',
     margin: '10px 0',
-    color: '#C8102E'
+    color: '#c8102e',
+    letterSpacing: '-0.06em'
   },
   currentTurnLabel: {
-    fontSize: '18px',
-    color: '#333',
-    fontWeight: '600',
+    fontSize: '13px',
+    color: '#64748b',
+    fontWeight: '800',
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
     marginBottom: '5px'
   },
   currentTurnNumber: {
     fontSize: '48px',
-    fontWeight: 'bold',
+    fontWeight: '900',
     margin: '0 0 20px 0',
-    color: '#333333'
+    color: '#10233d',
+    letterSpacing: '-0.05em'
+  },
+  divider: {
+    margin: '28px 0',
+    border: 0,
+    borderTop: '1px solid rgba(15,23,42,0.08)'
   },
   statusEnEspera: {
-    backgroundColor: '#ffc107',
-    padding: '15px',
-    borderRadius: '8px',
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#333'
+    backgroundColor: '#fff3cd',
+    padding: '18px 16px',
+    borderRadius: '18px',
+    color: '#7c4a03',
+    border: '1px solid rgba(245, 158, 11, 0.18)'
   },
   statusLlamado: {
-    backgroundColor: '#28a745',
-    color: 'white',
-    padding: '15px',
-    borderRadius: '8px',
-    fontSize: '24px',
-    fontWeight: 'bold',
+    backgroundColor: '#15803d',
+    color: '#ffffff',
+    padding: '18px 16px',
+    borderRadius: '18px',
     animation: 'blink 1s linear infinite'
   },
   statusCompletado: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: 'green'
+    backgroundColor: '#ecfdf5',
+    color: '#166534',
+    padding: '18px 16px',
+    borderRadius: '18px',
+    border: '1px solid rgba(22, 163, 74, 0.18)'
   },
   statusPasado: {
-    fontSize: '24px',
-    color: '#555'
+    backgroundColor: '#f8fafc',
+    color: '#475569',
+    padding: '18px 16px',
+    borderRadius: '18px',
+    border: '1px solid rgba(148, 163, 184, 0.18)'
+  },
+  statusMessageTitle: {
+    margin: 0,
+    fontSize: '26px',
+    fontWeight: '900',
+    lineHeight: 1.08,
+    letterSpacing: '-0.04em'
+  },
+  statusMessageBody: {
+    margin: '8px 0 0 0',
+    fontSize: '16px',
+    fontWeight: '700',
+    lineHeight: 1.45
+  },
+  statusBox: {
+    marginTop: '30px',
+    minHeight: '92px'
+  },
+  loading: {
+    textAlign: 'center',
+    fontSize: '22px',
+    marginTop: '40px',
+    color: '#10233d'
+  },
+  notFound: {
+    textAlign: 'center',
+    fontSize: '22px',
+    marginTop: '40px',
+    color: '#b42318',
+    maxWidth: '760px',
+    padding: '0 16px'
   }
 };
 
@@ -106,6 +206,36 @@ function normalizeTrackingState(value) {
   return String(value || '').trim().toLowerCase();
 }
 
+function isTurnNow(estado, currentCode, myCode) {
+  if (!currentCode || !myCode) return false;
+  if (['completado', 'cerrado', 'cancelado', 'expirado'].includes(estado)) return false;
+  return currentCode === myCode;
+}
+
+function renderStatusCard(variantStyle, title, body) {
+  return (
+    <div style={variantStyle}>
+      <p style={styles.statusMessageTitle}>{title}</p>
+      {body ? <p style={styles.statusMessageBody}>{body}</p> : null}
+    </div>
+  );
+}
+
+function PublicTrackingHeader() {
+  return (
+    <div style={styles.publicHeader}>
+      <div style={styles.logoWrap}>
+        <img src={logoConsulado} alt="Consulado" style={styles.logo} />
+      </div>
+      <div style={styles.publicHeaderCopy}>
+        <div style={styles.publicEyebrow}>Seguimiento público</div>
+        <h1 style={styles.publicTitle}>Estado de su turno</h1>
+        <p style={styles.publicSubtitle}>Consulta aquí el estado actualizado de tu cita o turno.</p>
+      </div>
+    </div>
+  );
+}
+
 export default function TicketTracking() {
   const [searchParams] = useSearchParams();
 
@@ -123,8 +253,7 @@ export default function TicketTracking() {
   const [notFound, setNotFound] = useState(false);
   const [notFoundMessage, setNotFoundMessage] = useState('El enlace de seguimiento no es válido o ha expirado.');
 
-  // ✅ Saber si lo encontrado es una CITA (para ocultar "Faltan")
-  const [sourceCollection, setSourceCollection] = useState(null); // 'turnos' | 'citas'
+  const [sourceCollection, setSourceCollection] = useState(null);
 
   const estadoDocUnsubRef = useRef(null);
 
@@ -153,7 +282,7 @@ export default function TicketTracking() {
     setMiTurno(null);
     setTurnoActualTramite(null);
     setNombreTramite('...');
-    setSourceCollection(null); // ✅ reset
+    setSourceCollection(null);
 
     if (estadoDocUnsubRef.current) {
       estadoDocUnsubRef.current();
@@ -247,7 +376,7 @@ export default function TicketTracking() {
 
       return () => {
         isMounted = false;
-        unsubscribes.forEach((u) => u());
+        unsubscribes.forEach((unsubscribe) => unsubscribe());
         if (estadoDocUnsubRef.current) {
           estadoDocUnsubRef.current();
           estadoDocUnsubRef.current = null;
@@ -274,7 +403,6 @@ export default function TicketTracking() {
           if (!found) {
             found = true;
             foundCollection = collectionName;
-
             setupListeners(snap.data() || {}, collectionName, snap.id);
             return;
           }
@@ -287,6 +415,7 @@ export default function TicketTracking() {
           if (!isMounted) return;
         }
       );
+
       unsubscribes.push(unsub);
     };
 
@@ -306,7 +435,7 @@ export default function TicketTracking() {
     return () => {
       isMounted = false;
       clearTimeout(timer);
-      unsubscribes.forEach((u) => u());
+      unsubscribes.forEach((unsubscribe) => unsubscribe());
       if (estadoDocUnsubRef.current) {
         estadoDocUnsubRef.current();
         estadoDocUnsubRef.current = null;
@@ -319,110 +448,115 @@ export default function TicketTracking() {
 
     const estado = normalizeTrackingState(miTurno.estado);
     const currentCode = turnoActualTramite?.codigoLlamado || null;
+    const moduloTexto = miTurno.modulo || turnoActualTramite?.modulo || '-';
+    const esMiTurno = isTurnNow(estado, currentCode, miTurno.codigo);
 
-    if (estado === 'llamado' && currentCode && currentCode === miTurno.codigo) {
-      const moduloTexto = miTurno.modulo || turnoActualTramite?.modulo || '-';
-      return (
-        <div style={styles.statusLlamado}>
-          ES SU TURNO
-          <br />
-          Diríjase al Módulo {moduloTexto}
-        </div>
+    if (estado === 'completado' || estado === 'cerrado') {
+      return renderStatusCard(
+        styles.statusCompletado,
+        'Atención finalizada',
+        'Tu atención ha finalizado. Gracias por tu visita.'
       );
     }
 
-    if (estado === 'completado' || estado === 'cerrado') {
-      return <p style={styles.statusCompletado}>Su atención ha finalizado. Gracias.</p>;
+    if (estado === 'cancelado' || estado === 'expirado') {
+      return renderStatusCard(
+        styles.statusPasado,
+        'Seguimiento finalizado',
+        'La cita o el turno no pudo concretarse.'
+      );
     }
 
-    if (estado === 'cancelado') {
-      return <p style={styles.statusPasado}>Este turno fue cancelado.</p>;
-    }
-
-    if (estado === 'expirado') {
-      return <p style={styles.statusPasado}>Este enlace de seguimiento ha expirado.</p>;
-    }
-
-    if (estado === 'en-espera' || estado === 'activa') {
-      // ✅ Si es CITA (no kiosko), ocultar el contador "Faltan"
-      const esCitaAgendada = sourceCollection === 'citas';
-
-      if (esCitaAgendada) {
-        return (
-          <div style={styles.statusEnEspera}>
-            <p style={{ margin: 0, fontSize: '18px' }}>ESTADO: EN ESPERA</p>
-          </div>
-        );
-      }
-
-      // ✅ Kiosko (turnos): mantener el cálculo tal cual
-      const actualNum = parseCodigoNum(currentCode);
-      const mioNum = parseCodigoNum(miTurno.codigo);
-
-      const faltan =
-        actualNum != null && mioNum != null ? Math.max(0, mioNum - actualNum - 1) : null;
-
-      return (
-        <div style={styles.statusEnEspera}>
-          <p style={{ margin: 0, fontSize: '18px' }}>ESTADO: EN ESPERA</p>
-          <p style={{ margin: '10px 0 0 0', fontWeight: 'normal', fontSize: '16px' }}>
-            Faltan: <strong>{faltan == null ? '?' : faltan}</strong> turnos de {nombreTramite}
-          </p>
-        </div>
+    if (esMiTurno) {
+      return renderStatusCard(
+        styles.statusLlamado,
+        'Es su turno',
+        `Diríjase al módulo ${moduloTexto}.`
       );
     }
 
     if (estado === 'llamado') {
-      return <p style={styles.statusPasado}>Su turno ya fue llamado (ausente).</p>;
+      return renderStatusCard(
+        styles.statusPasado,
+        'Tu turno ya fue llamado',
+        'Si el llamado sigue vigente, acércate al módulo de atención.'
+      );
     }
 
-    return null;
-  };
+    if (estado === 'en-espera' || estado === 'activa') {
+      const esCitaAgendada = sourceCollection === 'citas';
 
-  if (['completado', 'cerrado'].includes(normalizeTrackingState(miTurno?.estado))) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.card}>
-          <h1 style={styles.header}>Seguimiento de Turno</h1>
-          <p style={styles.myTurnNumber}>{miTurno.codigo}</p>
-          <hr style={{ margin: '30px 0' }} />
-          <p style={styles.statusCompletado}>Su atención ha finalizado. Gracias por su visita.</p>
-        </div>
-      </div>
+      if (esCitaAgendada) {
+        return renderStatusCard(
+          styles.statusEnEspera,
+          'En espera',
+          'Te avisaremos aquí cuando sea tu turno.'
+        );
+      }
+
+      const actualNum = parseCodigoNum(currentCode);
+      const mioNum = parseCodigoNum(miTurno.codigo);
+      const faltan =
+        actualNum != null && mioNum != null ? Math.max(0, mioNum - actualNum - 1) : null;
+
+      const waitingMessage =
+        faltan == null
+          ? 'Estamos actualizando la fila en este momento.'
+          : faltan === 0
+            ? ''
+            : `Tienes ${faltan} ${faltan === 1 ? 'turno' : 'turnos'} por delante.`;
+
+      return renderStatusCard(
+        styles.statusEnEspera,
+        'En espera',
+        waitingMessage
+      );
+    }
+
+    return renderStatusCard(
+      styles.statusPasado,
+      'Seguimiento disponible',
+      'Consulta aquí el estado actualizado del turno.'
     );
-  }
+  };
 
   if (loading) {
     return (
-      <p style={{ textAlign: 'center', fontSize: '24px', marginTop: '40px' }}>
-        Cargando estado del turno...
-      </p>
+      <div style={styles.container}>
+        <BlinkKeyframeStyle />
+        <PublicTrackingHeader />
+        <p style={styles.loading}>Cargando estado del turno...</p>
+      </div>
     );
   }
 
   if (notFound || !miTurno) {
     return (
-      <p style={{ textAlign: 'center', fontSize: '24px', marginTop: '40px', color: 'red' }}>
-        {notFoundMessage}
-      </p>
+      <div style={styles.container}>
+        <BlinkKeyframeStyle />
+        <PublicTrackingHeader />
+        <p style={styles.notFound}>{notFoundMessage}</p>
+      </div>
     );
   }
 
   return (
     <div style={styles.container}>
       <BlinkKeyframeStyle />
-      <div style={styles.card}>
-        <h1 style={styles.header}>Seguimiento de Turno</h1>
+      <PublicTrackingHeader />
 
-        <p style={styles.myTurnLabel}>Su Turno:</p>
+      <div style={styles.card}>
+        <h2 style={styles.header}>Seguimiento de turno</h2>
+
+        <p style={styles.myTurnLabel}>Su turno</p>
         <p style={styles.myTurnNumber}>{miTurno.codigo}</p>
 
-        <hr style={{ margin: '30px 0' }} />
+        <hr style={styles.divider} />
 
-        <p style={styles.currentTurnLabel}>Turno Actual (en {nombreTramite}):</p>
+        <p style={styles.currentTurnLabel}>Turno actual en {nombreTramite}</p>
         <p style={styles.currentTurnNumber}>{turnoActualTramite?.codigoLlamado || '---'}</p>
 
-        <div style={{ marginTop: '30px', minHeight: '80px' }}>{renderEstado()}</div>
+        <div style={styles.statusBox}>{renderEstado()}</div>
       </div>
     </div>
   );

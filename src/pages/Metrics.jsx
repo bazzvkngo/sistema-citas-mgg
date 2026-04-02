@@ -1,5 +1,5 @@
 // src/pages/Metrics.jsx
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { app, db } from "../firebase";
 import { getFunctions, httpsCallable } from "firebase/functions";
@@ -19,6 +19,128 @@ function isoToday() {
   const now = new Date();
   const local = new Date(now.getTime() - now.getTimezoneOffset() * 60000);
   return local.toISOString().slice(0, 10);
+}
+
+function toLocalISO(date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
+function addDays(date, days) {
+  const copy = new Date(date);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function getQuickRangeDates(key) {
+  const today = new Date();
+
+  switch (key) {
+    case "TODAY":
+      return { startDateISO: toLocalISO(today), endDateISO: toLocalISO(today) };
+    case "LAST_7": {
+      const start = addDays(today, -6);
+      return { startDateISO: toLocalISO(start), endDateISO: toLocalISO(today) };
+    }
+    case "LAST_30": {
+      const start = addDays(today, -29);
+      return { startDateISO: toLocalISO(start), endDateISO: toLocalISO(today) };
+    }
+    case "MONTH": {
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      return { startDateISO: toLocalISO(start), endDateISO: toLocalISO(today) };
+    }
+    default:
+      return { startDateISO: toLocalISO(today), endDateISO: toLocalISO(today) };
+  }
+}
+
+function pct(part, total) {
+  if (!total) return 0;
+  return Math.round((part / total) * 100);
+}
+
+function normalizeMetricDimensionValue(rawValue, fallback = "", depth = 0) {
+  if (depth > 3) return fallback;
+  if (rawValue == null) return fallback;
+
+  if (typeof rawValue === "string" || typeof rawValue === "number") {
+    const normalized = String(rawValue).trim();
+    return normalized || fallback;
+  }
+
+  if (Array.isArray(rawValue)) {
+    for (const item of rawValue) {
+      const normalized = normalizeMetricDimensionValue(item, "", depth + 1);
+      if (normalized) return normalized;
+    }
+    return fallback;
+  }
+
+  if (typeof rawValue === "object") {
+    const candidates = [
+      rawValue.nombreCompleto,
+      rawValue.nombre,
+      rawValue.name,
+      rawValue.label,
+      rawValue.titulo,
+      rawValue.title,
+      rawValue.descripcion,
+      rawValue.description,
+      rawValue.modulo,
+      rawValue.moduloAsignado,
+      rawValue.tramite,
+      rawValue.tramiteID,
+      rawValue.codigo,
+      rawValue.email,
+      rawValue.id,
+      rawValue.uid,
+      rawValue.key,
+      rawValue.value,
+    ];
+
+    for (const candidate of candidates) {
+      const normalized = normalizeMetricDimensionValue(candidate, "", depth + 1);
+      if (normalized) return normalized;
+    }
+  }
+
+  return fallback;
+}
+
+function isSupportedContextValue(type, rawValue) {
+  const value = normalizeMetricDimensionValue(rawValue, "");
+  if (!value) return false;
+
+  if (type === "clasificacion") {
+    return value !== "Sin clasificar";
+  }
+
+  const blocked = new Set(["Sin datos", "SIN_TRAMITE", "SIN_MODULO", "Sin trámite", "Sin módulo"]);
+  return !blocked.has(value);
+}
+
+const QUICK_RANGES = [
+  { key: "TODAY", label: "Hoy" },
+  { key: "LAST_7", label: "Últimos 7 días" },
+  { key: "LAST_30", label: "Últimos 30 días" },
+  { key: "MONTH", label: "Mes actual" },
+  { key: "CUSTOM", label: "Personalizado" },
+];
+
+function normalizeClassificationLabel(record) {
+  const raw = String(record?.clasificacion || "").trim();
+  const estado = String(record?.estadoKey || record?.estado || "").trim();
+  if (raw === "NO_SE_PRESENTO") return "No se presentó";
+  if (raw === "ATENDIDO_OK" || raw === "ATENDIDO" || raw === "TRAMITE_OK") return "Atendido OK";
+  if (raw === "CONSULTA_RESUELTA") return "Consulta resuelta";
+  if (raw === "FALLO_ACCION") return "Fallo de acción";
+  if (raw === "FALTAN_DOCUMENTOS") return "Faltan documentos";
+  if (raw === "DERIVADO_INTERNO") return "Derivado interno";
+  if (raw) return raw.replaceAll("_", " ");
+  if (estado === "completado") return "Completado";
+  if (estado === "cerrado") return "Cerrado";
+  return "Sin clasificar";
 }
 
 function safeToDate(ts) {
@@ -191,7 +313,7 @@ async function exportAllToExcelPro({
   sResumen.addRow(["Espera promedio (min)", msToMin(tiempos.espera.avgMs)]);
   sResumen.addRow(["Atención promedio (min)", msToMin(tiempos.atencion.avgMs)]);
 
-  const sTraStats = wb.addWorksheet("Tramites_Tiempos");
+  const sTraStats = wb.addWorksheet("Trámites_Tiempos");
   boldHeader(sTraStats.addRow(["Trámite", "Cantidad", "Espera Promedio", "Atención Promedio", "Atención Máxima"]));
   byTramiteStats.forEach((t) => {
     sTraStats.addRow([t.tramite, t.count, msToHMS(t.esperaAvgMs), msToHMS(t.atencionAvgMs), msToHMS(t.atencionMaxMs)]);
@@ -205,7 +327,7 @@ async function exportAllToExcelPro({
     sAg.addRow([x.key, label, x.count]);
   });
 
-  const sMod = wb.addWorksheet("PorModulo");
+  const sMod = wb.addWorksheet("PorMódulo");
   boldHeader(sMod.addRow(["Módulo", "Cantidad"]));
   byModulo.forEach((x) => sMod.addRow([x.key, x.count]));
 
@@ -378,6 +500,7 @@ function RecordModal({ open, onClose, record, agentsMap }) {
           </div>
         </div>
 
+        <div className="metrics-modal-content">
         <div className="metrics-modal-grid">
           <div className="metrics-modal-box">
             <div className="metrics-modal-label">Agente</div>
@@ -422,6 +545,7 @@ function RecordModal({ open, onClose, record, agentsMap }) {
               <div style={{ marginTop: 6, fontSize: 13 }}>{record.comentariosAgente}</div>
             </div>
           ) : null}
+        </div>
         </div>
       </div>
     </div>
@@ -494,7 +618,7 @@ function TramiteModal({ open, onClose, tramiteName, records, agentsMap, rangeTex
 
   return (
     <div onClick={onClose} className="metrics-modal-overlay">
-      <div onClick={(e) => e.stopPropagation()} className="metrics-modal" style={{ maxWidth: 980 }}>
+      <div onClick={(e) => e.stopPropagation()} className="metrics-modal metrics-modal-wide">
         <div className="metrics-modal-head">
           <div>
             <h3 style={{ margin: 0, fontSize: 16, fontWeight: 900 }}>Trámite: {tramiteName}</h3>
@@ -511,7 +635,8 @@ function TramiteModal({ open, onClose, tramiteName, records, agentsMap, rangeTex
           </div>
         </div>
 
-        <div className="metrics-kpiGrid" style={{ marginTop: 12 }}>
+        <div className="metrics-modal-content">
+        <div className="metrics-kpiGrid metrics-kpiGrid-compact" style={{ marginTop: 12 }}>
           <div className="metrics-kpi">
             <div className="metrics-kpiLabel">Total</div>
             <div className="metrics-kpiValue">{total}</div>
@@ -578,6 +703,7 @@ function TramiteModal({ open, onClose, tramiteName, records, agentsMap, rangeTex
             Mostrando {Math.min(120, total)} de {total} registros.
           </div>
         </div>
+        </div>
       </div>
     </div>
   );
@@ -588,6 +714,7 @@ export default function Metrics() {
 
   const [startDateISO, setStartDateISO] = useState(isoToday());
   const [endDateISO, setEndDateISO] = useState(isoToday());
+  const [quickRange, setQuickRange] = useState("TODAY");
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState(null);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -596,7 +723,10 @@ export default function Metrics() {
   const [tramiteFilter, setTramiteFilter] = useState("ALL");
   const [moduloFilter, setModuloFilter] = useState("ALL");
   const [agenteFilter, setAgenteFilter] = useState("ALL");
+  const [classificationFilter, setClassificationFilter] = useState("ALL");
   const [searchText, setSearchText] = useState("");
+  const [contextFocus, setContextFocus] = useState(null);
+  const [detailHighlight, setDetailHighlight] = useState(false);
 
   const [mainMetric, setMainMetric] = useState("VOLUMEN");
   const [breakdownMode, setBreakdownMode] = useState("ESTADO");
@@ -604,6 +734,7 @@ export default function Metrics() {
   const [agentsMap, setAgentsMap] = useState({});
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const detailSectionRef = useRef(null);
 
   const [tramiteModalOpen, setTramiteModalOpen] = useState(false);
   const [tramiteModalName, setTramiteModalName] = useState("");
@@ -613,6 +744,12 @@ export default function Metrics() {
     const r = currentUser?.rol || currentUser?.role || currentUser?.tipoUsuario || currentUser?.perfil;
     return r === "admin" || currentUser?.isAdmin === true;
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!detailHighlight) return undefined;
+    const timeoutId = window.setTimeout(() => setDetailHighlight(false), 1600);
+    return () => window.clearTimeout(timeoutId);
+  }, [detailHighlight]);
 
   const calcDurations = ({ baseTs, llamadoTs, finTs }) => {
     const base = safeToDate(baseTs);
@@ -651,9 +788,9 @@ export default function Metrics() {
         finAt,
         esperaMs: Number.isFinite(Number(r.esperaMs)) ? Number(r.esperaMs) : computed.esperaMs,
         atencionMs: Number.isFinite(Number(r.atencionMs)) ? Number(r.atencionMs) : computed.atencionMs,
-        moduloKey: r.moduloAsignado || "SIN_MODULO",
+        moduloKey: normalizeMetricDimensionValue(r.moduloAsignado, "SIN_MODULO"),
         estadoKey: r.estado || "SIN_ESTADO",
-        tramiteKey: r.tramiteID || "SIN_TRAMITE",
+        tramiteKey: normalizeMetricDimensionValue(r.tramiteID, "SIN_TRAMITE"),
         agenteKey: r.agenteID || "SIN_AGENTE",
         dniKey: r.dni || r.dniCiudadano || "SIN_DNI",
       };
@@ -680,9 +817,9 @@ export default function Metrics() {
         finAt,
         esperaMs: Number.isFinite(Number(r.esperaMs)) ? Number(r.esperaMs) : computed.esperaMs,
         atencionMs: Number.isFinite(Number(r.atencionMs)) ? Number(r.atencionMs) : computed.atencionMs,
-        moduloKey: r.modulo || "SIN_MODULO",
+        moduloKey: normalizeMetricDimensionValue(r.modulo, "SIN_MODULO"),
         estadoKey: r.estado || "SIN_ESTADO",
-        tramiteKey: r.tramiteID || "SIN_TRAMITE",
+        tramiteKey: normalizeMetricDimensionValue(r.tramiteID, "SIN_TRAMITE"),
         agenteKey: r.agenteID || "SIN_AGENTE",
         dniKey: r.dni || r.dniCiudadano || "SIN_DNI",
       };
@@ -706,6 +843,11 @@ export default function Metrics() {
     return ["ALL", ...Array.from(set).sort()];
   }, [allRecords]);
 
+  const classificationOptions = useMemo(() => {
+    const set = new Set(allRecords.map((r) => normalizeClassificationLabel(r)));
+    return ["ALL", ...Array.from(set).sort((a, b) => a.localeCompare(b, "es"))];
+  }, [allRecords]);
+
   const filteredRecords = useMemo(() => {
     const t = searchText.trim().toLowerCase();
 
@@ -714,6 +856,7 @@ export default function Metrics() {
       if (tramiteFilter !== "ALL" && r.tramiteKey !== tramiteFilter) return false;
       if (moduloFilter !== "ALL" && r.moduloKey !== moduloFilter) return false;
       if (agenteFilter !== "ALL" && r.agenteKey !== agenteFilter) return false;
+      if (classificationFilter !== "ALL" && normalizeClassificationLabel(r) !== classificationFilter) return false;
 
       if (t) {
         const blob = JSON.stringify(r).toLowerCase();
@@ -722,7 +865,7 @@ export default function Metrics() {
 
       return true;
     });
-  }, [allRecords, originFilter, tramiteFilter, moduloFilter, agenteFilter, searchText]);
+  }, [allRecords, originFilter, tramiteFilter, moduloFilter, agenteFilter, classificationFilter, searchText]);
 
   const filteredCitas = useMemo(() => filteredRecords.filter((r) => r.__origen === "WEB"), [filteredRecords]);
   const filteredTurnos = useMemo(() => filteredRecords.filter((r) => r.__origen === "KIOSKO"), [filteredRecords]);
@@ -763,7 +906,7 @@ export default function Metrics() {
     const m = new Map();
 
     filteredRecords.forEach((r) => {
-      const k = r.tramiteKey || "SIN_TRAMITE";
+      const k = normalizeMetricDimensionValue(r.tramiteKey, "SIN_TRAMITE");
       const prev = m.get(k) || { tramite: k, count: 0, espera: [], atencion: [], atencionMax: 0 };
       prev.count += 1;
 
@@ -825,6 +968,16 @@ export default function Metrics() {
     return first ? { label: getAgentLabel(first.key), value: first.count } : { label: "Sin datos", value: 0 };
   }, [byAgente, getAgentLabel]);
 
+  const waitSamples = useMemo(
+    () => filteredRecords.map((r) => Number(r.esperaMs)).filter((n) => Number.isFinite(n)),
+    [filteredRecords]
+  );
+
+  const _WITHIN_TARGET_WAIT = useMemo(() => waitSamples.filter((ms) => ms <= 15 * 60 * 1000).length, [waitSamples]);
+  const criticalWaitCount = useMemo(() => waitSamples.filter((ms) => ms >= 30 * 60 * 1000).length, [waitSamples]);
+  const withinTargetRate = useMemo(() => pct(_WITHIN_TARGET_WAIT, waitSamples.length), [_WITHIN_TARGET_WAIT, waitSamples.length]);
+  const peakWait = useMemo(() => msToHMS(tiempos.espera.maxMs), [tiempos]);
+
   const byEstado = useMemo(() => {
     return countBy(filteredRecords, (r) => {
       if ((r.clasificacion || r.estadoKey) === "NO_SE_PRESENTO") return "No se presentó";
@@ -834,12 +987,33 @@ export default function Metrics() {
     });
   }, [filteredRecords]);
 
+  const byClasificacion = useMemo(() => countBy(filteredRecords, (r) => normalizeClassificationLabel(r)), [filteredRecords]);
+
   const byOrigen = useMemo(() => {
     const rows = [];
     if (overview.totalWeb > 0) rows.push({ key: "WEB", count: overview.totalWeb });
     if (overview.totalKiosko > 0) rows.push({ key: "Kiosko", count: overview.totalKiosko });
     return rows;
   }, [overview]);
+
+  const byHour = useMemo(() => {
+    const map = new Map();
+
+    filteredRecords.forEach((r) => {
+      const date = safeToDate(r.llamadoAt || r.fechaHora || r.fechaHoraGenerado || r.createdAt);
+      if (!date) return;
+      const hour = String(date.getHours()).padStart(2, "0");
+      map.set(hour, (map.get(hour) || 0) + 1);
+    });
+
+    return Array.from(map.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([hour, count]) => ({
+        key: hour,
+        label: `${hour}:00`,
+        count,
+      }));
+  }, [filteredRecords]);
 
   const byDay = useMemo(() => {
     const map = new Map();
@@ -907,14 +1081,15 @@ export default function Metrics() {
     };
   }, [mainMetric, byTramiteStats, byDay]);
 
-  const breakdownModel = useMemo(() => {
-    const rows = breakdownMode === "ORIGEN" ? byOrigen : byEstado;
+  const _BREAKDOWN_MODEL = useMemo(() => {
+    const rows =
+      breakdownMode === "ORIGEN" ? byOrigen : breakdownMode === "CLASIFICACION" ? byClasificacion.slice(0, 6) : byEstado;
     return {
       title: breakdownMode === "ORIGEN" ? "Origen de atención" : "Distribución operacional",
       labels: rows.map((x) => x.key),
       values: rows.map((x) => x.count),
     };
-  }, [breakdownMode, byOrigen, byEstado]);
+  }, [breakdownMode, byClasificacion, byOrigen, byEstado]);
 
   const busiestDay = useMemo(() => {
     if (!byDay.length) return { label: "Sin datos", value: 0 };
@@ -922,15 +1097,77 @@ export default function Metrics() {
     return { label: sorted[0].label, value: sorted[0].count };
   }, [byDay]);
 
+  const _PEAK_HOUR = useMemo(() => {
+    if (!byHour.length) return { label: "Sin datos", value: 0 };
+    const sorted = [...byHour].sort((a, b) => (b.count || 0) - (a.count || 0));
+    return { label: sorted[0].label, value: sorted[0].count };
+  }, [byHour]);
+
+  const breakdownViewModel = useMemo(() => {
+    const rows =
+      breakdownMode === "ORIGEN" ? byOrigen : breakdownMode === "CLASIFICACION" ? byClasificacion.slice(0, 6) : byEstado;
+    return {
+      title:
+        breakdownMode === "ORIGEN"
+          ? "Origen de atención"
+          : breakdownMode === "CLASIFICACION"
+          ? "Clasificaciones de cierre"
+          : "Distribución operacional",
+      labels: rows.map((x) => x.key),
+      values: rows.map((x) => x.count),
+    };
+  }, [breakdownMode, byClasificacion, byEstado, byOrigen]);
+
   const activeFilters = useMemo(() => {
     const items = [`Rango ${startDateISO} → ${endDateISO}`];
     if (originFilter !== "ALL") items.push(`Origen: ${originFilter}`);
     if (tramiteFilter !== "ALL") items.push(`Trámite: ${tramiteFilter}`);
     if (moduloFilter !== "ALL") items.push(`Módulo: ${moduloFilter}`);
     if (agenteFilter !== "ALL") items.push(`Agente: ${getAgentLabel(agenteFilter)}`);
+    if (classificationFilter !== "ALL") items.push(`Clasificación: ${classificationFilter}`);
     if (searchText.trim()) items.push(`Búsqueda: ${searchText.trim()}`);
     return items;
-  }, [startDateISO, endDateISO, originFilter, tramiteFilter, moduloFilter, agenteFilter, searchText, getAgentLabel]);
+  }, [startDateISO, endDateISO, originFilter, tramiteFilter, moduloFilter, agenteFilter, classificationFilter, searchText, getAgentLabel]);
+
+  const contextualRecords = useMemo(() => {
+    if (!contextFocus?.type || !contextFocus?.value) return filteredRecords;
+
+    switch (contextFocus.type) {
+      case "tramite":
+        return filteredRecords.filter((r) => r.tramiteKey === contextFocus.value);
+      case "modulo":
+        return filteredRecords.filter((r) => r.moduloKey === contextFocus.value);
+      case "clasificacion":
+        return filteredRecords.filter((r) => normalizeClassificationLabel(r) === contextFocus.value);
+      default:
+        return filteredRecords;
+    }
+  }, [filteredRecords, contextFocus]);
+
+  const contextFocusMeta = useMemo(() => {
+    if (!contextFocus?.type || !contextFocus?.value) return null;
+    const visibleLabel = contextFocus.label || contextFocus.value;
+
+    switch (contextFocus.type) {
+      case "tramite":
+        return {
+          label: `Trámite = ${visibleLabel}`,
+          hint: "El detalle operativo está enfocado en este trámite sin alterar el universo global del dashboard.",
+        };
+      case "modulo":
+        return {
+          label: `Módulo = ${visibleLabel}`,
+          hint: "El detalle operativo está enfocado en este módulo sin alterar el universo global del dashboard.",
+        };
+      case "clasificacion":
+        return {
+          label: `Clasificación = ${visibleLabel}`,
+          hint: "El detalle operativo está enfocado en esta clasificación sin alterar el universo global del dashboard.",
+        };
+      default:
+        return null;
+    }
+  }, [contextFocus]);
 
   const fetchAgentsInfo = useCallback(async (uids) => {
     try {
@@ -975,8 +1212,8 @@ export default function Metrics() {
     setTramiteModalRecords([]);
   };
 
-  const fetchMetrics = useCallback(async () => {
-    if (!startDateISO || !endDateISO) {
+  const fetchMetricsForRange = useCallback(async ({ startISO, endISO }) => {
+    if (!startISO || !endISO) {
       alert("Selecciona un rango de fechas.");
       return;
     }
@@ -990,7 +1227,7 @@ export default function Metrics() {
     try {
       const functions = getFunctions(app, FUNCTIONS_REGION);
       const fn = httpsCallable(functions, "getMetricsData");
-      const res = await fn({ startDateISO, endDateISO });
+      const res = await fn({ startDateISO: startISO, endDateISO: endISO });
       const data = res?.data || null;
       setStats(data);
 
@@ -1007,7 +1244,11 @@ export default function Metrics() {
     } finally {
       setLoading(false);
     }
-  }, [endDateISO, fetchAgentsInfo, startDateISO]);
+  }, [fetchAgentsInfo]);
+
+  const fetchMetrics = useCallback(async () => {
+    await fetchMetricsForRange({ startISO: startDateISO, endISO: endDateISO });
+  }, [endDateISO, fetchMetricsForRange, startDateISO]);
 
   useEffect(() => {
     if (isAdmin) fetchMetrics();
@@ -1054,12 +1295,12 @@ export default function Metrics() {
         }),
       },
       {
-        title: breakdownModel.title,
+        title: breakdownViewModel.title,
         chartBase64: makeChartImageBase64({
           type: "doughnut",
-          labels: breakdownModel.labels,
-          values: breakdownModel.values,
-          title: breakdownModel.title,
+          labels: breakdownViewModel.labels,
+          values: breakdownViewModel.values,
+          title: breakdownViewModel.title,
         }),
       },
       {
@@ -1099,7 +1340,118 @@ export default function Metrics() {
     setTramiteFilter("ALL");
     setModuloFilter("ALL");
     setAgenteFilter("ALL");
+    setClassificationFilter("ALL");
     setSearchText("");
+  };
+
+  const applyQuickRange = async (key) => {
+    if (key === "CUSTOM") {
+      setQuickRange("CUSTOM");
+      return;
+    }
+
+    const next = getQuickRangeDates(key);
+    setQuickRange(key);
+    setStartDateISO(next.startDateISO);
+    setEndDateISO(next.endDateISO);
+    await fetchMetricsForRange({ startISO: next.startDateISO, endISO: next.endDateISO });
+  };
+
+  const clearAllFilters = async () => {
+    resetFilters();
+    setContextFocus(null);
+    const next = getQuickRangeDates("TODAY");
+    setQuickRange("TODAY");
+    setStartDateISO(next.startDateISO);
+    setEndDateISO(next.endDateISO);
+    await fetchMetricsForRange({ startISO: next.startDateISO, endISO: next.endDateISO });
+  };
+
+  const clearContextFocus = () => {
+    setContextFocus(null);
+  };
+
+  const revealOperationalDetail = useCallback(() => {
+    setAdvancedOpen(true);
+    setDetailHighlight(true);
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const detailNode = detailSectionRef.current;
+        if (!detailNode) return;
+
+        const rect = detailNode.getBoundingClientRect();
+        const alreadyNear = rect.top >= 24 && rect.top <= window.innerHeight * 0.7;
+
+        if (!alreadyNear) {
+          detailNode.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      });
+    });
+  }, []);
+
+  const resolveContextFocus = useCallback((type, rawValue) => {
+    const value = normalizeMetricDimensionValue(rawValue, "");
+    if (!isSupportedContextValue(type, value)) return null;
+
+    return {
+      type,
+      value,
+      label: value,
+    };
+  }, []);
+
+  const openContextFocus = useCallback((type, rawValue) => {
+    const nextFocus = resolveContextFocus(type, rawValue);
+
+    if (!nextFocus) {
+      console.warn("No se pudo resolver el enfoque contextual:", { type, rawValue });
+      return;
+    }
+
+    setContextFocus(nextFocus);
+    revealOperationalDetail();
+  }, [resolveContextFocus, revealOperationalDetail]);
+
+  const applyContextAsGlobalFilter = () => {
+    if (!contextFocus?.type || !contextFocus?.value) return;
+
+    switch (contextFocus.type) {
+      case "tramite":
+        setTramiteFilter(contextFocus.value);
+        break;
+      case "modulo":
+        setModuloFilter(contextFocus.value);
+        break;
+      case "clasificacion":
+        setClassificationFilter(contextFocus.value);
+        break;
+      default:
+        break;
+    }
+
+    setContextFocus(null);
+    revealOperationalDetail();
+  };
+
+  const focusTopTramite = (tramiteLabel = topTramite.label) => {
+    if (!tramiteLabel || tramiteLabel === "Sin datos") return;
+    openContextFocus("tramite", tramiteLabel);
+  };
+
+  const focusTopModulo = (moduloLabel = topModulo.label) => {
+    if (!moduloLabel || moduloLabel === "Sin datos") return;
+    openContextFocus("modulo", moduloLabel);
+  };
+
+  const focusClasificacion = (value) => {
+    if (!value || value === "Sin clasificar") return;
+    openContextFocus("clasificacion", value);
+  };
+
+  const focusNoShow = () => {
+    if (!overview.noPresento) return;
+    focusClasificacion("No se presentó");
   };
 
   const topAgentRows = useMemo(() => {
@@ -1112,11 +1464,44 @@ export default function Metrics() {
 
   const topTramiteRows = useMemo(() => {
     return byTramiteStats.slice(0, 6).map((row) => ({
-      label: row.tramite,
+      label: normalizeMetricDimensionValue(row.tramite, "Sin trámite"),
       value: row.count,
       hint: `Atención prom. ${msToHMS(row.atencionAvgMs)}`,
+      focusValue: isSupportedContextValue("tramite", normalizeMetricDimensionValue(row.tramite, "Sin trámite"))
+        ? normalizeMetricDimensionValue(row.tramite, "Sin trámite")
+        : "",
     }));
   }, [byTramiteStats]);
+
+  const _TOP_MODULO_ROWS = useMemo(() => {
+    return byModulo.slice(0, 6).map((row) => ({
+      label: row.key,
+      value: row.count,
+      hint: "Carga operativa dentro del rango filtrado",
+    }));
+  }, [byModulo]);
+
+  const _TOP_HOUR_ROWS = useMemo(() => {
+    return [...byHour]
+      .sort((a, b) => (b.count || 0) - (a.count || 0))
+      .slice(0, 6)
+      .map((row) => ({
+        label: row.label,
+        value: row.count,
+        hint: "Franja con mayor concentración de llamados",
+      }));
+  }, [byHour]);
+
+  const _EXECUTIVE_INSIGHT = useMemo(() => {
+    if (!overview.total) {
+      return "No hay registros en el rango actual. Ajusta fechas u origen para obtener lectura operativa.";
+    }
+    return `${topTramite.label} lidera el período con ${topTramite.value} caso${topTramite.value === 1 ? "" : "s"}, mientras ${withinTargetRate}% de las atenciones entró dentro del objetivo de 15 min y el pico máximo de espera llegó a ${peakWait}.`;
+  }, [overview.total, peakWait, topTramite.label, topTramite.value, withinTargetRate]);
+
+  const canFocusNoShow = overview.noPresento > 0 && isSupportedContextValue("clasificacion", "No se presentó");
+  const canFocusTopTramite = topTramite.value > 0 && isSupportedContextValue("tramite", topTramite.label);
+  const canFocusTopModulo = topModulo.value > 0 && isSupportedContextValue("modulo", topModulo.label);
 
   const maxRankValue = (rows) => {
     if (!rows.length) return 1;
@@ -1148,9 +1533,6 @@ export default function Metrics() {
         </div>
 
         <div className="metrics-actions">
-          <button className="metrics-btn secondary" onClick={fetchMetrics} disabled={loading}>
-            {loading ? "Cargando..." : "Actualizar"}
-          </button>
           <button className="metrics-btn" onClick={exportExcel} disabled={!canExport}>
             Exportar Excel
           </button>
@@ -1160,16 +1542,59 @@ export default function Metrics() {
         </div>
       </div>
 
+      <div className="metrics-layerHead">
+        <div>
+          <div className="metrics-layerEyebrow">Capa A</div>
+          <div className="metrics-layerTitle">Resumen ejecutivo</div>
+        </div>
+        <div className="metrics-layerHint">Usa rangos rápidos para recalcular el callable y luego afina con filtros operativos.</div>
+      </div>
+
       <div className="metrics-card">
+        <div className="metrics-filterHeader">
+          <div>
+            <div className="metrics-sectionTitle">Filtro ejecutivo y operativo</div>
+            <div className="metrics-sectionCaption">Combina rango rápido, filtros operativos y exportación sin perder contexto.</div>
+          </div>
+
+          <div className="metrics-quickRanges">
+            {QUICK_RANGES.map((item) => (
+              <button
+                key={item.key}
+                className={`metrics-quickBtn ${quickRange === item.key ? "active" : ""}`}
+                onClick={() => applyQuickRange(item.key)}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="metrics-filters">
           <div className="metrics-field">
             <div className="metrics-label">Desde</div>
-            <input className="metrics-input" type="date" value={startDateISO} onChange={(e) => setStartDateISO(e.target.value)} />
+            <input
+              className="metrics-input"
+              type="date"
+              value={startDateISO}
+              onChange={(e) => {
+                setQuickRange("CUSTOM");
+                setStartDateISO(e.target.value);
+              }}
+            />
           </div>
 
           <div className="metrics-field">
             <div className="metrics-label">Hasta</div>
-            <input className="metrics-input" type="date" value={endDateISO} onChange={(e) => setEndDateISO(e.target.value)} />
+            <input
+              className="metrics-input"
+              type="date"
+              value={endDateISO}
+              onChange={(e) => {
+                setQuickRange("CUSTOM");
+                setEndDateISO(e.target.value);
+              }}
+            />
           </div>
 
           <div className="metrics-field">
@@ -1186,7 +1611,7 @@ export default function Metrics() {
             <select className="metrics-input" value={tramiteFilter} onChange={(e) => setTramiteFilter(e.target.value)}>
               {tramiteOptions.map((x) => (
                 <option key={x} value={x}>
-                  {x}
+                  {x === "ALL" ? "Todos" : x}
                 </option>
               ))}
             </select>
@@ -1197,7 +1622,7 @@ export default function Metrics() {
             <select className="metrics-input" value={moduloFilter} onChange={(e) => setModuloFilter(e.target.value)}>
               {moduloOptions.map((x) => (
                 <option key={x} value={x}>
-                  {x}
+                  {x === "ALL" ? "Todos" : x}
                 </option>
               ))}
             </select>
@@ -1214,6 +1639,17 @@ export default function Metrics() {
             </select>
           </div>
 
+          <div className="metrics-field">
+            <div className="metrics-label">Clasificación</div>
+            <select className="metrics-input" value={classificationFilter} onChange={(e) => setClassificationFilter(e.target.value)}>
+              {classificationOptions.map((x) => (
+                <option key={x} value={x}>
+                  {x === "ALL" ? "Todos" : x}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="metrics-field metrics-search">
             <div className="metrics-label">Buscar</div>
             <input
@@ -1225,15 +1661,24 @@ export default function Metrics() {
           </div>
         </div>
 
+        <div className="metrics-filterActions">
+          <div className="metrics-mini">La consulta al backend se recalcula con el rango; los filtros operativos afinan el tablero sobre ese universo.</div>
+          <div className="metrics-actions">
+            <button className="metrics-btn secondary" onClick={fetchMetrics} disabled={loading}>
+              {loading ? "Cargando..." : "Aplicar filtros"}
+            </button>
+            <button className="metrics-btn ghost" onClick={clearAllFilters} disabled={loading}>
+              Limpiar filtros
+            </button>
+          </div>
+        </div>
+
         <div className="metrics-pillRow">
           {activeFilters.map((item) => (
             <span key={item} className="metrics-pill">
               {item}
             </span>
           ))}
-          <button className="metrics-btn tiny secondary" onClick={resetFilters}>
-            Limpiar filtros
-          </button>
         </div>
       </div>
 
@@ -1250,6 +1695,12 @@ export default function Metrics() {
           <div className="metrics-kpiHint">{overview.atendidas} atenciones cerradas dentro del filtro</div>
         </div>
 
+        <div className="metrics-kpi metrics-kpi--highlight">
+          <div className="metrics-kpiLabel">Dentro de objetivo</div>
+          <div className="metrics-kpiValue">{withinTargetRate}%</div>
+          <div className="metrics-kpiHint">{_WITHIN_TARGET_WAIT} atenciones dentro de 15 min</div>
+        </div>
+
         <div className="metrics-kpi">
           <div className="metrics-kpiLabel">Espera promedio</div>
           <div className="metrics-kpiValue">{kpiEsperaProm}</div>
@@ -1261,6 +1712,66 @@ export default function Metrics() {
           <div className="metrics-kpiValue">{kpiAtencionProm}</div>
           <div className="metrics-kpiHint">Pico máximo registrado {kpiMayorAtencion}</div>
         </div>
+
+        {canFocusNoShow ? (
+          <button
+            type="button"
+            className={`metrics-kpi metrics-kpi--button ${contextFocus?.type === "clasificacion" && contextFocus?.value === "No se presentó" ? "is-active" : ""}`}
+            onClick={focusNoShow}
+          >
+            <div className="metrics-kpiLabel">No se presentó</div>
+            <div className="metrics-kpiValue">{noShowRate}%</div>
+            <div className="metrics-kpiHint">{overview.noPresento} casos sin presentarse · Haz clic para explorar el detalle</div>
+          </button>
+        ) : (
+          <div className="metrics-kpi">
+            <div className="metrics-kpiLabel">No se presentó</div>
+            <div className="metrics-kpiValue">{noShowRate}%</div>
+            <div className="metrics-kpiHint">Sin registros para explorar en el rango actual</div>
+          </div>
+        )}
+
+        <div className="metrics-kpi">
+          <div className="metrics-kpiLabel">Pico máximo de espera</div>
+          <div className="metrics-kpiValue">{peakWait}</div>
+          <div className="metrics-kpiHint">{criticalWaitCount} casos con espera crítica · SLA 15 min {withinTargetRate}%</div>
+        </div>
+
+        {canFocusTopTramite ? (
+          <button
+            type="button"
+            className={`metrics-kpi metrics-kpi--button ${contextFocus?.type === "tramite" && contextFocus?.value === topTramite.label ? "is-active" : ""}`}
+            onClick={focusTopTramite}
+          >
+            <div className="metrics-kpiLabel">Trámite más demandado</div>
+            <div className="metrics-kpiValue">{topTramite.value}</div>
+            <div className="metrics-kpiHint">{topTramite.label} · Haz clic para explorar el detalle</div>
+          </button>
+        ) : (
+          <div className="metrics-kpi">
+            <div className="metrics-kpiLabel">Trámite más demandado</div>
+            <div className="metrics-kpiValue">{topTramite.value}</div>
+            <div className="metrics-kpiHint">Sin datos suficientes para enfocar este indicador</div>
+          </div>
+        )}
+
+        {canFocusTopModulo ? (
+          <button
+            type="button"
+            className={`metrics-kpi metrics-kpi--button ${contextFocus?.type === "modulo" && contextFocus?.value === topModulo.label ? "is-active" : ""}`}
+            onClick={focusTopModulo}
+          >
+            <div className="metrics-kpiLabel">Módulo con mayor carga</div>
+            <div className="metrics-kpiValue">{topModulo.value}</div>
+            <div className="metrics-kpiHint">{topModulo.label} · Haz clic para explorar el detalle</div>
+          </button>
+        ) : (
+          <div className="metrics-kpi">
+            <div className="metrics-kpiLabel">Módulo con mayor carga</div>
+            <div className="metrics-kpiValue">{topModulo.value}</div>
+            <div className="metrics-kpiHint">Sin datos suficientes para enfocar este indicador</div>
+          </div>
+        )}
       </div>
 
       <div className="metrics-card">
@@ -1270,7 +1781,7 @@ export default function Metrics() {
               <div className="metrics-spotlightEyebrow">Lectura rápida</div>
               <div className="metrics-spotlightTitle">{topTramite.label}</div>
               <div className="metrics-spotlightSub">
-                Es el trámite con mayor volumen del filtro actual, con {topTramite.value} caso{topTramite.value === 1 ? "" : "s"}.
+                {_EXECUTIVE_INSIGHT}
               </div>
             </div>
 
@@ -1282,19 +1793,27 @@ export default function Metrics() {
           </div>
 
           <div className="metrics-spotlightStats">
-            <div className="metrics-statCard">
-              <div className="metrics-statLabel">Módulo con mayor carga</div>
-              <div className="metrics-statValue">{topModulo.label}</div>
-              <div className="metrics-statHint">{topModulo.value} casos dentro del período filtrado</div>
+            <div className="metrics-statCard metrics-statCard--highlight">
+              <div className="metrics-statLabel">Atendidas dentro de 15 min</div>
+              <div className="metrics-statValue">{withinTargetRate}%</div>
+              <div className="metrics-statHint">{_WITHIN_TARGET_WAIT} casos dentro del objetivo operativo</div>
             </div>
 
             <div className="metrics-statCard">
-              <div className="metrics-statLabel">Día más cargado</div>
-              <div className="metrics-statValue">{busiestDay.label}</div>
-              <div className="metrics-statHint">{busiestDay.value} atenciones registradas</div>
+              <div className="metrics-statLabel">Hora de mayor carga</div>
+              <div className="metrics-statValue">{_PEAK_HOUR.label}</div>
+              <div className="metrics-statHint">{_PEAK_HOUR.value} llamados dentro del rango filtrado</div>
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="metrics-layerHead">
+        <div>
+          <div className="metrics-layerEyebrow">Capa B</div>
+          <div className="metrics-layerTitle">Análisis operativo</div>
+        </div>
+        <div className="metrics-layerHint">Cruza volumen, distribución y rankings para detectar carga, origen y cierres.</div>
       </div>
 
       <div className="metrics-boardGrid">
@@ -1357,7 +1876,7 @@ export default function Metrics() {
           <div className="metrics-card">
             <div className="metrics-sectionHead">
               <div>
-                <div className="metrics-sectionTitle">{breakdownModel.title}</div>
+                <div className="metrics-sectionTitle">{breakdownViewModel.title}</div>
                 <div className="metrics-sectionCaption">Distribución actual para una lectura ejecutiva rápida</div>
               </div>
 
@@ -1374,14 +1893,20 @@ export default function Metrics() {
                 >
                   Origen
                 </button>
+                <button
+                  className={`metrics-segmentBtn ${breakdownMode === "CLASIFICACION" ? "active" : ""}`}
+                  onClick={() => setBreakdownMode("CLASIFICACION")}
+                >
+                  Cierre
+                </button>
               </div>
             </div>
 
             <div className="metrics-chartBox">
               <ReportChart
                 type="doughnut"
-                labels={breakdownModel.labels}
-                values={breakdownModel.values}
+                labels={breakdownViewModel.labels}
+                values={breakdownViewModel.values}
                 height={280}
                 showLegend
               />
@@ -1394,9 +1919,9 @@ export default function Metrics() {
 
             <div className="metrics-insightGrid" style={{ marginTop: 14 }}>
               <div className="metrics-insightCard">
-                <div className="metrics-insightLabel">No se presentó</div>
-                <div className="metrics-insightValue">{overview.noPresento}</div>
-                <div className="metrics-insightHint">{noShowRate}% del total filtrado</div>
+                <div className="metrics-insightLabel">Espera crítica</div>
+                <div className="metrics-insightValue">{criticalWaitCount}</div>
+                <div className="metrics-insightHint">Casos con espera igual o superior a 30 min</div>
               </div>
 
               <div className="metrics-insightCard">
@@ -1432,7 +1957,12 @@ export default function Metrics() {
                   <div className="metrics-rankValue">{row.value}</div>
                 </div>
 
-                <div style={{ marginTop: 8 }}>
+                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {row.focusValue ? (
+                    <button className="metrics-btn tiny secondary" onClick={() => focusTopTramite(row.focusValue)}>
+                      Enfocar
+                    </button>
+                  ) : null}
                   <button className="metrics-btn tiny secondary" onClick={() => openTramite(row.label)}>
                     Ver detalle
                   </button>
@@ -1471,17 +2001,42 @@ export default function Metrics() {
         </div>
       </div>
 
-      <div className="metrics-card">
+      <div
+        ref={detailSectionRef}
+        className={`metrics-card metrics-detailCard ${detailHighlight ? "is-highlighted" : ""}`}
+      >
         <div className="metrics-sectionHead">
           <div>
             <div className="metrics-sectionTitle">Detalle operacional</div>
-            <div className="metrics-sectionCaption">La tabla se deja como apoyo, no como elemento dominante del dashboard</div>
+            <div className="metrics-sectionCaption">La tabla se deja como apoyo y como destino del drilldown, no como elemento dominante del dashboard</div>
           </div>
 
           <button className="metrics-btn ghost" onClick={() => setAdvancedOpen((value) => !value)}>
             {advancedOpen ? "Ocultar detalle" : "Ver detalle"}
           </button>
         </div>
+
+        {contextFocusMeta ? (
+          <div className={`metrics-contextBar ${detailHighlight ? "is-highlighted" : ""}`}>
+            <div className="metrics-contextInfo">
+              <div className="metrics-contextTitle">Enfoque contextual activo</div>
+              <div className="metrics-contextHint">{contextFocusMeta.hint}</div>
+              <div className="metrics-pillRow">
+                <span className="metrics-pill metrics-pill--context">{contextFocusMeta.label}</span>
+                <span className="metrics-pill metrics-pill--contextMuted">{contextualRecords.length} registros dentro del enfoque</span>
+              </div>
+            </div>
+
+            <div className="metrics-contextActions">
+              <button className="metrics-btn secondary" onClick={applyContextAsGlobalFilter}>
+                Aplicar como filtro global
+              </button>
+              <button className="metrics-btn ghost" onClick={clearContextFocus}>
+                Quitar enfoque
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {advancedOpen ? (
           <div className="metrics-tableWrap">
@@ -1501,7 +2056,7 @@ export default function Metrics() {
                 </tr>
               </thead>
               <tbody>
-                {filteredRecords.slice(0, 80).map((r) => (
+                {contextualRecords.slice(0, 80).map((r) => (
                   <tr key={`${r.__origen}_${r.id}`}>
                     <td>{r.__origen}</td>
                     <td>{r.codigo || r.id}</td>
@@ -1520,10 +2075,12 @@ export default function Metrics() {
                   </tr>
                 ))}
 
-                {filteredRecords.length === 0 ? (
+                {contextualRecords.length === 0 ? (
                   <tr>
                     <td colSpan={10} style={{ color: "#64748b", fontWeight: 800, padding: 14 }}>
-                      Sin datos con los filtros actuales.
+                      {contextFocusMeta
+                        ? "Sin registros para el enfoque contextual actual dentro del universo filtrado."
+                        : "Sin datos con los filtros actuales."}
                     </td>
                   </tr>
                 ) : null}
@@ -1531,11 +2088,15 @@ export default function Metrics() {
             </table>
 
             <div className="metrics-mini" style={{ marginTop: 12 }}>
-              Mostrando {Math.min(80, filteredRecords.length)} de {filteredRecords.length} registros.
+              Mostrando {Math.min(80, contextualRecords.length)} de {contextualRecords.length} registros.
             </div>
           </div>
         ) : (
-          <div className="metrics-mini">Oculto por defecto para que el dashboard se sienta más ejecutivo y menos “tabla primero”.</div>
+          <div className="metrics-mini">
+            {contextFocusMeta
+              ? "Hay un enfoque contextual activo. Abre el detalle para explorarlo sin modificar los filtros globales."
+              : "Oculto por defecto para que el dashboard se sienta más ejecutivo y menos “tabla primero”."}
+          </div>
         )}
       </div>
 

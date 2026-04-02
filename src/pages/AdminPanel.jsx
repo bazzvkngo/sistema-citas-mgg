@@ -11,29 +11,36 @@ import AdminArcoRequests from "../components/admin/AdminArcoRequests";
 import AdminDemoReset from "../components/admin/AdminDemoReset";
 
 const styles = {
-  adminContainer: { padding: "20px" },
+  adminContainer: { padding: "14px 16px 18px" },
+  title: {
+    margin: "0 0 10px",
+    fontSize: "28px",
+    lineHeight: 1.1,
+    color: "#22303c",
+  },
   nav: {
     display: "flex",
-    borderBottom: "2px solid #ccc",
-    marginBottom: "20px",
-    gap: "8px",
+    borderBottom: "1px solid #d7dde4",
+    marginBottom: "12px",
+    gap: "4px",
     flexWrap: "wrap",
   },
   tab: {
-    padding: "10px 20px",
+    padding: "8px 12px",
     cursor: "pointer",
-    fontSize: "16px",
+    fontSize: "14px",
     backgroundColor: "transparent",
     borderTop: "none",
     borderLeft: "none",
     borderRight: "none",
-    borderBottom: "3px solid transparent",
+    borderBottom: "2px solid transparent",
     color: "#666",
-    fontWeight: "500",
+    fontWeight: "600",
+    lineHeight: 1.15,
     transition: "all 0.2s",
   },
   activeTab: {
-    borderBottom: "3px solid #C8102E",
+    borderBottom: "2px solid #C8102E",
     fontWeight: "bold",
     color: "#C8102E",
   },
@@ -89,7 +96,7 @@ export default function AdminPanel() {
 
   return (
     <div style={styles.adminContainer} className="page-container">
-      <h1>Panel de Administracion</h1>
+      <h1 style={styles.title}>Panel de Administracion</h1>
 
       <nav style={styles.nav}>
         <button
@@ -99,7 +106,7 @@ export default function AdminPanel() {
           }}
           onClick={() => setActiveTab("services")}
         >
-          Gestionar Tramites
+          Catálogo de atención
         </button>
 
         <button
@@ -151,7 +158,7 @@ export default function AdminPanel() {
         </button>
       </nav>
 
-      <div style={{ marginTop: "20px" }}>
+      <div style={{ marginTop: "12px" }}>
         {activeTab === "services" && <AdminServices />}
         {activeTab === "agents" && canManageAdminTabs && <AdminAgents />}
         {activeTab === "holidays" && canManageAdminTabs && <AdminHolidays />}

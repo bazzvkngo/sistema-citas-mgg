@@ -13,13 +13,12 @@ const UI = {
 };
 
 const CONSULATE = {
-  name: "Consulado General del Perú en Iquique",
+  name: "Consulado General del Peru en Iquique",
   addressLine1: "Vicente Zegers 570, piso 2",
-  addressLine2: "Iquique, Tarapacá, Chile",
+  addressLine2: "Iquique, Tarapaca, Chile",
   phone: "(57) 241 1466",
-  // No inventamos correo: si no está confirmado, mejor dejarlo vacío.
   email: "",
-  hours: "Lun a Vie: 9:00 a. m. – 12:30 p. m. | Sáb/Dom: Cerrado",
+  hours: "Lun a Vie: 9:00 a. m. - 12:30 p. m. | Sab/Dom: Cerrado",
 };
 
 const MAPS_URL = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
@@ -38,14 +37,12 @@ const styles = {
     margin: "0 auto",
     padding: "18px 22px 12px",
   },
-
   top: {
     display: "grid",
     gridTemplateColumns: "1.2fr 1fr 1fr",
     gap: 18,
     alignItems: "start",
   },
-
   brandRow: { display: "flex", gap: 12, alignItems: "center" },
   logoBox: {
     width: 46,
@@ -60,10 +57,8 @@ const styles = {
     flexShrink: 0,
   },
   logo: { width: "100%", height: "100%", objectFit: "contain", padding: 6 },
-
   name: { margin: 0, fontSize: 16, fontWeight: 900, lineHeight: 1.2 },
   tagline: { margin: "4px 0 0 0", fontSize: 12, color: UI.muted, fontWeight: 800 },
-
   colTitle: {
     margin: "2px 0 8px 0",
     fontSize: 12,
@@ -72,11 +67,9 @@ const styles = {
     letterSpacing: 0.4,
     color: "rgba(255,255,255,0.92)",
   },
-
   list: { display: "grid", gap: 6 },
   item: { fontSize: 13, color: UI.muted, lineHeight: 1.45 },
   strong: { color: UI.ink, fontWeight: 900 },
-
   mapsBtn: {
     display: "inline-flex",
     alignItems: "center",
@@ -91,7 +84,6 @@ const styles = {
     fontSize: 13,
     width: "fit-content",
   },
-
   mid: {
     marginTop: 14,
     paddingTop: 12,
@@ -102,7 +94,6 @@ const styles = {
     gap: 12,
     flexWrap: "wrap",
   },
-
   links: {
     display: "flex",
     gap: 14,
@@ -115,8 +106,14 @@ const styles = {
     fontWeight: 900,
     fontSize: 13,
   },
+  helper: {
+    color: UI.muted,
+    fontSize: 12,
+    fontWeight: 700,
+    margin: 0,
+    lineHeight: 1.45,
+  },
   muted: { color: UI.soft, fontSize: 12, fontWeight: 800, margin: 0 },
-
   bottom: {
     marginTop: 10,
     paddingTop: 10,
@@ -132,7 +129,6 @@ const styles = {
 export default function Footer() {
   const { pathname = "" } = useLocation();
 
-  // No mostrar footer en pantallas donde rompe la estética o estorba
   const hideOn = [
     "/pantalla-tv",
     "/kiosko",
@@ -148,7 +144,6 @@ export default function Footer() {
     <footer style={styles.footer}>
       <div style={styles.wrap}>
         <div style={styles.top} className="cp-footer-top">
-          {/* Marca */}
           <div>
             <div style={styles.brandRow}>
               <div style={styles.logoBox}>
@@ -156,40 +151,37 @@ export default function Footer() {
               </div>
               <div>
                 <h3 style={styles.name}>{CONSULATE.name}</h3>
-                <p style={styles.tagline}>Sistema de Citas y Atención Consular</p>
+                <p style={styles.tagline}>Sistema de Citas y Atencion Consular</p>
               </div>
             </div>
             <p style={{ ...styles.item, marginTop: 10 }}>
-              Plataforma para gestionar citas y atención de forma más ordenada y clara.
+              Plataforma para gestionar citas y atencion de forma mas ordenada y clara.
             </p>
           </div>
 
-          {/* Contacto */}
           <div>
-            <div style={styles.colTitle}>Ubicación y contacto</div>
+            <div style={styles.colTitle}>Ubicacion y contacto</div>
             <div style={styles.list}>
               <div style={styles.item}>
-                <span style={styles.strong}>Dirección:</span> {CONSULATE.addressLine1},{" "}
+                <span style={styles.strong}>Direccion:</span> {CONSULATE.addressLine1},{" "}
                 {CONSULATE.addressLine2}
               </div>
               <div style={styles.item}>
-                <span style={styles.strong}>Teléfono:</span> {CONSULATE.phone}
+                <span style={styles.strong}>Telefono:</span> {CONSULATE.phone}
               </div>
-              
             </div>
 
             <a href={MAPS_URL} target="_blank" rel="noreferrer" style={styles.mapsBtn}>
-              Ver ubicación en Google Maps
+              Ver ubicacion en Google Maps
             </a>
           </div>
 
-          {/* Horario */}
           <div>
-            <div style={styles.colTitle}>Horario de atención</div>
+            <div style={styles.colTitle}>Horario de atencion</div>
             <div style={styles.list}>
               <div style={styles.item}>{CONSULATE.hours}</div>
               <div style={styles.item}>
-                Atención sujeta a disponibilidad de módulos y citas agendadas.
+                Atencion sujeta a disponibilidad de modulos y citas agendadas.
               </div>
               <div style={styles.item}>
                 Redes sociales: (pendiente de enlaces oficiales)
@@ -198,17 +190,20 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Links */}
         <div style={styles.mid}>
           <div style={styles.links}>
-            <Link to="/recuperar-contrasena" style={styles.link}>Recuperar contraseña</Link>
+            <Link to="/recuperar-contrasena" style={styles.link}>Recuperar contrasena</Link>
+            <Link to="/privacidad" style={styles.link}>Privacidad</Link>
+            <Link to="/derechos-arco" style={styles.link}>Derechos ARCO</Link>
           </div>
+          <p style={styles.helper}>
+            Solicita acceso, rectificacion, cancelacion u oposicion de datos desde el canal publico ARCO.
+          </p>
         </div>
 
-        {/* Bottom */}
         <div style={styles.bottom}>
           <p style={styles.muted}>
-            © {new Date().getFullYear()} {CONSULATE.name} — Sistema de Citas
+            © {new Date().getFullYear()} {CONSULATE.name} - Sistema de Citas
           </p>
           <p style={styles.muted}>Iquique, Chile</p>
         </div>

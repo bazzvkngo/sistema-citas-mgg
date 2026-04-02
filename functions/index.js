@@ -2,7 +2,7 @@
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } = require("firebase-functions/v2/firestore");
-const { defineSecret } = require("firebase-functions/params");
+const { defineSecret, defineString } = require("firebase-functions/params");
 const { initializeApp } = require("firebase-admin/app");
 const { FieldPath, FieldValue, getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth"); //  NUEVO (Paso 10)
@@ -43,6 +43,7 @@ const TRACKING_PUBLIC_ACTIVE_CITA_TTL_MS = 24 * 60 * 60 * 1000;
 const TRACKING_PUBLIC_FINALIZED_TTL_MS = 6 * 60 * 60 * 1000;
 const TRACKING_PUBLIC_CLEANUP_BATCH_LIMIT = 200;
 const TRACKING_PUBLIC_CLEANUP_MAX_BATCHES = 5;
+const CITIZEN_EMAIL_CHANGE_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
 const RATE_LIMIT_COLLECTION = "rateLimits";
 const DEFAULT_RATE_LIMIT_MESSAGE = "Demasiadas solicitudes. Intente nuevamente en unos minutos.";
 const ACTIVE_RECORD_EXISTS_MESSAGE = "Ya existe un registro activo para este trámite.";
@@ -58,6 +59,8 @@ const DEMO_RESET_BATCH_LIMIT = 200;
 
 const INVALID_ARCO_REQUEST_MESSAGE = "Faltan datos validos para registrar la solicitud.";
 const INVALID_ARCO_ADMIN_UPDATE_MESSAGE = "Faltan datos validos para actualizar la solicitud.";
+const STAFF_INTERNAL_ROLES = ["agente", "admin", "pantalla", "kiosko"];
+const STAFF_ALLOWED_EMAIL_DOMAINS = ["@consulperu.pe"];
 
 initializeApp();
 const db = getFirestore();
@@ -96,6 +99,16 @@ function getTsDate(ts) {
 function safeStr(v) {
   if (v === null || v === undefined) return "";
   return String(v);
+}
+
+function isInstitutionalStaffEmailServer(email = "") {
+  const normalized = normalizeEmailServer(email);
+  if (!normalized) return false;
+  return STAFF_ALLOWED_EMAIL_DOMAINS.some((domain) => normalized.endsWith(domain.toLowerCase()));
+}
+
+function normalizeInternalDocumentServer(value) {
+  return safeStr(value).trim().replace(/\s+/g, "").toUpperCase();
 }
 
 function normalizeRateLimitFragment(value, fallback = "anon") {
@@ -227,6 +240,210 @@ function normalizeCitizenDocServer(raw) {
 
 function isValidCitizenDocServer(docNorm) {
   return /^[0-9]{6,8}[0-9K]$/.test(safeStr(docNorm));
+}
+
+function normalizeCitizenPhoneServer(raw) {
+  return safeStr(raw).replace(/\s+/g, " ").trim().slice(0, 40);
+}
+
+function resolveCitizenTipoDocServer(rawTipoDoc, docNorm) {
+  const normalized = safeStr(rawTipoDoc).trim().toUpperCase();
+  if (["RUT", "DNI"].includes(normalized)) return normalized;
+  return /K$/.test(docNorm) || docNorm.length > 8 ? "RUT" : "DNI";
+}
+
+function buildCitizenProfilePayloadServer(data = {}) {
+  const docNorm = normalizeCitizenDocServer(data?.docNorm || data?.dni || data?.rut);
+  if (!isValidCitizenDocServer(docNorm)) {
+    throw new HttpsError("invalid-argument", "Documento no valido.");
+  }
+
+  const email = normalizeEmailServer(data?.email);
+  if (email && !isValidEmailServer(email)) {
+    throw new HttpsError("invalid-argument", "Email no valido.");
+  }
+
+  const docDisplay = normalizeSingleLineTextServer(data?.docDisplay || docNorm, 40) || docNorm;
+
+  return {
+    docNorm,
+    docDisplay,
+    dni: docNorm,
+    tipoDoc: resolveCitizenTipoDocServer(data?.tipoDoc, docNorm),
+    nombres: normalizeSingleLineTextServer(data?.nombres, 120),
+    apellidos: normalizeSingleLineTextServer(data?.apellidos, 120),
+    nombreCompleto: normalizeSingleLineTextServer(data?.nombreCompleto, 180),
+    telefono: normalizeCitizenPhoneServer(data?.telefono),
+    email,
+  };
+}
+
+async function lookupCitizenUserByDocServer(docNorm) {
+  const fields = ["dni", "rut", "docNorm"];
+  const seen = new Set();
+  let citizen = null;
+  let conflictingUser = null;
+
+  for (const field of fields) {
+    const snap = await db.collection("usuarios").where(field, "==", docNorm).limit(5).get();
+    if (snap.empty) continue;
+
+    for (const docSnap of snap.docs) {
+      if (seen.has(docSnap.id)) continue;
+      seen.add(docSnap.id);
+
+      const user = docSnap.data() || {};
+      const userRol = resolveUserRoleServer(user);
+
+      if (userRol && userRol !== "ciudadano") {
+        conflictingUser = conflictingUser || {
+          uid: docSnap.id,
+          rol: userRol,
+          email: safeStr(user.email || "").trim().toLowerCase(),
+        };
+        continue;
+      }
+
+      citizen = citizen || {
+        uid: docSnap.id,
+        ...user,
+        rol: userRol || "ciudadano",
+      };
+    }
+  }
+
+  return { citizen, conflictingUser };
+}
+
+async function lookupUserByEmailServer(email) {
+  const normalizedEmail = normalizeEmailServer(email);
+  if (!normalizedEmail) return null;
+
+  try {
+    const authUser = await getAuth().getUserByEmail(normalizedEmail);
+    const userSnap = await db.collection("usuarios").doc(authUser.uid).get();
+    const userData = userSnap.exists ? (userSnap.data() || {}) : null;
+
+    return {
+      uid: authUser.uid,
+      authUser,
+      userData,
+      role: resolveUserRoleServer(userData),
+    };
+  } catch (error) {
+    if (error?.code === "auth/user-not-found") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+function buildCitizenFullNameServer(payload = {}) {
+  const explicit = normalizeSingleLineTextServer(payload?.nombreCompleto, 180);
+  if (explicit) return explicit;
+
+  return [payload?.nombres, payload?.apellidos]
+    .map((part) => normalizeSingleLineTextServer(part, 120))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+}
+
+async function sendCitizenAccessLinkEmail({ email, resetLink, citizenName, isNewAccount }) {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: SMTP_USER.value(), pass: SMTP_PASS.value() },
+  });
+
+  const safeName = normalizeSingleLineTextServer(citizenName, 180) || "ciudadano/a";
+  const title = isNewAccount ? "Activación de acceso" : "Restablecimiento de acceso";
+  const intro = isNewAccount
+    ? "Se creó tu acceso al Sistema de Citas."
+    : "Se solicitó un restablecimiento de acceso para tu cuenta del Sistema de Citas.";
+  const helper = isNewAccount
+    ? "Haz clic en el siguiente enlace para definir tu contraseña inicial."
+    : "Haz clic en el siguiente enlace para crear una nueva contraseña.";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111;">
+      <h2 style="margin:0 0 12px;">${title}</h2>
+      <p style="margin:0 0 12px;">Hola ${safeName},</p>
+      <p style="margin:0 0 12px;">${intro}</p>
+      <p style="margin:0 0 12px;">${helper}</p>
+      <p style="margin:0 0 12px;">
+        <a href="${resetLink}" target="_blank" rel="noopener noreferrer">${resetLink}</a>
+      </p>
+      <p style="margin:0; color:#666; font-size:12px;">
+        Si no reconoces este mensaje, puedes ignorarlo y contactar al consulado.
+      </p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: MAIL_FROM.value(),
+    to: email,
+    subject: `${title} - Sistema de Citas`,
+    html,
+  });
+}
+
+function generateCitizenEmailChangeToken() {
+  return crypto.randomBytes(24).toString("base64url");
+}
+
+function buildCitizenEmailChangeConfirmUrl(baseUrl, token) {
+  const normalizedBaseUrl = ensureSystemBasePath(baseUrl);
+  const safeToken = safeStr(token).trim();
+
+  if (!normalizedBaseUrl) {
+    throw new Error("APP_BASE_URL no esta configurado para construir enlaces publicos.");
+  }
+  if (!safeToken) {
+    throw new Error("Token de cambio de correo no valido.");
+  }
+
+  return `${normalizedBaseUrl}/confirmar-cambio-correo?t=${encodeURIComponent(safeToken)}`;
+}
+
+async function sendCitizenEmailChangeConfirmationEmail({
+  email,
+  citizenName,
+  confirmUrl,
+}) {
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: SMTP_USER.value(), pass: SMTP_PASS.value() },
+  });
+
+  const safeName = normalizeSingleLineTextServer(citizenName, 180) || "ciudadano/a";
+  const html = `
+    <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111;">
+      <h2 style="margin:0 0 12px;">Confirmacion de cambio de correo</h2>
+      <p style="margin:0 0 12px;">Hola ${safeName},</p>
+      <p style="margin:0 0 12px;">
+        Personal autorizado del consulado solicito actualizar el correo asociado a tu cuenta del Sistema de Citas.
+      </p>
+      <p style="margin:0 0 12px;">
+        Para confirmar este cambio, haz clic en el siguiente enlace:
+      </p>
+      <p style="margin:0 0 12px;">
+        <a href="${confirmUrl}" target="_blank" rel="noopener noreferrer">${confirmUrl}</a>
+      </p>
+      <p style="margin:0 0 12px;">
+        Si no reconoces esta solicitud, puedes ignorar este mensaje y tu correo actual seguira vigente.
+      </p>
+      <p style="margin:0; color:#666; font-size:12px;">
+        Este enlace vence automaticamente por seguridad.
+      </p>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: MAIL_FROM.value(),
+    to: email,
+    subject: "Confirmacion de cambio de correo - Sistema de Citas",
+    html,
+  });
 }
 
 function normalizeTramiteIdServer(raw) {
@@ -548,19 +765,43 @@ function buildLocalRange(startDateISO, endDateISO) {
 const SMTP_USER = defineSecret("SMTP_USER");
 const SMTP_PASS = defineSecret("SMTP_PASS");
 const MAIL_FROM = defineSecret("MAIL_FROM");
-const APP_PUBLIC_URL = defineSecret("APP_PUBLIC_URL");
+const APP_BASE_URL = defineString("APP_BASE_URL");
+const LOCAL_APP_BASE_URL = "http://localhost:5173/sistema-citas";
 
 function normalizePublicAppUrl(value) {
   return safeStr(value).trim().replace(/\/+$/, "");
 }
 
-function buildTrackingPublicUrl(baseUrl, citaId, trackingToken) {
+function ensureSystemBasePath(baseUrl) {
   const normalizedBaseUrl = normalizePublicAppUrl(baseUrl);
+  if (!normalizedBaseUrl) return "";
+  if (normalizedBaseUrl.endsWith("/sistema-citas")) return normalizedBaseUrl;
+  return `${normalizedBaseUrl}/sistema-citas`;
+}
+
+function resolveAppBaseUrl() {
+  const configuredBaseUrl = ensureSystemBasePath(APP_BASE_URL.value());
+  if (configuredBaseUrl) {
+    return configuredBaseUrl;
+  }
+
+  const isDevelopmentRuntime =
+    process.env.FUNCTIONS_EMULATOR === "true" || process.env.NODE_ENV !== "production";
+
+  if (isDevelopmentRuntime) {
+    return LOCAL_APP_BASE_URL;
+  }
+
+  throw new Error("APP_BASE_URL no esta configurado para construir enlaces publicos.");
+}
+
+function buildTrackingPublicUrl(baseUrl, citaId, trackingToken) {
+  const normalizedBaseUrl = ensureSystemBasePath(baseUrl);
   const safeToken = safeStr(trackingToken).trim();
   const safeCitaId = safeStr(citaId).trim();
 
   if (!normalizedBaseUrl) {
-    throw new Error("APP_PUBLIC_URL no esta configurado para construir enlaces publicos.");
+    throw new Error("APP_BASE_URL no esta configurado para construir enlaces publicos.");
   }
 
   if (safeToken) {
@@ -625,7 +866,7 @@ exports.emailOnCitaCreated = onDocumentCreated(
   {
     document: "citas/{citaId}",
     region: SANTIAGO_REGION,
-    secrets: [SMTP_USER, SMTP_PASS, MAIL_FROM, APP_PUBLIC_URL],
+    secrets: [SMTP_USER, SMTP_PASS, MAIL_FROM],
   },
   async (event) => {
     const snap = event.data;
@@ -650,7 +891,7 @@ exports.emailOnCitaCreated = onDocumentCreated(
       }
     }
 
-    const trackingUrl = buildTrackingPublicUrl(APP_PUBLIC_URL.value(), citaId, cita.trackingToken);
+    const trackingUrl = buildTrackingPublicUrl(resolveAppBaseUrl(), citaId, cita.trackingToken);
 
     const fechaStr = cita.fechaHora ? formatFechaChile(cita.fechaHora) : "Fecha no disponible";
 
@@ -728,7 +969,7 @@ exports.lookupCitizenUserByDoc = onCall({ region: SANTIAGO_REGION, enforceAppChe
       .trim()
       .toLowerCase();
 
-    if (!["admin", "agente"].includes(rol)) {
+    if (!["admin", "superadmin", "agente"].includes(rol)) {
       throw new HttpsError("permission-denied", "No autorizado.");
     }
 
@@ -737,32 +978,22 @@ exports.lookupCitizenUserByDoc = onCall({ region: SANTIAGO_REGION, enforceAppChe
       throw new HttpsError("invalid-argument", "Documento no valido.");
     }
 
-    const fields = ["dni", "rut", "docNorm"];
-
-    for (const field of fields) {
-      const snap = await db.collection("usuarios").where(field, "==", docNorm).limit(5).get();
-      if (snap.empty) continue;
-
-      for (const docSnap of snap.docs) {
-        const user = docSnap.data() || {};
-        const userRol = safeStr(user.rol || user.role || user.tipoUsuario || user.perfil).trim().toLowerCase();
-        if (userRol && userRol !== "ciudadano") continue;
-
-        return {
-          found: true,
-          user: {
-            docNorm,
-            docDisplay: safeStr(user.rut || user.dni || user.docNorm || docNorm).trim(),
-            tipoDoc: safeStr(user.tipoDoc || "DNI").trim() || "DNI",
-            nombre: safeStr(user.nombre || "").trim(),
-            nombreCompleto: safeStr(user.nombreCompleto || "").trim(),
-            nombres: safeStr(user.nombres || "").trim(),
-            apellidos: safeStr(user.apellidos || "").trim(),
-            telefono: safeStr(user.telefono || "").trim(),
-            email: safeStr(user.email || "").trim(),
-          },
-        };
-      }
+    const { citizen } = await lookupCitizenUserByDocServer(docNorm);
+    if (citizen) {
+      return {
+        found: true,
+        user: {
+          docNorm,
+          docDisplay: safeStr(citizen.rut || citizen.dni || citizen.docNorm || docNorm).trim(),
+          tipoDoc: safeStr(citizen.tipoDoc || "DNI").trim() || "DNI",
+          nombre: safeStr(citizen.nombre || "").trim(),
+          nombreCompleto: safeStr(citizen.nombreCompleto || "").trim(),
+          nombres: safeStr(citizen.nombres || "").trim(),
+          apellidos: safeStr(citizen.apellidos || "").trim(),
+          telefono: safeStr(citizen.telefono || "").trim(),
+          email: safeStr(citizen.email || "").trim(),
+        },
+      };
     }
 
     return { found: false };
@@ -770,6 +1001,724 @@ exports.lookupCitizenUserByDoc = onCall({ region: SANTIAGO_REGION, enforceAppChe
     console.error("lookupCitizenUserByDoc error:", error);
     if (error instanceof HttpsError) throw error;
     throw new HttpsError("internal", "Error interno al buscar ciudadano.");
+  }
+});
+
+exports.staffUpsertCitizenProfile = onCall(
+  {
+    region: SANTIAGO_REGION,
+    enforceAppCheck: true,
+    secrets: [SMTP_USER, SMTP_PASS, MAIL_FROM],
+  },
+  async (request) => {
+    let createdAuthUid = "";
+    let createdUserDocId = "";
+    let createdCitizenDocId = "";
+    let emailChangeTokenId = "";
+
+    try {
+      const { auth, data } = request;
+      if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+
+      const actor = await requireRole(
+        auth.uid,
+        ["admin", "superadmin", "agente"],
+        "Solo personal autorizado."
+      );
+
+      await assertRateLimit({
+        endpoint: "staffUpsertCitizenProfile",
+        scope: "uid",
+        keyParts: [auth.uid],
+        limit: 20,
+        windowMs: 10 * 60 * 1000,
+        message: "Demasiadas actualizaciones de ciudadanos. Intente nuevamente en unos minutos.",
+      });
+
+      const payload = buildCitizenProfilePayloadServer(data || {});
+      const fullName = buildCitizenFullNameServer(payload);
+      if (!fullName) {
+        throw new HttpsError("invalid-argument", "Debe ingresar al menos nombres o nombre completo.");
+      }
+
+      const nowTs = Timestamp.now();
+      const actorRole = resolveUserRoleServer(actor);
+      const { citizen, conflictingUser } = await lookupCitizenUserByDocServer(payload.docNorm);
+
+      if (conflictingUser) {
+        throw new HttpsError(
+          "failed-precondition",
+          "El documento pertenece a una cuenta interna y no puede gestionarse como ciudadano."
+        );
+      }
+
+      let targetCitizen = citizen;
+      const emailLookup = payload.email ? await lookupUserByEmailServer(payload.email) : null;
+
+      if (emailLookup && emailLookup.role && emailLookup.role !== "ciudadano") {
+        if (!targetCitizen || emailLookup.uid !== targetCitizen.uid) {
+          throw new HttpsError(
+            "failed-precondition",
+            "El correo pertenece a una cuenta interna y no puede usarse para un ciudadano."
+          );
+        }
+      }
+
+      if (emailLookup && !emailLookup.userData && !targetCitizen) {
+        throw new HttpsError(
+          "failed-precondition",
+          "El correo ya existe y no puede asociarse automáticamente. Revise la cuenta antes de continuar."
+        );
+      }
+
+      if (!targetCitizen && emailLookup?.role === "ciudadano") {
+        targetCitizen = {
+          uid: emailLookup.uid,
+          ...(emailLookup.userData || {}),
+          email: normalizeEmailServer(emailLookup.authUser?.email || emailLookup.userData?.email || payload.email),
+          rol: "ciudadano",
+        };
+      }
+
+      if (emailLookup?.role === "ciudadano" && targetCitizen && emailLookup.uid !== targetCitizen.uid) {
+        throw new HttpsError(
+          "failed-precondition",
+          "El correo ya está asociado a otro ciudadano."
+        );
+      }
+
+      if (!targetCitizen && (!payload.email || !isValidEmailServer(payload.email))) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Para crear un ciudadano se requiere un correo válido."
+        );
+      }
+
+      let accountCreated = false;
+      let initialAccessSent = false;
+      let initialAccessWarning = "";
+      let emailChangePending = false;
+      let emailChangeConfirmationSent = false;
+      let shouldCreateEmailChangeRequest = false;
+      let targetUid = targetCitizen?.uid || "";
+      let appliedEmail = normalizeEmailServer(targetCitizen?.email || emailLookup?.authUser?.email);
+      const existingPendingEmail = normalizeEmailServer(targetCitizen?.pendingEmail);
+      let nextPendingEmail = "";
+
+      if (!targetUid) {
+        const tempPassword = `Tmp-${crypto.randomBytes(18).toString("base64url")}Aa1!`;
+        const createdAuthUser = await getAuth().createUser({
+          email: payload.email,
+          password: tempPassword,
+          displayName: fullName,
+          emailVerified: false,
+          disabled: false,
+        });
+
+        createdAuthUid = createdAuthUser.uid;
+        targetUid = createdAuthUser.uid;
+        appliedEmail = normalizeEmailServer(createdAuthUser.email || payload.email);
+        accountCreated = true;
+      } else if (payload.email && payload.email !== appliedEmail) {
+        emailChangePending = true;
+        nextPendingEmail = payload.email;
+        shouldCreateEmailChangeRequest = true;
+      } else if (existingPendingEmail && existingPendingEmail !== appliedEmail) {
+        emailChangePending = true;
+        nextPendingEmail = existingPendingEmail;
+      } else if (payload.email) {
+        appliedEmail = payload.email;
+      }
+
+      const userPatch = {
+        rol: "ciudadano",
+        habilidades: [],
+        activo: true,
+        nombre: fullName,
+        nombreCompleto: fullName,
+        nombres: payload.nombres,
+        apellidos: payload.apellidos,
+        telefono: payload.telefono,
+        dni: payload.docNorm,
+        docNorm: payload.docNorm,
+        tipoDoc: payload.tipoDoc,
+        updatedAt: nowTs,
+        updatedBy: auth.uid,
+      };
+
+      if (payload.tipoDoc === "RUT") {
+        userPatch.rut = payload.docNorm;
+      }
+
+      if (appliedEmail) {
+        userPatch.email = appliedEmail;
+      }
+
+      if (emailChangePending) {
+        userPatch.pendingEmail = nextPendingEmail;
+        userPatch.pendingEmailStatus = "confirmation_required";
+        if (shouldCreateEmailChangeRequest) {
+          userPatch.pendingEmailRequestedAt = nowTs;
+          userPatch.pendingEmailRequestedBy = auth.uid;
+        }
+      } else {
+        userPatch.pendingEmail = FieldValue.delete();
+        userPatch.pendingEmailStatus = FieldValue.delete();
+        userPatch.pendingEmailRequestedAt = FieldValue.delete();
+        userPatch.pendingEmailRequestedBy = FieldValue.delete();
+      }
+
+      const userRef = db.collection("usuarios").doc(targetUid);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
+        userPatch.createdAt = nowTs;
+        userPatch.createdBy = auth.uid;
+        createdUserDocId = targetUid;
+      }
+      await userRef.set(userPatch, { merge: true });
+
+      const citizenRef = db.collection("ciudadanos").doc(payload.docNorm);
+      const citizenSnap = await citizenRef.get();
+      const citizenPatch = {
+        ...payload,
+        userUid: targetUid,
+        email: appliedEmail || "",
+        updatedAt: nowTs,
+        updatedBy: auth.uid,
+      };
+
+      if (emailChangePending) {
+        citizenPatch.pendingEmail = nextPendingEmail;
+        citizenPatch.pendingEmailStatus = "confirmation_required";
+        if (shouldCreateEmailChangeRequest) {
+          citizenPatch.pendingEmailRequestedAt = nowTs;
+          citizenPatch.pendingEmailRequestedBy = auth.uid;
+        }
+      } else {
+        citizenPatch.pendingEmail = FieldValue.delete();
+        citizenPatch.pendingEmailStatus = FieldValue.delete();
+        citizenPatch.pendingEmailRequestedAt = FieldValue.delete();
+        citizenPatch.pendingEmailRequestedBy = FieldValue.delete();
+      }
+
+      if (!citizenSnap.exists) {
+        citizenPatch.createdAt = nowTs;
+        citizenPatch.createdBy = auth.uid;
+        createdCitizenDocId = payload.docNorm;
+      }
+      await citizenRef.set(citizenPatch, { merge: true });
+
+      try {
+        await getAuth().updateUser(targetUid, { displayName: fullName });
+      } catch (error) {
+        console.error("staffUpsertCitizenProfile updateUser(displayName) failed:", error);
+      }
+
+      if (accountCreated && appliedEmail) {
+        try {
+          const baseUrl = resolveAppBaseUrl();
+          const continueUrl = `${baseUrl}/login`;
+          const resetLink = await getAuth().generatePasswordResetLink(appliedEmail, { url: continueUrl });
+          await sendCitizenAccessLinkEmail({
+            email: appliedEmail,
+            resetLink,
+            citizenName: fullName,
+            isNewAccount: true,
+          });
+          initialAccessSent = true;
+        } catch (error) {
+          console.error("staffUpsertCitizenProfile initial access email failed:", error);
+          initialAccessWarning = "La cuenta se creó, pero no se pudo enviar el correo inicial. Usa Restablecer acceso.";
+        }
+      }
+
+      if (shouldCreateEmailChangeRequest) {
+        try {
+          const emailChangeToken = generateCitizenEmailChangeToken();
+          const baseUrl = resolveAppBaseUrl();
+          const confirmUrl = buildCitizenEmailChangeConfirmUrl(baseUrl, emailChangeToken);
+          const expiresAt = Timestamp.fromMillis(Date.now() + CITIZEN_EMAIL_CHANGE_TOKEN_TTL_MS);
+
+          emailChangeTokenId = emailChangeToken;
+
+          await db.collection("citizenEmailChangeRequests").doc(emailChangeToken).set({
+            targetUid,
+            docNorm: payload.docNorm,
+            oldEmail: appliedEmail || "",
+            newEmail: nextPendingEmail,
+            requestedAt: nowTs,
+            requestedBy: auth.uid,
+            expiresAt,
+            status: "pending",
+          });
+
+          await sendCitizenEmailChangeConfirmationEmail({
+            email: nextPendingEmail,
+            citizenName: fullName,
+            confirmUrl,
+          });
+
+          emailChangeConfirmationSent = true;
+        } catch (error) {
+          console.error("staffUpsertCitizenProfile email change confirmation failed:", error);
+
+          if (emailChangeTokenId) {
+            try {
+              await db.collection("citizenEmailChangeRequests").doc(emailChangeTokenId).delete();
+            } catch (cleanupError) {
+              console.error("staffUpsertCitizenProfile cleanup email change token failed:", cleanupError);
+            }
+            emailChangeTokenId = "";
+          }
+
+          await userRef.set(
+            {
+              pendingEmail: FieldValue.delete(),
+              pendingEmailStatus: FieldValue.delete(),
+              pendingEmailRequestedAt: FieldValue.delete(),
+              pendingEmailRequestedBy: FieldValue.delete(),
+              updatedAt: Timestamp.now(),
+              updatedBy: auth.uid,
+            },
+            { merge: true }
+          );
+
+          await citizenRef.set(
+            {
+              pendingEmail: FieldValue.delete(),
+              pendingEmailStatus: FieldValue.delete(),
+              pendingEmailRequestedAt: FieldValue.delete(),
+              pendingEmailRequestedBy: FieldValue.delete(),
+              updatedAt: Timestamp.now(),
+              updatedBy: auth.uid,
+            },
+            { merge: true }
+          );
+
+          emailChangePending = false;
+          throw new HttpsError(
+            "internal",
+            "La ficha se actualizo, pero no se pudo enviar la confirmacion del nuevo correo."
+          );
+        }
+      }
+
+      const summary = accountCreated
+        ? `Cuenta ciudadana creada y sincronizada (${payload.docNorm}).`
+        : `Cuenta ciudadana sincronizada (${payload.docNorm}).`;
+
+      await writeAuditLogSafe({
+        action: accountCreated ? "staff_create_citizen_account" : "staff_update_citizen_account",
+        entityType: "usuarios",
+        entityId: targetUid,
+        actorUid: auth.uid,
+        actorRole,
+        source: "callable:staffUpsertCitizenProfile",
+        summary,
+        metadata: {
+          docNorm: payload.docNorm,
+          citizenDocId: payload.docNorm,
+          targetUid,
+          accountCreated,
+          initialAccessSent,
+          initialAccessWarning: initialAccessWarning || null,
+          emailChangePending,
+          emailChangeConfirmationSent,
+          appliedEmail: appliedEmail || null,
+          pendingEmail: emailChangePending ? nextPendingEmail : null,
+        },
+      });
+
+      return {
+        ok: true,
+        existed: citizenSnap.exists,
+        accountCreated,
+        userUid: targetUid,
+        docNorm: payload.docNorm,
+        initialAccessSent,
+        initialAccessWarning,
+        emailChangePending,
+        emailChangeConfirmationSent,
+        appliedEmail: appliedEmail || "",
+        pendingEmail: emailChangePending ? nextPendingEmail : "",
+        message: accountCreated
+          ? initialAccessWarning || "Cuenta ciudadana creada y acceso inicial enviado por correo."
+          : emailChangePending
+            ? "Ficha y cuenta actualizadas. El nuevo correo quedó pendiente de confirmación."
+            : "Ficha y cuenta actualizadas correctamente.",
+      };
+    } catch (error) {
+      if (createdAuthUid) {
+        try {
+          await getAuth().deleteUser(createdAuthUid);
+        } catch (cleanupError) {
+          console.error("staffUpsertCitizenProfile cleanup deleteUser failed:", cleanupError);
+        }
+      }
+      if (createdUserDocId) {
+        try {
+          await db.collection("usuarios").doc(createdUserDocId).delete();
+        } catch (cleanupError) {
+          console.error("staffUpsertCitizenProfile cleanup user doc failed:", cleanupError);
+        }
+      }
+      if (createdCitizenDocId) {
+        try {
+          await db.collection("ciudadanos").doc(createdCitizenDocId).delete();
+        } catch (cleanupError) {
+          console.error("staffUpsertCitizenProfile cleanup citizen doc failed:", cleanupError);
+        }
+      }
+      if (emailChangeTokenId) {
+        try {
+          await db.collection("citizenEmailChangeRequests").doc(emailChangeTokenId).delete();
+        } catch (cleanupError) {
+          console.error("staffUpsertCitizenProfile cleanup email change request failed:", cleanupError);
+        }
+      }
+
+      if (error instanceof HttpsError) throw error;
+      console.error("staffUpsertCitizenProfile error:", error);
+      throw new HttpsError("internal", "Error al crear o sincronizar la cuenta del ciudadano.");
+    }
+  }
+);
+
+exports.confirmCitizenPendingEmailChange = onCall(
+  { region: SANTIAGO_REGION, enforceAppCheck: true },
+  async (request) => {
+    try {
+      const token = safeStr(request?.data?.token).trim();
+      if (!token) {
+        throw new HttpsError("invalid-argument", "El enlace de confirmacion no es valido.");
+      }
+
+      await assertRateLimit({
+        endpoint: "confirmCitizenPendingEmailChange",
+        scope: "app_client",
+        keyParts: getAppClientRateLimitKey(request),
+        limit: 20,
+        windowMs: 10 * 60 * 1000,
+        message: "Demasiados intentos de confirmacion. Intente nuevamente en unos minutos.",
+      });
+
+      const tokenRef = db.collection("citizenEmailChangeRequests").doc(token);
+      const tokenSnap = await tokenRef.get();
+      if (!tokenSnap.exists) {
+        throw new HttpsError("not-found", "El enlace de confirmacion no es valido o ya no esta disponible.");
+      }
+
+      const tokenData = tokenSnap.data() || {};
+      const status = safeStr(tokenData.status).trim().toLowerCase();
+      const expiresAtMs = getTsMillis(tokenData.expiresAt);
+      const nowMs = Date.now();
+
+      if (status === "confirmed") {
+        return {
+          ok: true,
+          alreadyConfirmed: true,
+          message: "El cambio de correo ya fue confirmado anteriormente.",
+        };
+      }
+
+      if (status !== "pending") {
+        throw new HttpsError("failed-precondition", "Este enlace ya no esta disponible.");
+      }
+
+      if (!expiresAtMs || expiresAtMs < nowMs) {
+        await tokenRef.set(
+          {
+            status: "expired",
+            expiredAt: Timestamp.now(),
+          },
+          { merge: true }
+        );
+        throw new HttpsError(
+          "deadline-exceeded",
+          "El enlace de confirmacion expiro. Solicita un nuevo cambio de correo."
+        );
+      }
+
+      const targetUid = safeStr(tokenData.targetUid).trim();
+      const docNorm = normalizeCitizenDocServer(tokenData.docNorm);
+      const newEmail = normalizeEmailServer(tokenData.newEmail);
+      const oldEmail = normalizeEmailServer(tokenData.oldEmail);
+
+      if (!targetUid || !docNorm || !newEmail || !isValidEmailServer(newEmail)) {
+        throw new HttpsError("failed-precondition", "La solicitud de cambio de correo no es valida.");
+      }
+
+      const userRef = db.collection("usuarios").doc(targetUid);
+      const userSnap = await userRef.get();
+      if (!userSnap.exists) {
+        throw new HttpsError("not-found", "La cuenta del ciudadano ya no esta disponible.");
+      }
+
+      const userData = userSnap.data() || {};
+      if (resolveUserRoleServer(userData) !== "ciudadano") {
+        throw new HttpsError("failed-precondition", "La cuenta indicada ya no corresponde a un ciudadano.");
+      }
+
+      const currentPendingEmail = normalizeEmailServer(userData.pendingEmail);
+      if (!currentPendingEmail || currentPendingEmail !== newEmail) {
+        throw new HttpsError(
+          "failed-precondition",
+          "Este enlace ya no corresponde al cambio de correo pendiente actual."
+        );
+      }
+
+      const citizenRef = db.collection("ciudadanos").doc(docNorm);
+      const citizenSnap = await citizenRef.get();
+      if (!citizenSnap.exists) {
+        throw new HttpsError("not-found", "La ficha del ciudadano ya no esta disponible.");
+      }
+
+      const citizenData = citizenSnap.data() || {};
+      if (normalizeEmailServer(citizenData.pendingEmail) !== newEmail) {
+        throw new HttpsError(
+          "failed-precondition",
+          "La ficha del ciudadano ya no tiene este correo pendiente de confirmacion."
+        );
+      }
+
+      const emailLookup = await lookupUserByEmailServer(newEmail);
+      if (emailLookup && emailLookup.uid !== targetUid) {
+        throw new HttpsError(
+          "failed-precondition",
+          "El nuevo correo ya esta asociado a otra cuenta."
+        );
+      }
+
+      await getAuth().updateUser(targetUid, { email: newEmail });
+
+      const nowTs = Timestamp.now();
+      await userRef.set(
+        {
+          email: newEmail,
+          pendingEmail: FieldValue.delete(),
+          pendingEmailStatus: FieldValue.delete(),
+          pendingEmailRequestedAt: FieldValue.delete(),
+          pendingEmailRequestedBy: FieldValue.delete(),
+          emailChangeConfirmedAt: nowTs,
+          updatedAt: nowTs,
+          updatedBy: "citizen_email_confirmation",
+        },
+        { merge: true }
+      );
+
+      await citizenRef.set(
+        {
+          email: newEmail,
+          pendingEmail: FieldValue.delete(),
+          pendingEmailStatus: FieldValue.delete(),
+          pendingEmailRequestedAt: FieldValue.delete(),
+          pendingEmailRequestedBy: FieldValue.delete(),
+          emailChangeConfirmedAt: nowTs,
+          updatedAt: nowTs,
+          updatedBy: "citizen_email_confirmation",
+        },
+        { merge: true }
+      );
+
+      await tokenRef.set(
+        {
+          status: "confirmed",
+          confirmedAt: nowTs,
+        },
+        { merge: true }
+      );
+
+      await writeAuditLogSafe({
+        action: "citizen_confirm_email_change",
+        entityType: "usuarios",
+        entityId: targetUid,
+        actorUid: targetUid,
+        actorRole: "ciudadano",
+        source: "callable:confirmCitizenPendingEmailChange",
+        summary: `Cambio de correo confirmado para ciudadano ${docNorm}.`,
+        metadata: {
+          docNorm,
+          targetUid,
+          oldEmail: oldEmail || null,
+          newEmail,
+          tokenStatus: "confirmed",
+        },
+      });
+
+      return {
+        ok: true,
+        alreadyConfirmed: false,
+        message: "El nuevo correo fue confirmado y actualizado correctamente.",
+      };
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+      console.error("confirmCitizenPendingEmailChange error:", error);
+      throw new HttpsError("internal", "No se pudo confirmar el cambio de correo.");
+    }
+  }
+);
+
+exports.staffSendCitizenPasswordReset = onCall(
+  {
+    region: SANTIAGO_REGION,
+    enforceAppCheck: true,
+    secrets: [SMTP_USER, SMTP_PASS, MAIL_FROM],
+  },
+  async (request) => {
+    try {
+      const { auth, data } = request;
+      if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+
+      const actor = await requireRole(
+        auth.uid,
+        ["admin", "superadmin", "agente"],
+        "Solo personal autorizado."
+      );
+
+      await assertRateLimit({
+        endpoint: "staffSendCitizenPasswordReset",
+        scope: "uid",
+        keyParts: [auth.uid],
+        limit: 6,
+        windowMs: 10 * 60 * 1000,
+        message: "Demasiados envios de recuperacion de contrasena. Intente nuevamente en unos minutos.",
+      });
+
+      const docNorm = normalizeCitizenDocServer(data?.docNorm || data?.dni || data?.rut);
+      if (!isValidCitizenDocServer(docNorm)) {
+        throw new HttpsError("invalid-argument", "Documento no valido.");
+      }
+
+      const { citizen, conflictingUser } = await lookupCitizenUserByDocServer(docNorm);
+      if (conflictingUser && !citizen) {
+        throw new HttpsError("failed-precondition", "El documento no corresponde a un ciudadano.");
+      }
+      if (!citizen?.uid) {
+        throw new HttpsError("not-found", "No existe una cuenta ciudadana asociada a ese documento.");
+      }
+
+      let email = "";
+      try {
+        const userAuth = await getAuth().getUser(citizen.uid);
+        email = String(userAuth.email || "").trim().toLowerCase();
+      } catch (error) {
+        console.error("staffSendCitizenPasswordReset getUser failed:", error);
+      }
+
+      if (!email) {
+        email = normalizeEmailServer(citizen.email);
+      }
+
+      if (!email || !isValidEmailServer(email)) {
+        throw new HttpsError(
+          "failed-precondition",
+          "La cuenta ciudadana no tiene un email valido para enviar el restablecimiento."
+        );
+      }
+
+      const baseUrl = resolveAppBaseUrl();
+      const continueUrl = `${baseUrl}/login`;
+      const resetLink = await getAuth().generatePasswordResetLink(email, { url: continueUrl });
+
+      const transporter = nodemailer.createTransport({
+        service: "gmail",
+        auth: { user: SMTP_USER.value(), pass: SMTP_PASS.value() },
+      });
+
+      const html = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #111;">
+          <h2 style="margin:0 0 12px;">Restablecimiento de contraseña</h2>
+          <p style="margin:0 0 12px;">
+            Se solicitó un restablecimiento de contraseña para tu cuenta del Sistema de Citas.
+          </p>
+          <p style="margin:0 0 12px;">
+            Haz clic en el siguiente enlace para crear una nueva contraseña:
+          </p>
+          <p style="margin:0 0 12px;">
+            <a href="${resetLink}" target="_blank" rel="noopener noreferrer">${resetLink}</a>
+          </p>
+          <p style="margin:0; color:#666; font-size:12px;">
+            Si no solicitaste este cambio, puedes ignorar este correo.
+          </p>
+        </div>
+      `;
+
+      await transporter.sendMail({
+        from: MAIL_FROM.value(),
+        to: email,
+        subject: "Restablecer contraseña - Sistema de Citas",
+        html,
+      });
+
+      await writeAuditLogSafe({
+        action: "staff_send_citizen_password_reset",
+        entityType: "usuarios",
+        entityId: citizen.uid,
+        actorUid: auth.uid,
+        actorRole: resolveUserRoleServer(actor),
+        source: "callable:staffSendCitizenPasswordReset",
+        summary: `Envio de restablecimiento de contraseña para ciudadano ${docNorm}.`,
+        metadata: {
+          docNorm,
+          targetUid: citizen.uid,
+          sentTo: email,
+        },
+      });
+
+      return { ok: true, sentTo: email };
+    } catch (error) {
+      if (error instanceof HttpsError) throw error;
+      console.error("staffSendCitizenPasswordReset error:", error);
+      throw new HttpsError("internal", "Error al enviar el restablecimiento de contraseña.");
+    }
+  }
+);
+
+exports.adminDeleteCitizenProfile = onCall({ region: SANTIAGO_REGION, enforceAppCheck: true }, async (request) => {
+  try {
+    const { auth, data } = request;
+    if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
+
+    const actor = await requireAdmin(auth.uid);
+
+    await assertRateLimit({
+      endpoint: "adminDeleteCitizenProfile",
+      scope: "uid",
+      keyParts: [auth.uid],
+      limit: 6,
+      windowMs: 10 * 60 * 1000,
+      message: "Demasiadas eliminaciones de fichas de ciudadanos. Intente nuevamente en unos minutos.",
+    });
+
+    const docNorm = normalizeCitizenDocServer(data?.docNorm || data?.dni || data?.rut);
+    if (!isValidCitizenDocServer(docNorm)) {
+      throw new HttpsError("invalid-argument", "Documento no valido.");
+    }
+
+    const ref = db.collection("ciudadanos").doc(docNorm);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      return { ok: true, deleted: false, docNorm };
+    }
+
+    await ref.delete();
+
+    await writeAuditLogSafe({
+      action: "admin_delete_citizen_profile",
+      entityType: "ciudadanos",
+      entityId: docNorm,
+      actorUid: auth.uid,
+      actorRole: resolveUserRoleServer(actor),
+      source: "callable:adminDeleteCitizenProfile",
+      summary: `Ficha de ciudadano eliminada (${docNorm}).`,
+      metadata: { docNorm },
+    });
+
+    return { ok: true, deleted: true, docNorm };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error("adminDeleteCitizenProfile error:", error);
+    throw new HttpsError("internal", "Error al eliminar la ficha del ciudadano.");
   }
 });
 
@@ -2375,7 +3324,7 @@ exports.adminUpdateAgente = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
     const { auth, data } = request;
     if (!auth) throw new HttpsError("unauthenticated", "No autenticado.");
 
-    await requireAdmin(auth.uid);
+    const actor = await requireAdmin(auth.uid);
 
     await assertRateLimit({
       endpoint: "adminUpdateAgente",
@@ -2395,11 +3344,13 @@ exports.adminUpdateAgente = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
     const targetUid = safeStr(uid).trim();
     if (!targetUid) throw new HttpsError("invalid-argument", "Falta uid del agente.");
 
-    // Validaciones básicas (sin ser restrictivo)
     const allowed = [
       "nombre",
+      "nombreCompleto",
       "name",
       "email",
+      "dni",
+      "rut",
       "rol",
       "role",
       "modulo",
@@ -2407,38 +3358,145 @@ exports.adminUpdateAgente = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
       "activo",
       "telefono",
       "cargo",
+      "habilidades",
     ];
 
-    const clean = {};
-    for (const k of Object.keys(updates || {})) {
-      if (allowed.includes(k)) clean[k] = updates[k];
-    }
+    const clean = pickAllowed(updates || {}, allowed);
 
-    // Normalizar roles si te llegan en "role"
-    if (clean.role && !clean.rol) clean.rol = clean.role;
+    if (Object.prototype.hasOwnProperty.call(clean, "role") && !Object.prototype.hasOwnProperty.call(clean, "rol")) {
+      clean.rol = clean.role;
+    }
     delete clean.role;
 
-    // Normalizar nombre si te llega en "name"
-    if (clean.name && !clean.nombre) clean.nombre = clean.name;
+    if (
+      Object.prototype.hasOwnProperty.call(clean, "name") &&
+      !Object.prototype.hasOwnProperty.call(clean, "nombre") &&
+      !Object.prototype.hasOwnProperty.call(clean, "nombreCompleto")
+    ) {
+      clean.nombreCompleto = clean.name;
+    }
     delete clean.name;
-
-    // Si llega email, normalizar
-    if (clean.email) clean.email = safeStr(clean.email).trim().toLowerCase();
-
-    // Si llega activo, convertir a boolean
-    if (clean.activo !== undefined) clean.activo = !!clean.activo;
 
     const userRef = db.collection("usuarios").doc(targetUid);
     const userSnap = await userRef.get();
     if (!userSnap.exists) throw new HttpsError("not-found", "El usuario/agente no existe en Firestore.");
+    const currentData = userSnap.data() || {};
+    const currentRole = resolveUserRoleServer(currentData);
+    const currentEmail = normalizeEmailServer(currentData.email || "");
+    const isSelf = targetUid === auth.uid;
 
-    //  Update Auth (email / password) si corresponde
+    const patch = {};
+    const hasEmailField = Object.prototype.hasOwnProperty.call(clean, "email");
+    const hasRoleField = Object.prototype.hasOwnProperty.call(clean, "rol");
+    const hasDocField =
+      Object.prototype.hasOwnProperty.call(clean, "dni") ||
+      Object.prototype.hasOwnProperty.call(clean, "rut");
+
+    if (Object.prototype.hasOwnProperty.call(clean, "nombreCompleto") || Object.prototype.hasOwnProperty.call(clean, "nombre")) {
+      const fullName = normalizeSingleLineTextServer(clean.nombreCompleto || clean.nombre || "");
+      patch.nombreCompleto = fullName;
+      patch.nombre = fullName;
+    }
+
+    if (hasEmailField) {
+      const nextEmailCandidate = normalizeEmailServer(clean.email);
+      if (!nextEmailCandidate || !isValidEmailServer(nextEmailCandidate)) {
+        throw new HttpsError("invalid-argument", "Debe indicar un correo valido.");
+      }
+
+      const emailLookup = await lookupUserByEmailServer(nextEmailCandidate);
+      if (emailLookup && emailLookup.uid !== targetUid) {
+        throw new HttpsError("already-exists", "El correo ya pertenece a otra cuenta.");
+      }
+
+      patch.email = nextEmailCandidate;
+    }
+
+    if (hasDocField) {
+      const nextDoc = normalizeInternalDocumentServer(clean.dni ?? clean.rut);
+      if (nextDoc) {
+        patch.dni = nextDoc;
+        patch.rut = nextDoc;
+        patch.docNorm = nextDoc;
+      } else {
+        patch.dni = FieldValue.delete();
+        patch.rut = FieldValue.delete();
+        patch.docNorm = FieldValue.delete();
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(clean, "telefono")) {
+      patch.telefono = normalizeSingleLineTextServer(clean.telefono || "");
+    }
+
+    if (Object.prototype.hasOwnProperty.call(clean, "cargo")) {
+      patch.cargo = normalizeSingleLineTextServer(clean.cargo || "");
+    }
+
+    if (hasRoleField) {
+      const nextRoleCandidate = safeStr(clean.rol).trim().toLowerCase();
+      if (!["ciudadano", ...STAFF_INTERNAL_ROLES].includes(nextRoleCandidate)) {
+        throw new HttpsError("invalid-argument", "Rol invalido.");
+      }
+      patch.rol = nextRoleCandidate;
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(clean, "modulo") ||
+      Object.prototype.hasOwnProperty.call(clean, "moduloAsignado")
+    ) {
+      patch.moduloAsignado = normalizeModuloServer(clean.moduloAsignado ?? clean.modulo);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(clean, "activo")) {
+      patch.activo = !!clean.activo;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(clean, "habilidades")) {
+      if (!Array.isArray(clean.habilidades)) {
+        throw new HttpsError("invalid-argument", "Las habilidades deben ser una lista.");
+      }
+      patch.habilidades = [...new Set(clean.habilidades.map((item) => safeStr(item).trim()).filter(Boolean))];
+    }
+
+    const nextRole = patch.rol || currentRole;
+    const nextEmail = patch.email || currentEmail;
+    const mustValidateInstitutionalEmail =
+      STAFF_INTERNAL_ROLES.includes(nextRole) && (hasRoleField || hasEmailField);
+
+    if (mustValidateInstitutionalEmail && !isInstitutionalStaffEmailServer(nextEmail)) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Los roles internos requieren un correo institucional permitido."
+      );
+    }
+
+    if (isSelf && patch.activo === false) {
+      throw new HttpsError("failed-precondition", "No puedes desactivarte a ti mismo.");
+    }
+
+    if (isSelf && patch.rol && patch.rol !== currentRole) {
+      throw new HttpsError("failed-precondition", "No puedes cambiar tu propio rol desde esta vista.");
+    }
+
+    if (isSelf && patch.email && patch.email !== currentEmail) {
+      throw new HttpsError(
+        "failed-precondition",
+        "Por seguridad, el correo de tu propia cuenta no puede cambiarse desde esta vista."
+      );
+    }
+
     const authUpdates = {};
-    if (clean.email) authUpdates.email = clean.email;
+    if (patch.email && patch.email !== currentEmail) authUpdates.email = patch.email;
+    if (Object.prototype.hasOwnProperty.call(patch, "nombreCompleto")) {
+      authUpdates.displayName = patch.nombreCompleto || "";
+    }
 
     const pwd = safeStr(newPassword).trim();
     if (pwd) {
-      if (pwd.length < 6) throw new HttpsError("invalid-argument", "La contraseña debe tener mínimo 6 caracteres.");
+      if (pwd.length < 6) {
+        throw new HttpsError("invalid-argument", "La contrasena debe tener minimo 6 caracteres.");
+      }
       authUpdates.password = pwd;
     }
 
@@ -2446,16 +3504,52 @@ exports.adminUpdateAgente = onCall({ region: SANTIAGO_REGION, enforceAppCheck: t
       await getAuth().updateUser(targetUid, authUpdates);
     }
 
-    //  Update Firestore usuarios/{uid}
-    const patch = {
-      ...clean,
-      updatedAt: Timestamp.now(),
-      updatedBy: auth.uid,
+    await userRef.set(
+      {
+        ...patch,
+        updatedAt: Timestamp.now(),
+        updatedBy: auth.uid,
+      },
+      { merge: true }
+    );
+
+    await writeAuditLogSafe({
+      action: "admin_update_staff_user",
+      entityType: "usuarios",
+      entityId: targetUid,
+      actorUid: auth.uid,
+      actorRole: resolveUserRoleServer(actor),
+      source: "callable:adminUpdateAgente",
+      summary: `Cuenta interna actualizada (${targetUid}).`,
+      metadata: {
+        targetUid,
+        isSelf,
+        emailUpdated: !!(patch.email && patch.email !== currentEmail),
+        roleBefore: currentRole || null,
+        roleAfter: nextRole || null,
+        activeAfter: Object.prototype.hasOwnProperty.call(patch, "activo")
+          ? !!patch.activo
+          : currentData.activo !== false,
+        moduloAfter: Object.prototype.hasOwnProperty.call(patch, "moduloAsignado")
+          ? patch.moduloAsignado
+          : currentData.moduloAsignado ?? null,
+        skillsCount: Array.isArray(patch.habilidades)
+          ? patch.habilidades.length
+          : Array.isArray(currentData.habilidades)
+            ? currentData.habilidades.length
+            : 0,
+        documentUpdated: hasDocField,
+        passwordChanged: !!pwd,
+      },
+    });
+
+    return {
+      ok: true,
+      synced: {
+        auth: Object.keys(authUpdates).length > 0,
+        usuarios: true,
+      },
     };
-
-    await userRef.set(patch, { merge: true });
-
-    return { ok: true };
   } catch (err) {
     if (err instanceof HttpsError) throw err;
     console.error("adminUpdateAgente error:", err);
@@ -3159,7 +4253,7 @@ exports.adminSendPasswordReset = onCall(
   {
     region: SANTIAGO_REGION,
     enforceAppCheck: true,
-    secrets: [SMTP_USER, SMTP_PASS, MAIL_FROM, APP_PUBLIC_URL],
+    secrets: [SMTP_USER, SMTP_PASS, MAIL_FROM],
   },
   async (request) => {
     try {
@@ -3196,7 +4290,7 @@ exports.adminSendPasswordReset = onCall(
 
       if (!email) throw new HttpsError("failed-precondition", "El agente no tiene email registrado.");
 
-      const baseUrl = (APP_PUBLIC_URL.value() || "").replace(/\/+$/, "");
+      const baseUrl = resolveAppBaseUrl();
       const continueUrl = `${baseUrl}/login`;
 
       const resetLink = await getAuth().generatePasswordResetLink(email, { url: continueUrl });

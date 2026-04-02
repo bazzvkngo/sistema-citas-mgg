@@ -156,7 +156,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  min-height: 50px;
+  min-height: 46px;
   padding: 0 18px;
   background: linear-gradient(90deg, #8d1017 0%, #b41822 45%, #991019 100%);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
@@ -180,13 +180,13 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 50px;
-  padding: 0 14px;
+  min-height: 46px;
+  padding: 0 12px;
   border: none;
   background: transparent;
   color: rgba(255, 255, 255, 0.94);
   text-decoration: none;
-  font-size: 0.92rem;
+  font-size: 0.88rem;
   font-weight: 800;
   letter-spacing: 0.01em;
   cursor: pointer;
@@ -234,14 +234,14 @@
 
 .navbar__dropdownMenu {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 6px);
   left: 0;
-  min-width: 220px;
-  padding: 8px;
-  border-radius: 16px;
+  min-width: 178px;
+  padding: 6px;
+  border-radius: 12px;
   background: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.08);
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.14);
 }
 
 .navbar__dropdownItem {
@@ -250,9 +250,9 @@
   background: transparent;
   color: #1f2937;
   text-align: left;
-  padding: 12px 14px;
-  border-radius: 12px;
-  font-size: 0.94rem;
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 0.86rem;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.18s ease, color 0.18s ease;

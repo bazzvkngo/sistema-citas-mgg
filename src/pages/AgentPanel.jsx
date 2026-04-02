@@ -206,6 +206,10 @@ const styles = {
     letterSpacing: '0.01em',
     boxShadow: '0 18px 30px rgba(22, 163, 74, 0.24)'
   },
+  primaryBtnActive: {
+    background: 'linear-gradient(135deg, #0f766e 0%, #0f9f8a 100%)',
+    boxShadow: '0 22px 34px rgba(15, 118, 110, 0.28)'
+  },
 
   tabs: {
     display: 'flex',
@@ -376,11 +380,6 @@ export default function AgentPanel() {
 
   const atencionActual = calledTurno || calledCita;
 
-  useEffect(() => {
-    if (atencionActual) setShowFinishModal(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [atencionActual?.id]);
-
   const cerrarJornada = async () => {
     if (closingDay || closingDayRef.current) return;
 
@@ -535,7 +534,11 @@ export default function AgentPanel() {
                 </div>
 
                 <div style={{ marginTop: 12 }}>
-                  <button type="button" style={styles.primaryBtn} onClick={() => setShowFinishModal(true)}>
+                  <button
+                    type="button"
+                    style={{ ...styles.primaryBtn, ...styles.primaryBtnActive }}
+                    onClick={() => setShowFinishModal(true)}
+                  >
                     Finalizar atención
                   </button>
                 </div>

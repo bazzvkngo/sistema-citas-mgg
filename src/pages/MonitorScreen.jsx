@@ -213,7 +213,6 @@ const styles = {
 
   rightList: {
     padding: "0 20px",
-    overflow: "auto",
     flex: 1,
     minHeight: 0,
   },
@@ -525,7 +524,7 @@ export default function MonitorScreen() {
   const adEnabled = !!(adConfig?.enabled && (configuredAdUrl || adType === "video"));
 
   const currentCall = useMemo(() => history[0] || null, [history]);
-  const previous = useMemo(() => history.slice(1, 8), [history]);
+  const previous = useMemo(() => history.slice(1, 6), [history]);
 
   useEffect(() => {
     const codigo = (currentCall?.codigo || "").toString().trim();

@@ -12,6 +12,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "../../firebase";
+import "./AdminTheme.css";
 
 /* ---------------- Helpers fechas / ids ---------------- */
 function parseISODateToUTCDate(iso) {
@@ -43,26 +44,82 @@ function buildFeriadoDocId(fechaISO, pais) {
 
 /* ---------------- UI ---------------- */
 const UI = {
-  ink: "#0b1220",
-  muted: "#6b7280",
-  border: "rgba(15, 23, 42, 0.12)",
-  panel: "#fff",
-  bgRow: "#f8fafc",
-  brand: "#C8102E",
-  blue: "#0b3d91",
-  shadow: "0 12px 32px rgba(0,0,0,0.08)",
+  ink: "var(--text-primary)",
+  muted: "var(--text-secondary)",
+  border: "var(--border-soft)",
+  borderStrong: "var(--border-strong)",
+  panel: "var(--surface-card)",
+  bg: "var(--surface-subcard)",
+  bgPage: "var(--surface-page)",
+  bgRow: "var(--surface-row)",
+  bgRowAlt: "var(--surface-row-alt)",
+  brand: "var(--brand-primary)",
+  blue: "var(--brand-primary)",
+  success: "var(--success-strong)",
+  successSoft: "var(--success-soft)",
+  danger: "var(--danger-strong)",
+  dangerSoft: "var(--danger-soft)",
+  shadow: "var(--shadow-card)",
 };
 
 const styles = {
+  module: {
+    display: "flex",
+    flexDirection: "column",
+  },
   card: {
-    backgroundColor: UI.panel,
-    borderRadius: 14,
+    background:
+      "linear-gradient(180deg, rgba(41, 79, 118, 0.03), rgba(41, 79, 118, 0)) top / 100% 110px no-repeat, var(--surface-card)",
+    borderRadius: 18,
     border: `1px solid ${UI.border}`,
     boxShadow: UI.shadow,
     padding: 20,
-    marginBottom: 20,
   },
-  title: { fontSize: 16, fontWeight: 900, color: "#333", marginBottom: 14 },
+  headerRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    alignItems: "flex-start",
+    flexWrap: "wrap",
+    marginBottom: 14,
+  },
+  titleBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+  },
+  meta: {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "5px 9px",
+    borderRadius: 999,
+    background: UI.bg,
+    color: UI.muted,
+    border: `1px solid ${UI.border}`,
+    fontSize: 11,
+    fontWeight: 800,
+  },
+  title: { fontSize: 16, fontWeight: 900, color: UI.ink, margin: 0 },
+  subtitle: { fontSize: 12, fontWeight: 700, color: UI.muted, margin: 0 },
+  sectionCard: {
+    background: UI.bg,
+    borderRadius: 16,
+    border: `1px solid ${UI.border}`,
+    padding: 14,
+  },
+  sectionCardSpaced: {
+    marginTop: 14,
+  },
+  sectionHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    alignItems: "center",
+    flexWrap: "wrap",
+    marginBottom: 12,
+  },
+  sectionTitle: { fontSize: 13, fontWeight: 900, color: UI.ink, margin: 0 },
+  sectionHint: { fontSize: 11, fontWeight: 700, color: UI.muted, margin: 0 },
 
   gridTop: {
     display: "grid",
@@ -82,7 +139,7 @@ const styles = {
     border: `1px solid ${UI.border}`,
     borderRadius: 12,
     overflow: "hidden",
-    background: "#fff",
+    background: UI.panel,
   },
   segBtn: {
     padding: "10px 12px",
@@ -94,7 +151,7 @@ const styles = {
     color: UI.muted,
   },
   segBtnActive: {
-    background: "rgba(200,16,46,0.10)",
+    background: "rgba(41, 79, 118, 0.10)",
     color: UI.ink,
   },
 
@@ -104,6 +161,8 @@ const styles = {
     padding: "10px 12px",
     fontSize: 14,
     minWidth: 170,
+    background: UI.panel,
+    color: UI.ink,
   },
   inputText: {
     flex: 1,
@@ -112,6 +171,8 @@ const styles = {
     borderRadius: 12,
     padding: "10px 12px",
     fontSize: 14,
+    background: UI.panel,
+    color: UI.ink,
   },
   select: {
     border: `1px solid ${UI.border}`,
@@ -119,7 +180,8 @@ const styles = {
     padding: "10px 12px",
     fontSize: 14,
     minWidth: 150,
-    background: "#fff",
+    background: UI.panel,
+    color: UI.ink,
   },
 
   hint: { fontSize: 12, color: UI.muted, marginTop: -2 },
@@ -141,7 +203,7 @@ const styles = {
     fontSize: 14,
     fontWeight: 900,
     cursor: "pointer",
-    backgroundColor: "#fff",
+    backgroundColor: UI.panel,
     color: UI.ink,
   },
 
@@ -159,13 +221,15 @@ const styles = {
   tableWrap: {
     marginTop: 10,
     border: `1px solid ${UI.border}`,
-    borderRadius: 12,
+    borderRadius: 16,
     overflow: "hidden",
+    background: UI.bgPage,
   },
   tableScroll: {
     maxHeight: 520,
     overflow: "auto",
-    background: "#fff",
+    background: UI.bgPage,
+    padding: 8,
   },
   table: { width: "100%", borderCollapse: "collapse" },
   th: {
@@ -177,13 +241,14 @@ const styles = {
     fontSize: 12,
     textTransform: "uppercase",
     borderBottom: `1px solid ${UI.border}`,
-    color: "#555",
-    background: "#fff",
+    color: UI.muted,
+    background: UI.bg,
   },
   td: {
     padding: "10px 12px",
     fontSize: 14,
-    borderBottom: "1px solid rgba(0,0,0,0.06)",
+    color: UI.ink,
+    borderBottom: `1px solid ${UI.border}`,
     verticalAlign: "middle",
   },
   badge: {
@@ -192,9 +257,10 @@ const styles = {
     borderRadius: 999,
     fontSize: 12,
     fontWeight: 900,
+    border: `1px solid ${UI.border}`,
   },
-  badgeActivo: { background: "#d4edda", color: "#155724" },
-  badgeInactivo: { background: "#f8d7da", color: "#721c24" },
+  badgeActivo: { background: UI.successSoft, color: UI.success, borderColor: "var(--success-border)" },
+  badgeInactivo: { background: UI.dangerSoft, color: UI.danger, borderColor: "var(--danger-border)" },
 
   btnSmall: {
     padding: "7px 10px",
@@ -205,11 +271,12 @@ const styles = {
     fontWeight: 900,
     marginRight: 8,
   },
-  btnToggle: { background: "#007bff", color: "#fff" },
-  btnDelete: { background: "#dc3545", color: "#fff" },
-  rowAlt: { background: UI.bgRow },
+  btnToggle: { background: UI.blue, color: "#fff" },
+  btnDelete: { background: UI.danger, color: "#fff" },
+  rowAlt: { background: UI.bgRowAlt },
 
   empty: { padding: 12, color: UI.muted, fontWeight: 900 },
+  footerHint: { marginTop: 8, fontSize: 12, color: UI.muted },
 };
 
 export default function AdminHolidays() {
@@ -495,11 +562,27 @@ export default function AdminHolidays() {
   }, [accion, alcance, busy]);
 
   return (
+    <div className="admin-theme-shell" style={styles.module}>
     <div style={styles.card}>
       <div style={styles.title}>Gestión de Feriados / Días Bloqueados</div>
 
+      <div style={styles.headerRow}>
+        <div style={styles.titleBlock}>
+          <div style={styles.subtitle}>
+            Configura cierres operativos y administra bloques por dÃ­a o rango con una vista mÃ¡s clara.
+          </div>
+        </div>
+        <div style={styles.meta}>{feriados.length} registros</div>
+      </div>
+
       {/* FORM UNIFICADO */}
-      <div style={styles.gridTop}>
+      <div style={styles.sectionCard}>
+        <div style={styles.sectionHeader}>
+          <p style={styles.sectionTitle}>Configuracion operativa</p>
+          <p style={styles.sectionHint}>Define bloqueo o desbloqueo antes de aplicarlo.</p>
+        </div>
+
+        <div style={styles.gridTop}>
         <div style={styles.row}>
           <div style={styles.segWrap}>
             <button
@@ -547,7 +630,7 @@ export default function AdminHolidays() {
             </button>
           </div>
 
-          <select value={pais} onChange={(e) => setPais(e.target.value)} style={styles.select}>
+          <select className="admin-theme-control" value={pais} onChange={(e) => setPais(e.target.value)} style={styles.select}>
             <option value="AMBOS">Ambos</option>
             <option value="CHILE">Chile</option>
             <option value="PERU">Perú</option>
@@ -555,6 +638,7 @@ export default function AdminHolidays() {
 
           {accion === "desbloquear" && (
             <select
+              className="admin-theme-control"
               value={modoDesbloqueo}
               onChange={(e) => setModoDesbloqueo(e.target.value)}
               style={styles.select}
@@ -573,6 +657,7 @@ export default function AdminHolidays() {
             <>
               <input
                 type="date"
+                className="admin-theme-control"
                 value={fechaISO}
                 onChange={(e) => setFechaISO(e.target.value)}
                 style={styles.inputDate}
@@ -581,6 +666,7 @@ export default function AdminHolidays() {
               {accion === "bloquear" && (
                 <input
                   type="text"
+                  className="admin-theme-control"
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
                   placeholder="Descripción (opcional)"
@@ -592,12 +678,14 @@ export default function AdminHolidays() {
             <>
               <input
                 type="date"
+                className="admin-theme-control"
                 value={startISO}
                 onChange={(e) => setStartISO(e.target.value)}
                 style={styles.inputDate}
               />
               <input
                 type="date"
+                className="admin-theme-control"
                 value={endISO}
                 onChange={(e) => setEndISO(e.target.value)}
                 style={styles.inputDate}
@@ -606,6 +694,7 @@ export default function AdminHolidays() {
               {accion === "bloquear" && (
                 <input
                   type="text"
+                  className="admin-theme-control"
                   value={descripcion}
                   onChange={(e) => setDescripcion(e.target.value)}
                   placeholder="Descripción (ej: Cierre temporal)"
@@ -640,18 +729,26 @@ export default function AdminHolidays() {
         </div>
 
         <div style={styles.divider} />
+        </div>
       </div>
 
       {/* LISTADO */}
-      <div style={{ marginTop: 14 }}>
+      <div style={{ ...styles.sectionCard, ...styles.sectionCardSpaced }}>
+        <div style={styles.sectionHeader}>
+          <p style={styles.sectionTitle}>Bloqueos configurados</p>
+          <p style={styles.sectionHint}>
+            Alterna entre detalle y resumen para revisar el calendario operativo.
+          </p>
+        </div>
         <div style={styles.filterBar}>
           <div style={styles.filterLeft}>
-            <select value={vista} onChange={(e) => setVista(e.target.value)} style={styles.select}>
+            <select className="admin-theme-control" value={vista} onChange={(e) => setVista(e.target.value)} style={styles.select}>
               <option value="detalle">Vista: Detalle</option>
               <option value="resumen">Vista: Resumen por rangos</option>
             </select>
 
             <select
+              className="admin-theme-control"
               value={fEstado}
               onChange={(e) => setFEstado(e.target.value)}
               style={styles.select}
@@ -662,6 +759,7 @@ export default function AdminHolidays() {
             </select>
 
             <select
+              className="admin-theme-control"
               value={fPais}
               onChange={(e) => setFPais(e.target.value)}
               style={styles.select}
@@ -673,6 +771,7 @@ export default function AdminHolidays() {
             </select>
 
             <input
+              className="admin-theme-control"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar (fecha, descripción, país)"
@@ -688,7 +787,7 @@ export default function AdminHolidays() {
         </div>
 
         <div style={styles.tableWrap}>
-          <div style={styles.tableScroll}>
+          <div className="admin-theme-scroll" style={styles.tableScroll}>
             {loading ? (
               <div style={styles.empty}>Cargando…</div>
             ) : filtered.length === 0 ? (
@@ -789,9 +888,10 @@ export default function AdminHolidays() {
           </div>
         </div>
 
-        <div style={{ marginTop: 8, fontSize: 12, color: UI.muted }}>
+        <div style={styles.footerHint}>
           Tip: usa <b>Resumen por rangos</b> para no ver una lista eterna cuando bloqueas meses completos.
         </div>
+      </div>
       </div>
     </div>
   );

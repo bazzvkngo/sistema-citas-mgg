@@ -36,6 +36,9 @@ export function mapCitizenDocToForm(docNorm, data = {}) {
     nombreCompleto: String(data.nombreCompleto || "").trim(),
     telefono: String(data.telefono || "").trim(),
     email: String(data.email || "").trim(),
+    pendingEmail: String(data.pendingEmail || "").trim(),
+    pendingEmailStatus: String(data.pendingEmailStatus || "").trim(),
+    pendingEmailRequestedAt: data.pendingEmailRequestedAt || null,
     exists: true,
     source: "ciudadanos",
   };
